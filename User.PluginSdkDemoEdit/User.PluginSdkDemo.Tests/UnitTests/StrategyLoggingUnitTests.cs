@@ -28,7 +28,7 @@ namespace User.PluginSdkDemo.Tests
             Test_EventLine_ContainsPayload();
             Test_EventLine_IsSingleLine();
             Test_ModelParamsHeader_ContainsRequiredParameters();
-            Test_SnapshotHeader_Has62Columns();
+            Test_SnapshotHeader_ColumnCount();
             Test_HeadersAreWrittenToDisk();
             Test_HeadersNotDuplicatedOnSecondCall();
             Test_EventFile_ContainsPayloadOnDisk();
@@ -53,9 +53,14 @@ namespace User.PluginSdkDemo.Tests
             Assert(line.Contains("reason=PlayerInPit"), "REGRESSIONE: il payload `data` è stato perso");
             Assert(line.Contains("sector=9"), "manca il settore nel payload");
             Assert(line.Contains("frozenPace=-0.412"), "manca il valore congelato nel payload");
-            Assert(line.Contains("21:32:14.501"), "manca il timestamp");
+            Assert(line.Contains("21:32:14.501"), "manca il wall clock");
             Assert(line.Contains("1234.5"), "manca il session time");
             Assert(line.Contains("| 7 |"), "manca il lap");
+
+            // Il session time deve GUIDARE la riga: è l'unica base temporale coerente in un
+            // replay accelerato, ed è la chiave che incrocia con la prima colonna dello snapshot.
+            Assert(line.StartsWith("1234.5 | 7 | "),
+                $"il session time deve essere il primo campo, non il wall clock: '{line}'");
 
             // Un evento senza payload non deve lasciare un separatore penzolante
             string bare = LogManager.FormatStrategyEventLine("21:32:14.501", "1234.5", "7", "STRATEGY_CHANGED", "");
@@ -106,16 +111,16 @@ namespace User.PluginSdkDemo.Tests
             Console.WriteLine("  [PASS] Test_ModelParamsHeader_ContainsRequiredParameters");
         }
 
-        private static void Test_SnapshotHeader_Has62Columns()
+        private static void Test_SnapshotHeader_ColumnCount()
         {
-            Assert(LogManager.SnapshotColumnCount == 62,
-                $"snapshot: attese 62 colonne, trovate {LogManager.SnapshotColumnCount}");
+            Assert(LogManager.SnapshotColumnCount == 63,
+                $"snapshot: attese 63 colonne, trovate {LogManager.SnapshotColumnCount}");
 
             string[] columns = LogManager.SnapshotHeader.Split(',');
             Assert(columns.Distinct().Count() == columns.Length, "l'header snapshot contiene nomi duplicati");
             Assert(columns.All(c => c.Trim().Length > 0), "l'header snapshot contiene una colonna vuota");
 
-            Console.WriteLine("  [PASS] Test_SnapshotHeader_Has62Columns");
+            Console.WriteLine("  [PASS] Test_SnapshotHeader_ColumnCount");
         }
 
         private static void Test_HeadersAreWrittenToDisk()

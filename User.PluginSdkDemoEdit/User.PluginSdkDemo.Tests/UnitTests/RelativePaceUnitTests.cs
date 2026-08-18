@@ -314,7 +314,7 @@ namespace User.PluginSdkDemo.Tests
         private static void Test_SnapshotHeaderMatchesFieldCount()
         {
             int columns = LogManager.SnapshotColumnCount;
-            Assert(columns == 62, $"header snapshot: attese 62 colonne, trovate {columns}");
+            Assert(columns == 63, $"header snapshot: attese 63 colonne, trovate {columns}");
 
             string header = LogManager.SnapshotHeader;
             foreach (string required in new[] { "DeltaGap", "DeltaTime", "InstantPace", "PrevGap",

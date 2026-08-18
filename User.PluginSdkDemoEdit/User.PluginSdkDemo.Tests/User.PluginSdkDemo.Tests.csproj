@@ -57,6 +57,7 @@
     <Compile Include="UnitTests\MergeGapUnitTests.cs" />
     <Compile Include="UnitTests\RelativePaceUnitTests.cs" />
     <Compile Include="UnitTests\StrategyLoggingUnitTests.cs" />
+    <Compile Include="UnitTests\RelativeGapDeltaUnitTests.cs" />
     <Compile Include="IntegrationTests\ReplayBacktestIntegrationTest.cs" />
     <Compile Include="IntegrationTests\MisanoHuracanGT3ReplayTest.cs" />
     <Compile Include="Replay\SimHubReplayRAMReader.cs" />

@@ -42,6 +42,86 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-18 22:40] claude → dashboard
+
+**Task:** RelativeGapDelta (s/macrosettore) affiancato a RelativePace + SessionTime guida nell'event log
+**Piano:** —
+**Commit:** `981e4d2` (lock) · `<fix>` · `<release>`
+
+### 1. SessionTime come base temporale guida dell'event log
+
+Il session time c'era già, ma in seconda posizione dietro l'orologio di sistema. Con i replay
+riprodotti in accelerato il wall clock non è una base temporale utilizzabile, e soprattutto **non
+correla** con lo snapshot CSV, che è indicizzato su `SessionTime` in prima colonna.
+
+Nuovo formato (`LogManager.cs:154`): `sessionTimeLeft | lap | wallClock | EVENT | payload`
+Il wall clock resta in terza posizione per incrociare col log di SimHub. L'indice del nome evento
+resta il quarto campo, quindi i parser esistenti non cambiano.
+
+### 2. RelativeGapDelta — transizione compatibile, non sostituzione
+
+`SimRIG.Target.RelativePace` **resta invariato**: stessa unità (s/giro), stessa EMA, stesso clamp.
+La dash attuale continua a funzionare senza modifiche. Il nuovo valore lo affianca:
+
+| Proprietà | Tipo | Note |
+|-----------|------|------|
+| `SimRIG.Target.RelativeGapDelta` | double | `SignedGap_current − SignedGap_previous`, **s/macrosettore** |
+| `SimRIG.Target.RelativeGapDeltaStr` | string | `-0.20s/sector` / `+0.30s/sector` / `--.--s/sector` |
+| `SimRIG.Target.RelativeGapDeltaValid` | bool | **da controllare sempre prima di leggere il valore** |
+
+Registrate in `DataPluginDemo.cs:379-383`, aggiornate in `:1650-1652`.
+
+- Popolato da `paceSample.DeltaGap`, che il tracker già calcolava: nessuna nuova matematica.
+- Nessuna EMA, nessun clamp, nessuna normalizzazione temporale. Delta grezzo.
+- `Valid=false` durante pit, seed post-pit, sequenza invalida, `dt < 1s`, cambio target, assenza
+  di seed. In quei casi il valore numerico **conserva l'ultima misura buona** invece di azzerarsi:
+  uno zero verrebbe letto come "nessuna variazione", che è un'affermazione falsa, non un'assenza
+  di dato. Per lo stesso motivo `...Str` mostra `--.--s/sector`, non `0.00s/sector`.
+- Protezione RED-1 intatta: `Valid` deriva da `RateComputed`, quindi nessun delta post-pit può
+  usare un riferimento raccolto in pit. Coperto da test dedicati oltre a quelli esistenti.
+
+Formato stringa in `TargetStrategyManager.FormatGapDelta()` — solo ASCII, verificato da test:
+la dash può usare font senza glifi estesi.
+
+### 3. Snapshot ed event log
+
+- Snapshot: **62 → 63 colonne**, nuova `GapDeltaValid` subito dopo `DeltaGap`.
+  Allineamento header ↔ array verificato: 63 = 63.
+- `RELATIVE_PACE_UPDATE` e `RELATIVE_PACE_SEED` rinominano `deltaGap` in `gapDelta` e il SEED ora
+  porta anche `prevGap`, `gapDelta`, `deltaTime`.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+
+Atteso: exit code `0`, **32 `[PASS]`**, di cui 5 nel blocco `Relative Gap Delta Tests`.
+
+### Stato
+- ✅ Compila — 0 errori
+- ✅ 32 test passano, exit code `0`
+- ✅ Formato event log e formatter HUD verificati su output reale
+
+### Per chi entra
+
+**Prossimo passo — dashboard.** Il consumo corretto è:
+`if (RelativeGapDeltaValid) mostra RelativeGapDeltaStr else mostra il segnaposto`.
+Non leggere `RelativeGapDelta` ignorando `Valid`: fuori dai macrosettori puliti è stantio.
+Quando la dash sarà migrata, `RelativePace` potrà essere deprecato — **non prima**.
+
+**NON toccare:** i sei punti congelati in `PROJECT_STATE.md`.
+
+**Attenzione a:** `RelativePace` e `RelativeGapDelta` hanno **unità diverse** (s/giro contro
+s/macrosettore) e ordini di grandezza diversi. Mostrarli con la stessa etichetta sarebbe l'errore
+peggiore possibile: un delta di `-0.20s/sector` su 20 macrosettori è un ritmo ben più aggressivo
+di `-0.20s/lap`.
+
+---
+
 ## [2026-08-18 22:15] claude → tutti
 
 **Task:** fix del logging strategico emerso dal replay `20260818_213214`

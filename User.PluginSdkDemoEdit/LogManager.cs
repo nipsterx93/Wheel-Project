@@ -46,7 +46,7 @@ namespace SimRIG
         /// </summary>
         public static readonly string SnapshotHeader =
             "SessionTime,Lap,MacroSector,Target,SignedGap,PlayerPit,TargetPit,RaceLapsRem," +
-            "PrevGap,DeltaGap,DeltaTime,InstantPace,RelativePace,SeqValid,InvalidReason,PitSeedPending,PostPitSeed," +
+            "PrevGap,DeltaGap,GapDeltaValid,DeltaTime,InstantPace,RelativePace,SeqValid,InvalidReason,PitSeedPending,PostPitSeed," +
             "PlayerFuel,TargetFuel,TargetLapsUntilPit,ReactionLaps,TargetDegPace,PlayerFreshPace,PrePitGain," +
             "TargetPitLoss,PlayerPitLoss,NetPitAdv,PlayerWarmup,PositiveGap,UndercutAdv,UndercutMargin," +
             "UndercutPosOK,TargetNeedsPit,UndercutFuelOK,UndercutTrafOK,UndercutMarginOK,UndercutRaceLapsOK,UndercutViable,UndercutRejectReason," +
@@ -149,13 +149,19 @@ namespace SimRIG
 
         /// <summary>
         /// Una riga di Strategy Event autoesplicativa:
-        /// <c>HH:mm:ss.fff | sessionTime | lap | EVENT_NAME | payload</c>.
+        /// <c>sessionTimeLeft | lap | wallClock | EVENT_NAME | payload</c>.
+        ///
+        /// Il <b>session time guida</b>, non l'orologio di sistema: è l'unica base temporale
+        /// coerente quando un replay viene riprodotto accelerato, ed è la stessa chiave della
+        /// prima colonna dello snapshot CSV, quindi i due file si incrociano riga per riga.
+        /// Il wall clock resta in terza posizione per correlare con il log di SimHub.
+        ///
         /// Funzione pura per renderla testabile senza filesystem né SessionState.
         /// </summary>
-        public static string FormatStrategyEventLine(string timestamp, string sessionTime, string lap,
+        public static string FormatStrategyEventLine(string wallClock, string sessionTime, string lap,
                                                      string message, string data)
         {
-            string line = timestamp + " | " + sessionTime + " | " + lap + " | " + Flatten(message);
+            string line = sessionTime + " | " + lap + " | " + wallClock + " | " + Flatten(message);
             string payload = Flatten(data);
             if (payload.Length > 0) line += " | " + payload;
             return line;
@@ -202,7 +208,7 @@ namespace SimRIG
 
             _eventHeaderOk = TryWriteHeader(_strategyEventLogFilePath,
                 BuildModelParamsHeader() +
-                "# Formato: timestamp | sessionTimeLeft | lap | EVENT | payload\n" +
+                "# Formato: sessionTimeLeft | lap | wallClock | EVENT | payload\n" +
                 "========================================================================================\n\n", "StrategyEvent");
         }
 
@@ -238,7 +244,7 @@ namespace SimRIG
             if (!_eventHeaderOk)
                 _eventHeaderOk = TryWriteHeader(_strategyEventLogFilePath,
                     BuildModelParamsHeader() +
-                    "# Formato: timestamp | sessionTimeLeft | lap | EVENT | payload\n" +
+                    "# Formato: sessionTimeLeft | lap | wallClock | EVENT | payload\n" +
                     "========================================================================================\n\n", "StrategyEvent");
         }
 

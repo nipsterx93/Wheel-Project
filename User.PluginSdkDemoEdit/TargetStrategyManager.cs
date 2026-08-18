@@ -72,7 +72,28 @@ namespace SimRIG
 
 
 
+        /// <summary>
+        /// LEGACY / DIAGNOSTICO. Passo relativo in secondi/giro, con EMA (α=0.30) e clamp ±10.
+        /// Mantenuto invariato finché la dashboard non passa a <see cref="RelativeGapDelta"/>.
+        /// </summary>
         public double RelativePace { get; set; } = 0.0;
+
+        /// <summary>
+        /// Variazione grezza del gap tra due macrosettori consecutivi puliti, in
+        /// <b>secondi per macrosettore</b> (non secondi/giro).
+        /// Negativo = il Player guadagna tempo sul Target; positivo = lo perde.
+        /// Nessuna EMA, nessun clamp, nessuna normalizzazione temporale.
+        /// Da leggere solo quando <see cref="RelativeGapDeltaValid"/> è true: fuori da quei
+        /// momenti conserva l'ultima misura buona, che è stantia.
+        /// </summary>
+        public double RelativeGapDelta { get; set; } = 0.0;
+
+        /// <summary>
+        /// True solo sul macrosettore in cui il tracker ha prodotto un delta reale.
+        /// False durante il pit, sul seed post-pit, su sequenza invalida, con dt &lt; 1s,
+        /// al cambio target e prima del primo seed.
+        /// </summary>
+        public bool RelativeGapDeltaValid { get; set; } = false;
 
         public double TargetCurrentSpeed { get; set; } = 0.0;
 
@@ -214,6 +235,20 @@ namespace SimRIG
         private static string I(int v) { return v.ToString(CultureInfo.InvariantCulture); }
         private static string B(bool v) { return v ? "True" : "False"; }
 
+        /// <summary>
+        /// Formato HUD del delta gap. L'unità è <b>s/sector</b>, mai s/lap: confonderla con
+        /// RelativePace significherebbe leggere un numero per macrosettore come se fosse per giro.
+        /// Quando la misura non è valida non si stampa uno zero, che verrebbe letto come
+        /// "nessuna variazione": si stampa un segnaposto.
+        /// </summary>
+        public static string FormatGapDelta(double delta, bool valid)
+        {
+            if (!valid) return "--.--s/sector";
+            // Solo ASCII: la dash può usare font senza glifi estesi.
+            string sign = delta > 0.0 ? "+" : string.Empty;
+            return sign + delta.ToString("F2", CultureInfo.InvariantCulture) + "s/sector";
+        }
+
         /// <summary>Un nome pilota con la virgola ("Rossi, Mario") sfonderebbe le colonne del CSV.</summary>
         private static string Csv(string text)
         {
@@ -326,6 +361,8 @@ namespace SimRIG
                     // Reset completo, non invalidazione temporanea: il valore torna a 0.0 (spec §10).
                     _relativePace.Reset();
                     CurrentTarget.RelativePace = 0.0;
+                    CurrentTarget.RelativeGapDelta = 0.0;
+                    CurrentTarget.RelativeGapDeltaValid = false;
                     _lastPaceSample = default(RelativePaceSample);
                     _myLastMacroSector = -1;
                     CurrentTarget.Diagnosis = "ANALYZING";
@@ -437,6 +474,17 @@ namespace SimRIG
                     _lastPaceSample = paceSample;
                     CurrentTarget.RelativePace = _relativePace.RelativePace;
 
+                    // Delta grezzo del gap per macrosettore. Vale solo quando il tracker ha
+                    // davvero prodotto un rate: negli altri casi (pit, seed post-pit, sequenza
+                    // rotta, dt troppo piccolo) resta l'ultima misura buona, marcata non valida.
+                    // Scriverci uno zero significherebbe dichiarare "nessuna variazione", che è
+                    // un'affermazione falsa, non un'assenza di dato.
+                    CurrentTarget.RelativeGapDeltaValid = paceSample.RateComputed;
+                    if (paceSample.RateComputed)
+                    {
+                        CurrentTarget.RelativeGapDelta = paceSample.DeltaGap;
+                    }
+
                     if (paceSample.Reason != RelativePaceInvalidationReason.None)
                     {
                         log.Log(LogModule.STRATEGY_EVENT, LogType.EVENT, "RELATIVE_PACE_INVALIDATION",
@@ -450,12 +498,12 @@ namespace SimRIG
                     else if (paceSample.EmaSeeded)
                     {
                         log.Log(LogModule.STRATEGY_EVENT, LogType.EVENT, "RELATIVE_PACE_SEED",
-                            $"sector={macroSector} | gap={currentSignedGap:F3} | instantRate={paceSample.InstantRate:F3} | emaAfter={paceSample.EmaAfter:F3} | clamped={paceSample.Clamped}");
+                            $"sector={macroSector} | gap={currentSignedGap:F3} | prevGap={paceSample.PreviousGap:F3} | gapDelta={paceSample.DeltaGap:F3} | deltaTime={paceSample.DeltaTime:F3} | instantRate={paceSample.InstantRate:F3} | emaAfter={paceSample.EmaAfter:F3} | clamped={paceSample.Clamped}");
                     }
                     else if (paceSample.RateComputed)
                     {
                         log.Log(LogModule.STRATEGY_EVENT, LogType.EVENT, "RELATIVE_PACE_UPDATE",
-                            $"sector={macroSector} | prevGap={paceSample.PreviousGap:F3} | deltaGap={paceSample.DeltaGap:F3} | deltaTime={paceSample.DeltaTime:F3} | instantRate={paceSample.InstantRate:F3} | emaBefore={paceSample.EmaBefore:F3} | emaAfter={paceSample.EmaAfterRaw:F3} | clamped={paceSample.EmaAfter:F3} | wasClamped={paceSample.Clamped}");
+                            $"sector={macroSector} | prevGap={paceSample.PreviousGap:F3} | gapDelta={paceSample.DeltaGap:F3} | deltaTime={paceSample.DeltaTime:F3} | instantRate={paceSample.InstantRate:F3} | emaBefore={paceSample.EmaBefore:F3} | emaAfter={paceSample.EmaAfterRaw:F3} | clamped={paceSample.EmaAfter:F3} | wasClamped={paceSample.Clamped}");
                     }
 
                     log.Log(LogModule.STRATEGY, LogType.FLOW, "Gap Update", $"Gap: {currentSignedGap:F2}s | RelPace: {CurrentTarget.RelativePace:F3}s | Sector: {macroSector}");
@@ -836,7 +884,8 @@ namespace SimRIG
                             F3(state.SessionTimeLeftSec), I(myLap), I(macroSector), Csv(CurrentTarget.Name),
                             F3(CurrentTarget.SignedGapSeconds), B(pInPit), B(targetIsInPit), F1(raceResult.RaceLapsRemaining),
                             // --- RelativePace: intermedi ricostruibili (spec §32) ---
-                            F3(_lastPaceSample.PreviousGap), F3(_lastPaceSample.DeltaGap), F3(_lastPaceSample.DeltaTime),
+                            F3(_lastPaceSample.PreviousGap), F3(_lastPaceSample.DeltaGap),
+                            B(CurrentTarget.RelativeGapDeltaValid), F3(_lastPaceSample.DeltaTime),
                             F3(_lastPaceSample.InstantRate), F3(CurrentTarget.RelativePace),
                             B(_lastPaceSample.SequenceValid), _lastPaceSample.Reason.ToString(),
                             B(_relativePace.PitSeedPending), B(_lastPaceSample.WasPostPitSeed),
@@ -1224,6 +1273,8 @@ namespace SimRIG
 
             _relativePace.Reset();
             _lastPaceSample = default(RelativePaceSample);
+            CurrentTarget.RelativeGapDelta = 0.0;
+            CurrentTarget.RelativeGapDeltaValid = false;
             _myLastMacroSector = -1;
 
             CurrentTarget.Diagnosis = "TARGET IS YOU";
@@ -1306,6 +1357,8 @@ namespace SimRIG
 
             _relativePace.Reset();
             _lastPaceSample = default(RelativePaceSample);
+            CurrentTarget.RelativeGapDelta = 0.0;
+            CurrentTarget.RelativeGapDeltaValid = false;
             _myLastMacroSector = -1;
 
             CurrentTarget.Diagnosis = "ANALYZING";
@@ -1360,6 +1413,8 @@ namespace SimRIG
             SetNoTarget();
             _relativePace.Reset();
             _lastPaceSample = default(RelativePaceSample);
+            CurrentTarget.RelativeGapDelta = 0.0;
+            CurrentTarget.RelativeGapDeltaValid = false;
         }
 
     }

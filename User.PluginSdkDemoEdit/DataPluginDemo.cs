@@ -377,6 +377,11 @@ namespace SimRIG
             pm.AddProperty("SimRIG.Target.GapString", t, "");
             pm.AddProperty("SimRIG.Target.RelativePace", t, 0.0);
             pm.AddProperty("SimRIG.Target.RelativePaceStr", t, "0.0s/lap");
+            // Delta grezzo del gap per macrosettore. Affianca RelativePace senza sostituirlo:
+            // unità diversa (s/settore, non s/giro), quindi la dash va aggiornata esplicitamente.
+            pm.AddProperty("SimRIG.Target.RelativeGapDelta", t, 0.0);
+            pm.AddProperty("SimRIG.Target.RelativeGapDeltaStr", t, "--.--s/sector");
+            pm.AddProperty("SimRIG.Target.RelativeGapDeltaValid", t, false);
             pm.AddProperty("SimRIG.Target.TopSpeed", t, 0.0);
             pm.AddProperty("SimRIG.Target.CurrentSpeed", t, 0.0);
             pm.AddProperty("SimRIG.Target.Diagnosis", t, "ANALYZING");
@@ -1645,6 +1650,9 @@ namespace SimRIG
             PluginManager.SetPropertyValue("SimRIG.Target.GapString", t, tgt.GapString);
             PluginManager.SetPropertyValue("SimRIG.Target.RelativePace", t, Math.Round(tgt.RelativePace, 3));
             PluginManager.SetPropertyValue("SimRIG.Target.RelativePaceStr", t, $"{(tgt.RelativePace > 0 ? "+" : "")}{tgt.RelativePace:F2}s/lap");
+            PluginManager.SetPropertyValue("SimRIG.Target.RelativeGapDelta", t, Math.Round(tgt.RelativeGapDelta, 3));
+            PluginManager.SetPropertyValue("SimRIG.Target.RelativeGapDeltaValid", t, tgt.RelativeGapDeltaValid);
+            PluginManager.SetPropertyValue("SimRIG.Target.RelativeGapDeltaStr", t, TargetStrategyManager.FormatGapDelta(tgt.RelativeGapDelta, tgt.RelativeGapDeltaValid));
             PluginManager.SetPropertyValue("SimRIG.Target.TopSpeed", t, Math.Round(tgt.TargetTopSpeed, 1));
             PluginManager.SetPropertyValue("SimRIG.Target.CurrentSpeed", t, Math.Round(tgt.TargetCurrentSpeed, 1));
             PluginManager.SetPropertyValue("SimRIG.Target.Diagnosis", t, tgt.Diagnosis);
