@@ -1,0 +1,80 @@
+# ============================================================
+#  The Wheel Project / Antigravity 2.0 - .gitignore
+#  C# / .NET Framework 4.8 / Visual Studio / SimHub plugin
+# ============================================================
+
+# --- Build output ---
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Bb]uild/
+[Ll]og/
+*.dll
+*.exe
+*.pdb
+*.cache
+*.ilk
+*.obj
+*.tlog
+
+# --- Visual Studio / IDE ---
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+*.VC.db
+*.VC.VC.opendb
+*.psess
+*.vsp
+*.vspx
+*.dotCover
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# --- NuGet / package restore ---
+packages/
+*.nupkg
+project.lock.json
+project.assets.json
+*.nuget.props
+*.nuget.targets
+
+# --- Runtime logs & diagnostics (rumore, non codice) ---
+Logs/
+*.log
+
+# --- Archivi e snapshot manuali ---
+# Con Git attivo, la history sostituisce le copie manuali.
+# La cartella Backup resta su disco ma fuori dal versionamento:
+# duplicare ogni sorgente confonde grep/ricerche e rischia che
+# un agente modifichi la copia sbagliata.
+User.PluginSdkDemoBackup/
+*.rar
+*.zip
+*.7z
+
+# --- Scratch / esperimenti locali ---
+scratch/
+
+# --- File temporanei OS ---
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# --- Eccezioni: questi li vogliamo versionati ---
+!.ai/
+!.ai/**
+!CLAUDE.md

@@ -1,0 +1,426 @@
+﻿{
+  "DashboardDebugManager": {},
+  "Version": 2,
+  "Id": "2bfc7914-5134-4502-bef0-2444163d5458",
+  "BaseHeight": 173,
+  "BaseWidth": 530,
+  "BackgroundColor": "#00FFFFFF",
+  "SnapToGrid": false,
+  "HideLabels": false,
+  "ShowForeground": true,
+  "ForegroundOpacity": 100.0,
+  "ShowBackground": true,
+  "BackgroundOpacity": 100.0,
+  "ShowBoundingRectangles": false,
+  "GridSize": 10,
+  "Images": [],
+  "Metadata": {
+    "ScreenCount": 4.0,
+    "InGameScreensIndexs": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "IdleScreensIndexs": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "MainPreviewIndex": 0,
+    "IsOverlay": false,
+    "OverlaySizeWarning": false,
+    "MetadataVersion": 2.0,
+    "EnableOnDashboardMessaging": true,
+    "PitScreensIndexs": [],
+    "PreferredTouchMode": 0,
+    "SimHubVersion": "9.11.21",
+    "Width": 530.0,
+    "Height": 173.0,
+    "DashboardVersion": ""
+  },
+  "ShowOnScreenControls": true,
+  "IsOverlay": false,
+  "EnableClickThroughOverlay": true,
+  "EnableOnDashboardMessaging": true,
+  "UseStrictJSIsolation": false,
+  "UseStrictJSIsolationWarning": true,
+  "Screens": [
+    {
+      "Name": "WeatherAlerts",
+      "Items": [
+        {
+          "$type": "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+          "Name": "Header",
+          "Left": 0.0,
+          "Top": 5.0,
+          "Width": 530.0,
+          "Height": 25.0,
+          "Visible": true,
+          "Text": "WEATHER & TRACK STATUS",
+          "Font": "Arial",
+          "FontSize": 14.0,
+          "FontWeight": "Bold",
+          "HorizontalAlignment": 1,
+          "VerticalAlignment": 1,
+          "TextColor": "#FF00FF7F",
+          "Bindings": {}
+        },
+        {
+          "$type": "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+          "Name": "TrackWet",
+          "Left": 15.0,
+          "Top": 38.0,
+          "Width": 500.0,
+          "Height": 35.0,
+          "Visible": true,
+          "Text": "TRACK: DRY (0%)",
+          "Font": "Arial",
+          "FontSize": 18.0,
+          "FontWeight": "Bold",
+          "HorizontalAlignment": 1,
+          "VerticalAlignment": 1,
+          "TextColor": "#FFFFFFFF",
+          "Bindings": {
+            "Text": {
+              "Formula": {
+                "Expression": "'TRACK: ' + [DataPluginDemo.SimRIG.Session.WeatherAlert] + ' (' + [DataPluginDemo.SimRIG.Session.TrackWetnessStr] + ')'"
+              }
+            }
+          }
+        },
+        {
+          "$type": "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+          "Name": "RainAlert",
+          "Left": 15.0,
+          "Top": 78.0,
+          "Width": 500.0,
+          "Height": 35.0,
+          "Visible": true,
+          "Text": "FORECAST: CLEAR",
+          "Font": "Arial",
+          "FontSize": 16.0,
+          "FontWeight": "Bold",
+          "HorizontalAlignment": 1,
+          "VerticalAlignment": 1,
+          "TextColor": "#FF00FF7F",
+          "Bindings": {
+            "Text": {
+              "Formula": {
+                "Expression": "'CROSSOVER: ' + [DataPluginDemo.SimRIG.Session.CrossoverAlertState]"
+              }
+            }
+          }
+        },
+        {
+          "$type": "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+          "Name": "EnvInfo",
+          "Left": 15.0,
+          "Top": 118.0,
+          "Width": 500.0,
+          "Height": 35.0,
+          "Visible": true,
+          "Text": "AIR: 20\u00b0C | TRACK: 30\u00b0C",
+          "Font": "Arial",
+          "FontSize": 15.0,
+          "FontWeight": "Normal",
+          "HorizontalAlignment": 1,
+          "VerticalAlignment": 1,
+          "TextColor": "#FFAA88FF",
+          "Bindings": {
+            "Text": {
+              "Formula": {
+                "Expression": "'AIR: ' + [DataPluginDemo.SimRIG.Session.AirTemperatureStr] + ' | TRACK: ' + [DataPluginDemo.SimRIG.Session.TrackTemperatureStr]"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "Name": "OpponentsRelative",
+      "Items": [
+        {
+          "$type": "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+          "Name": "Header",
+          "Left": 0.0,
+          "Top": 5.0,
+          "Width": 530.0,
+          "Height": 25.0,
+          "Visible": true,
+          "Text": "RELATIVE / POSITION GAPS",
+          "Font": "Arial",
+          "FontSize": 14.0,
+          "FontWeight": "Bold",
+          "HorizontalAlignment": 1,
+          "VerticalAlignment": 1,
+          "TextColor": "#FF00FF7F",
+          "Bindings": {}
+        },
+        {
+          "$type": "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+          "Name": "AheadLabel",
+          "Left": 15.0,
+          "Top": 35.0,
+          "Width": 240.0,
+          "Height": 25.0,
+          "Visible": true,
+          "Text": "AHEAD:",
+          "Font": "Arial",
+          "FontSize": 15.0,
+          "FontWeight": "Bold",
+          "HorizontalAlignment": 1,
+          "VerticalAlignment": 1,
+          "TextColor": "#FFAA88FF",
+          "Bindings": {}
+        },
+        {
+          "$type": "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+          "Name": "AheadVal",
+          "Left": 15.0,
+          "Top": 60.0,
+          "Width": 500.0,
+          "Height": 40.0,
+          "Visible": true,
+          "Text": "P-- -- --.-s",
+          "Font": "Arial",
+          "FontSize": 20.0,
+          "FontWeight": "Bold",
+          "HorizontalAlignment": 1,
+          "VerticalAlignment": 1,
+          "TextColor": "#FFFFFFFF",
+          "Bindings": {
+            "Text": {
+              "Formula": {
+                "Expression": "'P' + isnull([DataCorePlugin.GameData.PositionAhead], '--') + ' ' + isnull([DataCorePlugin.GameData.OpponentAheadName], 'N/A') + ' ' + format([DataCorePlugin.GameData.GaptoOpponentAhead], '0.0') + 's'"
+              }
+            }
+          }
+        },
+        {
+          "$type": "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+          "Name": "BehindLabel",
+          "Left": 15.0,
+          "Top": 105.0,
+          "Width": 240.0,
+          "Height": 25.0,
+          "Visible": true,
+          "Text": "BEHIND:",
+          "Font": "Arial",
+          "FontSize": 15.0,
+          "FontWeight": "Bold",
+          "HorizontalAlignment": 1,
+          "VerticalAlignment": 1,
+          "TextColor": "#FFAA88FF",
+          "Bindings": {}
+        },
+        {
+          "$type": "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+          "Name": "BehindVal",
+          "Left": 15.0,
+          "Top": 130.0,
+          "Width": 500.0,
+          "Height": 35.0,
+          "Visible": true,
+          "Text": "P-- -- --.-s",
+          "Font": "Arial",
+          "FontSize": 18.0,
+          "FontWeight": "Bold",
+          "HorizontalAlignment": 1,
+          "VerticalAlignment": 1,
+          "TextColor": "#FF00FF7F",
+          "Bindings": {
+            "Text": {
+              "Formula": {
+                "Expression": "'P' + isnull([DataCorePlugin.GameData.PositionBehind], '--') + ' ' + isnull([DataCorePlugin.GameData.OpponentBehindName], 'N/A') + ' ' + format([DataCorePlugin.GameData.GaptoOpponentBehind], '0.0') + 's'"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "Name": "PitStrategy",
+      "Items": [
+        {
+          "$type": "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+          "Name": "Header",
+          "Left": 0.0,
+          "Top": 5.0,
+          "Width": 530.0,
+          "Height": 25.0,
+          "Visible": true,
+          "Text": "PIT STRATEGY & FUEL CALC",
+          "Font": "Arial",
+          "FontSize": 14.0,
+          "FontWeight": "Bold",
+          "HorizontalAlignment": 1,
+          "VerticalAlignment": 1,
+          "TextColor": "#FFFFA500",
+          "Bindings": {}
+        },
+        {
+          "$type": "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+          "Name": "FuelLaps",
+          "Left": 15.0,
+          "Top": 38.0,
+          "Width": 500.0,
+          "Height": 35.0,
+          "Visible": true,
+          "Text": "AUTONOMY: -- LAPS",
+          "Font": "Arial",
+          "FontSize": 18.0,
+          "FontWeight": "Bold",
+          "HorizontalAlignment": 1,
+          "VerticalAlignment": 1,
+          "TextColor": "#FFFFFFFF",
+          "Bindings": {
+            "Text": {
+              "Formula": {
+                "Expression": "'TANK AUTONOMY: ' + format([DataPluginDemo.SimRIG.Target.TankLapsRemaining], '0.0') + ' LAPS'"
+              }
+            }
+          }
+        },
+        {
+          "$type": "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+          "Name": "PitWindow",
+          "Left": 15.0,
+          "Top": 78.0,
+          "Width": 500.0,
+          "Height": 35.0,
+          "Visible": true,
+          "Text": "PIT WINDOW: LAP --",
+          "Font": "Arial",
+          "FontSize": 16.0,
+          "FontWeight": "Bold",
+          "HorizontalAlignment": 1,
+          "VerticalAlignment": 1,
+          "TextColor": "#FFFFA500",
+          "Bindings": {
+            "Text": {
+              "Formula": {
+                "Expression": "'PIT WINDOW: LAP ' + format([DataPluginDemo.SimRIG.Target.EstimatedPitWindowTargetLap], '0')"
+              }
+            }
+          }
+        },
+        {
+          "$type": "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+          "Name": "FuelToAdd",
+          "Left": 15.0,
+          "Top": 118.0,
+          "Width": 500.0,
+          "Height": 35.0,
+          "Visible": true,
+          "Text": "FUEL TO ADD: -- L",
+          "Font": "Arial",
+          "FontSize": 15.0,
+          "FontWeight": "Bold",
+          "HorizontalAlignment": 1,
+          "VerticalAlignment": 1,
+          "TextColor": "#FF00E5FF",
+          "Bindings": {
+            "Text": {
+              "Formula": {
+                "Expression": "'FUEL TO ADD: ' + format([DataPluginDemo.SimRIG.Target.EstimatedFuelToAdd], '0.0') + ' L (' + format([DataPluginDemo.SimRIG.Target.EstimatedStationaryTime], '0') + 's)'"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "Name": "TyreRecap",
+      "Items": [
+        {
+          "$type": "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+          "Name": "Header",
+          "Left": 0.0,
+          "Top": 5.0,
+          "Width": 530.0,
+          "Height": 25.0,
+          "Visible": true,
+          "Text": "TYRE & PRESET RECAP",
+          "Font": "Arial",
+          "FontSize": 14.0,
+          "FontWeight": "Bold",
+          "HorizontalAlignment": 1,
+          "VerticalAlignment": 1,
+          "TextColor": "#FFFF00FF",
+          "Bindings": {}
+        },
+        {
+          "$type": "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+          "Name": "PressOffset",
+          "Left": 15.0,
+          "Top": 38.0,
+          "Width": 500.0,
+          "Height": 35.0,
+          "Visible": true,
+          "Text": "PRESS OFFSET: +0.00 bar",
+          "Font": "Arial",
+          "FontSize": 18.0,
+          "FontWeight": "Bold",
+          "HorizontalAlignment": 1,
+          "VerticalAlignment": 1,
+          "TextColor": "#FFFFFFFF",
+          "Bindings": {
+            "Text": {
+              "Formula": {
+                "Expression": "'OFFSET: ' + [DataPluginDemo.SimRIG.Pressure.UserOffsetStr]"
+              }
+            }
+          }
+        },
+        {
+          "$type": "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+          "Name": "Scope",
+          "Left": 15.0,
+          "Top": 78.0,
+          "Width": 500.0,
+          "Height": 35.0,
+          "Visible": true,
+          "Text": "TYRE SCOPE: NONE",
+          "Font": "Arial",
+          "FontSize": 16.0,
+          "FontWeight": "Bold",
+          "HorizontalAlignment": 1,
+          "VerticalAlignment": 1,
+          "TextColor": "#FF39FF14",
+          "Bindings": {
+            "Text": {
+              "Formula": {
+                "Expression": "'TYRE TARGET: ' + [DataPluginDemo.SimRIG.Tyres.SelectionScope]"
+              }
+            }
+          }
+        },
+        {
+          "$type": "SimHub.Plugins.OutputPlugins.GraphicalDash.Models.TextItem, SimHub.Plugins",
+          "Name": "ActionMsg",
+          "Left": 15.0,
+          "Top": 118.0,
+          "Width": 500.0,
+          "Height": 35.0,
+          "Visible": true,
+          "Text": "STATUS: READY",
+          "Font": "Arial",
+          "FontSize": 15.0,
+          "FontWeight": "Normal",
+          "HorizontalAlignment": 1,
+          "VerticalAlignment": 1,
+          "TextColor": "#FFAA88FF",
+          "Bindings": {
+            "Text": {
+              "Formula": {
+                "Expression": "isnull([DataPluginDemo.SimRIG.Pressure.ActionMessage], 'READY')"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

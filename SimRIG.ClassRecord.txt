@@ -1,0 +1,10 @@
+namespace SimRIG;
+
+public class ClassRecord
+{
+	public string CarClass { get; set; }
+
+	public double FuelFillRate { get; set; }
+
+	public double TyreChangeTime { get; set; }
+}

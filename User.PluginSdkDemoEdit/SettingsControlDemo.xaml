@@ -1,0 +1,2158 @@
+<UserControl x:Class="SimRIG.SettingsControlDemo"
+
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+
+             mc:Ignorable="d" 
+
+             d:DesignHeight="700" d:DesignWidth="900">
+
+
+
+    <UserControl.Resources>
+
+        <SolidColorBrush x:Key="Brush_Background" Color="#121212"/>
+
+        <SolidColorBrush x:Key="Brush_CardBackground" Color="#1F1F1F"/>
+
+        <SolidColorBrush x:Key="Brush_TextPrimary" Color="#FFFFFF"/>
+
+        <SolidColorBrush x:Key="Brush_TextMuted" Color="#AAAAAA"/>
+
+        <SolidColorBrush x:Key="Brush_Accent" Color="#CF1020"/>
+
+        <SolidColorBrush x:Key="Brush_Success" Color="#00E676"/>
+
+        <SolidColorBrush x:Key="Brush_Error" Color="#FF5252"/>
+
+        <SolidColorBrush x:Key="Brush_Warning" Color="#FF9800"/>
+
+
+
+        <Style x:Key="CardStyle" TargetType="Border">
+
+            <Setter Property="Background" Value="{StaticResource Brush_CardBackground}"/>
+
+            <Setter Property="CornerRadius" Value="8"/>
+
+            <Setter Property="Padding" Value="15"/>
+
+            <Setter Property="Margin" Value="0,0,0,15"/>
+
+        </Style>
+
+
+
+        <Style x:Key="StatusDotStyle" TargetType="Ellipse">
+
+            <Setter Property="Width" Value="12"/>
+
+            <Setter Property="Height" Value="12"/>
+
+            <Setter Property="Margin" Value="0,0,10,0"/>
+
+        </Style>
+
+
+
+        <Style x:Key="VerticalProgressStyle" TargetType="ProgressBar">
+
+            <Setter Property="Orientation" Value="Vertical"/>
+
+            <Setter Property="Background" Value="#333333"/>
+
+            <Setter Property="Foreground" Value="{StaticResource Brush_Accent}"/>
+
+            <Setter Property="BorderThickness" Value="0"/>
+
+            <Setter Property="Width" Value="15"/>
+
+        </Style>
+
+
+
+        <Style x:Key="GlowDotStyle" TargetType="Ellipse">
+
+            <Setter Property="Width" Value="18"/>
+
+            <Setter Property="Height" Value="18"/>
+
+            <Setter Property="Fill" Value="Transparent"/>
+
+            <Setter Property="StrokeThickness" Value="2"/>
+
+            <Setter Property="Stroke" Value="Gray"/>
+
+            <Setter Property="Opacity" Value="1.0"/>
+
+            <Setter Property="Cursor" Value="Hand"/>
+
+            <Style.Triggers>
+
+                <Trigger Property="IsMouseOver" Value="True">
+
+                    <Setter Property="StrokeThickness" Value="4"/>
+
+                </Trigger>
+
+            </Style.Triggers>
+
+        </Style>
+
+
+
+        <Style x:Key="InputDotStyle" TargetType="Ellipse">
+
+            <Setter Property="Width" Value="14"/>
+
+            <Setter Property="Height" Value="14"/>
+
+            <Setter Property="Fill" Value="Transparent"/>
+
+            <Setter Property="StrokeThickness" Value="1"/>
+
+            <Setter Property="Stroke" Value="#CF1020"/>
+
+            <Setter Property="Opacity" Value="0"/>
+
+            <Setter Property="Cursor" Value="Arrow"/>
+
+        </Style>
+
+
+
+        <Style x:Key="ReadOnlyDotStyle" TargetType="Ellipse">
+
+            <Setter Property="Width" Value="20"/>
+
+            <Setter Property="Height" Value="20"/>
+
+            <Setter Property="Fill" Value="Transparent"/>
+
+            <Setter Property="Stroke" Value="Transparent"/>
+
+            <Setter Property="Opacity" Value="0.6"/>
+
+        </Style>
+
+
+
+        <Style x:Key="ParamButtonStyle" TargetType="Button">
+
+            <Setter Property="Width" Value="25"/>
+
+            <Setter Property="Height" Value="25"/>
+
+            <Setter Property="Background" Value="#333"/>
+
+            <Setter Property="Foreground" Value="White"/>
+
+            <Setter Property="FontWeight" Value="Bold"/>
+
+            <Setter Property="BorderThickness" Value="0"/>
+
+            <Setter Property="Cursor" Value="Hand"/>
+
+            <Setter Property="Template">
+
+                <Setter.Value>
+
+                    <ControlTemplate TargetType="Button">
+
+                        <Border Background="{TemplateBinding Background}" CornerRadius="3">
+
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                        </Border>
+
+                    </ControlTemplate>
+
+                </Setter.Value>
+
+            </Setter>
+
+        </Style>
+
+
+
+        <Style TargetType="Expander">
+
+            <Setter Property="Foreground" Value="White"/>
+
+            <Setter Property="Background" Value="{StaticResource Brush_CardBackground}"/>
+
+            <Setter Property="BorderBrush" Value="#444"/>
+
+            <Setter Property="BorderThickness" Value="1"/>
+
+            <Setter Property="Margin" Value="0,0,0,10"/>
+
+            <Setter Property="Padding" Value="10"/>
+
+            <Setter Property="FontWeight" Value="Bold"/>
+
+        </Style>
+
+
+
+        <Style x:Key="ActiveToggleStyle" TargetType="ToggleButton">
+
+            <Setter Property="Background" Value="#333"/>
+
+            <Setter Property="Foreground" Value="White"/>
+
+            <Setter Property="FontSize" Value="9"/>
+
+            <Setter Property="FontWeight" Value="Bold"/>
+
+            <Setter Property="Template">
+
+                <Setter.Value>
+
+                    <ControlTemplate TargetType="ToggleButton">
+
+                        <Border Name="border" Background="{TemplateBinding Background}" CornerRadius="3" BorderBrush="#555" BorderThickness="1">
+
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                        </Border>
+
+                        <ControlTemplate.Triggers>
+
+                            <Trigger Property="IsChecked" Value="True">
+
+                                <Setter TargetName="border" Property="Background" Value="{StaticResource Brush_Success}"/>
+
+                                <Setter Property="Foreground" Value="Black"/>
+
+                            </Trigger>
+
+                        </ControlTemplate.Triggers>
+
+                    </ControlTemplate>
+
+                </Setter.Value>
+
+            </Setter>
+
+        </Style>
+
+    </UserControl.Resources>
+
+
+
+    <Grid Background="{StaticResource Brush_Background}">
+
+        <TabControl Background="Transparent" BorderThickness="0">
+
+            <TabControl.Resources>
+
+                <Style TargetType="TabItem">
+
+                    <Setter Property="Template">
+
+                        <Setter.Value>
+
+                            <ControlTemplate TargetType="TabItem">
+
+                                <Border Name="Border" BorderThickness="0,0,0,3" BorderBrush="Transparent" Margin="10,0">
+
+                                    <ContentPresenter x:Name="ContentSite" VerticalAlignment="Center" HorizontalAlignment="Center" ContentSource="Header" Margin="10,10"/>
+
+                                </Border>
+
+                                <ControlTemplate.Triggers>
+
+                                    <Trigger Property="IsSelected" Value="True">
+
+                                        <Setter TargetName="Border" Property="BorderBrush" Value="{StaticResource Brush_Accent}"/>
+
+                                        <Setter Property="Foreground" Value="{StaticResource Brush_Accent}"/>
+
+                                        <Setter Property="FontWeight" Value="Bold"/>
+
+                                    </Trigger>
+
+                                    <Trigger Property="IsSelected" Value="False">
+
+                                        <Setter Property="Foreground" Value="{StaticResource Brush_TextMuted}"/>
+
+                                    </Trigger>
+
+                                </ControlTemplate.Triggers>
+
+                            </ControlTemplate>
+
+                        </Setter.Value>
+
+                    </Setter>
+
+                </Style>
+
+            </TabControl.Resources>
+
+
+
+            <TabItem Header="DASHBOARD">
+
+                <Grid Margin="10">
+
+                    <Grid.RowDefinitions>
+
+                        <RowDefinition Height="380"/>
+
+                        <RowDefinition Height="*"/>
+
+                    </Grid.RowDefinitions>
+
+
+
+                    <Grid Grid.Row="0" Margin="0,0,0,10">
+
+                        <Grid.ColumnDefinitions>
+
+                            <ColumnDefinition Width="160"/>
+
+                            <ColumnDefinition Width="*"/>
+
+                            <ColumnDefinition Width="160"/>
+
+                        </Grid.ColumnDefinitions>
+
+
+
+                        <Border Grid.Column="0" Background="#1F1F1F" CornerRadius="10,0,0,10" Padding="15">
+
+                            <StackPanel VerticalAlignment="Center">
+
+                                <TextBlock Text="CLUTCH" Foreground="{StaticResource Brush_Accent}" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,15"/>
+
+                                <Grid Height="200" HorizontalAlignment="Center">
+
+                                    <Grid.ColumnDefinitions>
+
+                                        <ColumnDefinition Width="*"/>
+
+                                        <ColumnDefinition Width="10"/>
+
+                                        <ColumnDefinition Width="*"/>
+
+                                        <ColumnDefinition Width="10"/>
+
+                                        <ColumnDefinition Width="*"/>
+
+                                    </Grid.ColumnDefinitions>
+
+                                    <ProgressBar Name="BarClutchL" Grid.Column="0" Style="{StaticResource VerticalProgressStyle}" Value="0" Maximum="65535"/>
+
+                                    <ProgressBar Name="BarClutchComb" Grid.Column="2" Style="{StaticResource VerticalProgressStyle}" Value="0" Maximum="65535" Foreground="{StaticResource Brush_Success}"/>
+
+                                    <ProgressBar Name="BarClutchR" Grid.Column="4" Style="{StaticResource VerticalProgressStyle}" Value="0" Maximum="65535"/>
+
+                                </Grid>
+
+                                <TextBlock Text="BITE POINT" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" HorizontalAlignment="Center" Margin="0,15,0,0"/>
+
+                                <TextBlock Name="TxtBitePoint" Text="50.0%" Foreground="White" FontWeight="Bold" FontSize="22" HorizontalAlignment="Center"/>
+
+                            </StackPanel>
+
+                        </Border>
+
+
+
+                        <Border Grid.Column="1" Background="Black" Margin="2,0,2,0" ClipToBounds="True">
+
+                            <Viewbox Stretch="Uniform">
+
+                                <Grid Width="1000" Height="500">
+
+                                    <Image Source="pack://application:,,,/User.PluginSdkDemo;component/Images/Test Immagine Principale.png" Opacity="1.0"/>
+
+                                </Grid>
+
+                            </Viewbox>
+
+                        </Border>
+
+
+
+                        <Border Grid.Column="2" Background="#1F1F1F" CornerRadius="0,10,10,0" Padding="15">
+
+                            <StackPanel VerticalAlignment="Center">
+
+                                <TextBlock Text="STATUS" Foreground="{StaticResource Brush_Accent}" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,20"/>
+
+                                <Grid Margin="0,0,0,10">
+
+                                    <Grid.ColumnDefinitions>
+
+                                        <ColumnDefinition Width="Auto"/>
+
+                                        <ColumnDefinition Width="*"/>
+
+                                    </Grid.ColumnDefinitions>
+
+                                    <Ellipse Name="LedInput" Style="{StaticResource StatusDotStyle}" Fill="Gray"/>
+
+                                    <StackPanel Grid.Column="1">
+
+                                        <TextBlock Text="INPUT" Foreground="{StaticResource Brush_TextMuted}" FontSize="9"/>
+
+                                        <TextBlock Name="TxtInputStatus" Text="---" Foreground="White" FontSize="11" FontWeight="Bold"/>
+
+                                    </StackPanel>
+
+                                </Grid>
+
+                                <Grid Margin="0,0,0,30">
+
+                                    <Grid.ColumnDefinitions>
+
+                                        <ColumnDefinition Width="Auto"/>
+
+                                        <ColumnDefinition Width="*"/>
+
+                                    </Grid.ColumnDefinitions>
+
+                                    <Ellipse Name="LedLeds" Style="{StaticResource StatusDotStyle}" Fill="Gray"/>
+
+                                    <StackPanel Grid.Column="1">
+
+                                        <TextBlock Text="LIGHTS" Foreground="{StaticResource Brush_TextMuted}" FontSize="9"/>
+
+                                        <TextBlock Name="TxtLedsStatus" Text="---" Foreground="White" FontSize="11" FontWeight="Bold"/>
+
+                                    </StackPanel>
+
+                                </Grid>
+
+                                <Button Name="BtnScan" Content="SCAN DEVICES" Height="35" Background="{StaticResource Brush_Accent}" Foreground="White" FontWeight="Bold"/>
+
+                            </StackPanel>
+
+                        </Border>
+
+                    </Grid>
+
+
+
+                    <Grid Grid.Row="1">
+
+                        <Grid.ColumnDefinitions>
+
+                            <ColumnDefinition Width="1*"/>
+
+                            <ColumnDefinition Width="15"/>
+
+                            <ColumnDefinition Width="1*"/>
+
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="15">
+
+                            <StackPanel>
+
+                                <TextBlock Text="PROFILE MANAGER" Foreground="{StaticResource Brush_Accent}" FontWeight="Bold" Margin="0,0,0,10"/>
+
+                                <Grid>
+
+                                    <Grid.ColumnDefinitions>
+
+                                        <ColumnDefinition Width="*"/>
+
+                                        <ColumnDefinition Width="Auto"/>
+
+                                    </Grid.ColumnDefinitions>
+
+                                    <ComboBox Name="CmbProfiles" Height="30" Margin="0,0,10,0" VerticalContentAlignment="Center"/>
+
+                                    <Grid Grid.Column="1">
+
+                                        <StackPanel Name="PnlStandardActions" Orientation="Horizontal">
+
+                                            <Button Name="BtnLoadProfile" Content="LOAD" Width="50" Height="30" Margin="0,0,5,0" Background="#333" Foreground="White" FontSize="10"/>
+
+                                            <Button Name="BtnSaveDirect" Content="SAVE" Width="50" Height="30" Margin="0,0,5,0" Background="#333" Foreground="White" FontSize="10"/>
+
+                                            <Button Name="BtnSaveAs" Content="SAVE AS" Width="60" Height="30" Margin="0,0,5,0" Background="#333" Foreground="White" FontSize="10"/>
+
+                                            <Button Name="BtnDelete" Content="DEL" Width="40" Height="30" Background="#333" Foreground="{StaticResource Brush_Error}" FontSize="10" FontWeight="Bold"/>
+
+                                        </StackPanel>
+
+                                        <Grid Name="PnlConfirmDelete" Visibility="Collapsed" Width="215" Height="30">
+
+                                            <Grid.ColumnDefinitions>
+
+                                                <ColumnDefinition Width="*"/>
+
+                                                <ColumnDefinition Width="50"/>
+
+                                                <ColumnDefinition Width="50"/>
+
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Name="TxtConfirmDeleteMsg" Text="CONFIRM?" Foreground="{StaticResource Brush_Error}" FontWeight="Bold" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="11"/>
+
+                                            <Button Name="BtnDeleteYes" Grid.Column="1" Content="YES" Margin="5,0,0,0" Background="{StaticResource Brush_Error}" Foreground="White" FontWeight="Bold" FontSize="10"/>
+
+                                            <Button Name="BtnDeleteNo" Grid.Column="2" Content="NO" Margin="5,0,0,0" Background="#555" Foreground="White" FontWeight="Bold" FontSize="10"/>
+
+                                        </Grid>
+
+                                    </Grid>
+
+                                </Grid>
+
+                                <Grid Margin="0,5,0,0">
+
+                                    <Grid.ColumnDefinitions>
+
+                                        <ColumnDefinition Width="*"/>
+
+                                        <ColumnDefinition Width="Auto"/>
+
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBox Name="TxtNewProfileName" Height="30" Visibility="Collapsed" Background="#222" Foreground="White" BorderBrush="#444"/>
+
+                                    <Button Grid.Column="1" Name="BtnConfirmSaveAs" Content="CONFIRM" Width="80" Height="30" Margin="5,0,0,0" Visibility="Collapsed" Background="{StaticResource Brush_Accent}" Foreground="White"/>
+
+                                </Grid>
+
+                            </StackPanel>
+
+                        </Border>
+
+                        <Border Grid.Column="2" Style="{StaticResource CardStyle}" Padding="15">
+
+                            <StackPanel>
+
+                                <TextBlock Text="ENCODER MAPPING" Foreground="{StaticResource Brush_Accent}" FontWeight="Bold" Margin="0,0,0,10"/>
+
+                                <Grid>
+
+                                    <Grid.ColumnDefinitions>
+
+                                        <ColumnDefinition Width="*"/>
+
+                                        <ColumnDefinition Width="15"/>
+
+                                        <ColumnDefinition Width="*"/>
+
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0">
+
+                                        <TextBlock Text="TOP LEFT" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" Margin="0,0,0,5"/>
+
+                                        <ComboBox Name="CmbTopLeft" Height="30"/>
+
+                                        <TextBlock Text="BOTTOM LEFT" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" Margin="0,15,0,5"/>
+
+                                        <Border Background="#222" Height="30" CornerRadius="3" BorderBrush="#444" BorderThickness="1">
+
+                                            <TextBlock Name="TxtBotLeft" Text="---" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="Bold"/>
+
+                                        </Border>
+
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="2">
+
+                                        <TextBlock Text="TOP RIGHT" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" Margin="0,0,0,5"/>
+
+                                        <ComboBox Name="CmbTopRight" Height="30"/>
+
+                                        <TextBlock Text="BOTTOM RIGHT" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" Margin="0,15,0,5"/>
+
+                                        <Border Background="#222" Height="30" CornerRadius="3" BorderBrush="#444" BorderThickness="1">
+
+                                            <TextBlock Name="TxtBotRight" Text="---" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="Bold"/>
+
+                                        </Border>
+
+                                    </StackPanel>
+
+                                </Grid>
+
+                            </StackPanel>
+
+                        </Border>
+
+                    </Grid>
+
+                </Grid>
+
+            </TabItem>
+
+
+
+            <TabItem Header="PIT">
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+
+                    <StackPanel Margin="20">
+
+                        <TextBlock Text="PIT CREW MANAGER" Foreground="White" FontSize="24" FontWeight="Bold" Margin="0,0,0,20"/>
+
+
+
+                        <Border Style="{StaticResource CardStyle}" BorderBrush="{StaticResource Brush_Success}" BorderThickness="1" Background="#252525">
+
+                            <CheckBox x:Name="chkMasterSystem" Content="ENABLE PIT STRATEGY SYSTEM" Foreground="White" FontSize="16" FontWeight="Bold" Margin="5" Click="ChkMasterSystem_Click"/>
+
+                        </Border>
+
+
+
+                        <StackPanel x:Name="PnlStrategyContent">
+
+                            <Border Style="{StaticResource CardStyle}" BorderBrush="{StaticResource Brush_Accent}" BorderThickness="1">
+
+                                <StackPanel>
+
+                                    <TextBlock Text="AUTOMATION SETTINGS" Foreground="{StaticResource Brush_Accent}" FontWeight="Bold" Margin="0,0,0,10"/>
+
+                                    <CheckBox x:Name="chkAutoPit" Content="Enable Auto-Pit Strategy (Hands-Free Pit Entry)" Foreground="White" FontSize="14" FontWeight="SemiBold" Margin="0,5" Click="ChkAutoPit_Click"/>
+
+                                    <TextBlock Text="If enabled, the calculated fuel macro will be sent automatically 2 seconds after entering the pit lane." Foreground="{StaticResource Brush_TextMuted}" Margin="24,0,0,10" TextWrapping="Wrap"/>
+
+                                </StackPanel>
+
+                            </Border>
+
+
+
+                            <Border Style="{StaticResource CardStyle}">
+
+                                <StackPanel>
+
+                                    <TextBlock Text="LIVE TELEMETRY" Foreground="{StaticResource Brush_TextPrimary}" FontWeight="Bold" Margin="0,0,0,10"/>
+
+                                    <Grid>
+
+                                        <Grid.ColumnDefinitions>
+
+                                            <ColumnDefinition Width="*"/>
+
+                                            <ColumnDefinition Width="*"/>
+
+                                            <ColumnDefinition Width="*"/>
+
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0">
+
+                                            <TextBlock Text="AVG BURN" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" HorizontalAlignment="Center"/>
+
+                                            <TextBlock Name="TxtLiveCons" Text="-- L/lap" Foreground="White" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center"/>
+
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="1">
+
+                                            <TextBlock Text="REMAINING LAPS" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" HorizontalAlignment="Center"/>
+
+                                            <TextBlock Name="TxtLiveLaps" Text="--" Foreground="White" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center"/>
+
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="2">
+
+                                            <TextBlock Text="FUEL TO ADD" Foreground="{StaticResource Brush_Accent}" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center"/>
+
+                                            <TextBlock Name="TxtLiveFuelReq" Text="-- L" Foreground="{StaticResource Brush_Accent}" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center"/>
+
+                                        </StackPanel>
+
+                                    </Grid>
+
+                                </StackPanel>
+
+                            </Border>
+
+
+
+                            <Border Style="{StaticResource CardStyle}">
+
+                                <StackPanel>
+
+                                    <TextBlock Text="PIT MODE MAPPING (ACTIVE)" Foreground="{StaticResource Brush_TextPrimary}" FontWeight="Bold" Margin="0,0,0,10"/>
+
+                                    <Grid>
+
+                                        <Grid.ColumnDefinitions>
+
+                                            <ColumnDefinition Width="*"/>
+
+                                            <ColumnDefinition Width="15"/>
+
+                                            <ColumnDefinition Width="*"/>
+
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0">
+
+                                            <TextBlock Text="TOP LEFT (FUEL)" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" Margin="0,0,0,5"/>
+
+                                            <Border Background="#222" Height="30" CornerRadius="3" BorderBrush="{StaticResource Brush_Success}" BorderThickness="1">
+
+                                                <TextBlock x:Name="TxtPitFuel" Text="LOADING..." Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="Bold"/>
+
+                                            </Border>
+
+                                            <TextBlock Text="BOTTOM LEFT (STRATEGY)" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" Margin="0,15,0,5"/>
+
+                                            <Border Background="#222" Height="30" CornerRadius="3" BorderBrush="{StaticResource Brush_Success}" BorderThickness="1">
+
+                                                <TextBlock x:Name="TxtPitStrat" Text="LOADING..." Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="Bold"/>
+
+                                            </Border>
+
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="2">
+
+                                            <TextBlock Text="TOP RIGHT (TYRES)" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" Margin="0,0,0,5"/>
+
+                                            <Border Background="#222" Height="30" CornerRadius="3" BorderBrush="{StaticResource Brush_Success}" BorderThickness="1">
+
+                                                <TextBlock x:Name="TxtPitTyres" Text="LOADING..." Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="Bold"/>
+
+                                            </Border>
+
+                                            <TextBlock Text="BOTTOM RIGHT (PRESSURE)" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" Margin="0,15,0,5"/>
+
+                                            <Border Background="#222" Height="30" CornerRadius="3" BorderBrush="{StaticResource Brush_Success}" BorderThickness="1">
+
+                                                <TextBlock x:Name="TxtPitPress" Text="LOADING..." Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="Bold"/>
+
+                                            </Border>
+
+                                        </StackPanel>
+
+                                    </Grid>
+
+                                </StackPanel>
+
+                            </Border>
+
+
+
+                            <Border Style="{StaticResource CardStyle}">
+
+                                <StackPanel>
+
+                                    <TextBlock Text="ENCODER CONTROLS GUIDE (PIT/PIT2)" Foreground="{StaticResource Brush_TextPrimary}" FontWeight="Bold" Margin="0,0,0,10"/>
+
+                                    <Grid>
+
+                                        <Grid.ColumnDefinitions>
+
+                                            <ColumnDefinition Width="*"/>
+
+                                            <ColumnDefinition Width="*"/>
+
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0" Margin="0,0,10,0">
+
+                                            <TextBlock Text="TOP LEFT (FUEL)" FontWeight="Bold" Foreground="{StaticResource Brush_Accent}"/>
+
+                                            <TextBlock Text="• Rotate: Fuel Offset / Target" Foreground="{StaticResource Brush_TextMuted}"/>
+
+                                            <TextBlock Text="• Push: Cycle Step / Target ON-OFF" Foreground="{StaticResource Brush_TextMuted}"/>
+
+                                            <TextBlock Text="• Long Push: SEND FUEL" Foreground="{StaticResource Brush_TextMuted}"/>
+
+
+
+                                            <TextBlock Text="BOTTOM LEFT (STRATEGY)" FontWeight="Bold" Foreground="{StaticResource Brush_Accent}" Margin="0,10,0,0"/>
+
+                                            <TextBlock Text="• Rotate: Mode / Windshield" Foreground="{StaticResource Brush_TextMuted}"/>
+
+                                            <TextBlock Text="• Push: Fast Repair" Foreground="{StaticResource Brush_TextMuted}"/>
+
+                                            <TextBlock Text="• Long Push: CLEAR ALL" Foreground="{StaticResource Brush_TextMuted}"/>
+
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="1">
+
+                                            <TextBlock Text="TOP RIGHT (TYRES)" FontWeight="Bold" Foreground="{StaticResource Brush_Accent}"/>
+
+                                            <TextBlock Text="• Rotate: Select Scope" Foreground="{StaticResource Brush_TextMuted}"/>
+
+                                            <TextBlock Text="• Push: Clear Tyres / Sync ON-OFF" Foreground="{StaticResource Brush_TextMuted}"/>
+
+                                            <TextBlock Text="• Long Push: SEND TYRES" Foreground="{StaticResource Brush_TextMuted}"/>
+
+
+
+                                            <TextBlock Text="BOTTOM RIGHT (PRESSURE)" FontWeight="Bold" Foreground="{StaticResource Brush_Accent}" Margin="0,10,0,0"/>
+
+                                            <TextBlock Text="• Rotate: Adjust kPa" Foreground="{StaticResource Brush_TextMuted}"/>
+
+                                            <TextBlock Text="• Push: Reset Pressure" Foreground="{StaticResource Brush_TextMuted}"/>
+
+                                            <TextBlock Text="• Long Push: SEND PRESSURE" Foreground="{StaticResource Brush_TextMuted}"/>
+
+                                        </StackPanel>
+
+                                    </Grid>
+
+                                </StackPanel>
+
+                            </Border>
+
+                        </StackPanel>
+
+                    </StackPanel>
+
+                </ScrollViewer>
+
+            </TabItem>
+
+
+
+            <TabItem Header="STRATEGY">
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+
+                    <StackPanel Margin="20">
+
+                        <TextBlock Text="TACTICAL RADAR" Foreground="White" FontSize="24" FontWeight="Bold" Margin="0,0,0,20"/>
+
+
+
+                        <Border Style="{StaticResource CardStyle}">
+
+                            <StackPanel>
+
+                                <TextBlock Text="OPPONENT TELEMETRY" Foreground="{StaticResource Brush_TextPrimary}" FontWeight="Bold" Margin="0,0,0,10"/>
+
+                                <Grid>
+
+                                    <Grid.ColumnDefinitions>
+
+                                        <ColumnDefinition Width="*"/>
+
+                                        <ColumnDefinition Width="15"/>
+
+                                        <ColumnDefinition Width="*"/>
+
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0">
+
+                                        <TextBlock Text="SELECTED TARGET" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" Margin="0,0,0,5"/>
+
+                                        <Border Background="#222" Height="30" CornerRadius="3" BorderBrush="White" BorderThickness="1">
+
+                                            <TextBlock x:Name="TxtStratTarget" Text="-- - --" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="Bold"/>
+
+                                        </Border>
+
+                                        <TextBlock Text="UNDERCUT STATUS" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" Margin="0,15,0,5"/>
+
+                                        <Border Background="#222" Height="30" CornerRadius="3" BorderBrush="White" BorderThickness="1">
+
+                                            <TextBlock x:Name="TxtStratUndercut" Text="--" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="Bold"/>
+
+                                        </Border>
+
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="2">
+
+                                        <TextBlock Text="GAP &amp; DIAGNOSIS" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" Margin="0,0,0,5"/>
+
+                                        <Border Background="#222" Height="30" CornerRadius="3" BorderBrush="White" BorderThickness="1">
+
+                                            <TextBlock x:Name="TxtStratGap" Text="--" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="Bold"/>
+
+                                        </Border>
+
+                                        <TextBlock Text="DROP ZONE LOSS" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" Margin="0,15,0,5"/>
+
+                                        <Border Background="#222" Height="30" CornerRadius="3" BorderBrush="White" BorderThickness="1">
+
+                                            <TextBlock x:Name="TxtStratDrop" Text="--" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="Bold"/>
+
+                                        </Border>
+
+                                    </StackPanel>
+
+                                </Grid>
+
+                            </StackPanel>
+
+                        </Border>
+
+
+
+                        <Border Style="{StaticResource CardStyle}">
+
+                            <StackPanel>
+
+                                <TextBlock Text="ENCODER CONTROLS GUIDE (STRAT MODE)" Foreground="{StaticResource Brush_TextPrimary}" FontWeight="Bold" Margin="0,0,0,10"/>
+
+                                <Grid>
+
+                                    <Grid.ColumnDefinitions>
+
+                                        <ColumnDefinition Width="*"/>
+
+                                        <ColumnDefinition Width="*"/>
+
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
+
+                                        <TextBlock Text="TOP LEFT (TARGET SELECTOR)" FontWeight="Bold" Foreground="{StaticResource Brush_Accent}"/>
+
+                                        <TextBlock Text="• Rotate: Change Target" Foreground="{StaticResource Brush_TextMuted}"/>
+
+                                        <TextBlock Text="• Push: Reset to AHEAD" Foreground="{StaticResource Brush_TextMuted}"/>
+
+                                        <TextBlock Text="• Long Push: RADIO TARGET INFO" Foreground="{StaticResource Brush_TextMuted}"/>
+
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="1">
+
+                                        <TextBlock Text="TOP RIGHT (DROP ZONE)" FontWeight="Bold" Foreground="{StaticResource Brush_Accent}"/>
+
+                                        <TextBlock Text="• Rotate: --" Foreground="{StaticResource Brush_TextMuted}"/>
+
+                                        <TextBlock Text="• Push: --" Foreground="{StaticResource Brush_TextMuted}"/>
+
+                                        <TextBlock Text="• Long Push: RADIO DROP ZONE" Foreground="{StaticResource Brush_TextMuted}"/>
+
+                                    </StackPanel>
+
+                                </Grid>
+
+                            </StackPanel>
+
+                        </Border>
+
+
+
+                        <Expander Header="ADVANCED SETTINGS" IsExpanded="False" Margin="0,15,0,0">
+
+                            <StackPanel Margin="5">
+
+                                <Grid Margin="0,5">
+
+                                    <Grid.ColumnDefinitions>
+
+                                        <ColumnDefinition Width="2*"/>
+
+                                        <ColumnDefinition Width="15"/>
+
+                                        <ColumnDefinition Width="*"/>
+
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+
+                                        <TextBlock Text="COEFFICIENTE PENALITÀ PESO CARBURANTE (s/L)" Foreground="White" FontSize="12" FontWeight="Bold"/>
+
+                                        <TextBlock Text="Tempo addizionale sul giro stimato per ogni litro di carburante a bordo (default: 0.03 secondi per litro)." Foreground="{StaticResource Brush_TextMuted}" FontSize="9" TextWrapping="Wrap" Margin="0,2,0,0"/>
+
+                                    </StackPanel>
+
+                                    <TextBox x:Name="TxtFuelWeightCoef" Grid.Column="2" Height="25" Background="#222" Foreground="White" BorderBrush="#444" TextAlignment="Center" VerticalContentAlignment="Center" FontSize="12"/>
+
+                                </Grid>
+
+
+
+                                <Separator Background="#333" Margin="0,10"/>
+
+
+
+                                <Grid Margin="0,5">
+
+                                    <Grid.ColumnDefinitions>
+
+                                        <ColumnDefinition Width="2*"/>
+
+                                        <ColumnDefinition Width="15"/>
+
+                                        <ColumnDefinition Width="*"/>
+
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+
+                                        <TextBlock Text="COEFFICIENTE PENALITÀ TERMICÀ PISTA (s/°C)" Foreground="White" FontSize="12" FontWeight="Bold"/>
+
+                                        <TextBlock Text="Tempo sul giro stimato per ogni °C di differenza rispetto alla baseline termica globale (default: 0.05 secondi per °C)." Foreground="{StaticResource Brush_TextMuted}" FontSize="9" TextWrapping="Wrap" Margin="0,2,0,0"/>
+
+                                    </StackPanel>
+
+                                    <TextBox x:Name="TxtTempCoef" Grid.Column="2" Height="25" Background="#222" Foreground="White" BorderBrush="#444" TextAlignment="Center" VerticalContentAlignment="Center" FontSize="12"/>
+
+                                </Grid>
+
+                                <Separator Background="#333" Margin="0,10"/>
+
+                                <Grid Margin="0,5">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="2*"/>
+                                        <ColumnDefinition Width="15"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <TextBlock Text="COEFFICIENTE VELOCITÀ/PESO CARBURANTE (km/h per Litro)" Foreground="White" FontSize="12" FontWeight="Bold"/>
+                                        <TextBlock Text="Aumento della velocità teorica attesa nei microsettori per ogni litro di carburante consumato (default: 0.05 km/h per litro)." Foreground="{StaticResource Brush_TextMuted}" FontSize="9" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                    <TextBox x:Name="TxtFuelSpeedCoef" Grid.Column="2" Height="25" Background="#222" Foreground="White" BorderBrush="#444" TextAlignment="Center" VerticalContentAlignment="Center" FontSize="12"/>
+                                </Grid>
+
+                                <Separator Background="#333" Margin="0,10"/>
+
+                                <Grid Margin="0,5">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="2*"/>
+                                        <ColumnDefinition Width="15"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <TextBlock Text="SOGLIA DI DROP VELOCITÀ NEI MICROSETTORI (km/h)" Foreground="White" FontSize="12" FontWeight="Bold"/>
+                                        <TextBlock Text="Soglia minima di riduzione della velocità per innescare gli allarmi di degrado gomme o fuel saving (default: 2.0 km/h)." Foreground="{StaticResource Brush_TextMuted}" FontSize="9" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                    <TextBox x:Name="TxtSpeedDropThresholdKmh" Grid.Column="2" Height="25" Background="#222" Foreground="White" BorderBrush="#444" TextAlignment="Center" VerticalContentAlignment="Center" FontSize="12"/>
+                                </Grid>
+
+                                <Separator Background="#333" Margin="0,10"/>
+
+                                <Grid Margin="0,5">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="2*"/>
+                                        <ColumnDefinition Width="15"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <TextBlock Text="SOGLIA DI DROP VELOCITÀ AGGIUNTIVA SU PISTA UMIDA (km/h)" Foreground="White" FontSize="12" FontWeight="Bold"/>
+                                        <TextBlock Text="Offset sommato alla soglia di drop velocità per tollerare lo scivolamento su pista umida/livello 1 (default: 1.5 km/h)." Foreground="{StaticResource Brush_TextMuted}" FontSize="9" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                    <TextBox x:Name="TxtDampSpeedDropOffsetKmh" Grid.Column="2" Height="25" Background="#222" Foreground="White" BorderBrush="#444" TextAlignment="Center" VerticalContentAlignment="Center" FontSize="12"/>
+                                </Grid>
+
+                                <Separator Background="#333" Margin="0,10"/>
+
+                                <Grid Margin="0,5">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="2*"/>
+                                        <ColumnDefinition Width="15"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <TextBlock Text="COMPENSAZIONE PACE DROP SU PISTA UMIDA (secondi)" Foreground="White" FontSize="12" FontWeight="Bold"/>
+                                        <TextBlock Text="Rallentamento sul tempo sul giro tollerato in pista umida prima di diagnosticare degrado o fuel saving (default: 2.0 secondi)." Foreground="{StaticResource Brush_TextMuted}" FontSize="9" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                    <TextBox x:Name="TxtDampPaceOffsetSeconds" Grid.Column="2" Height="25" Background="#222" Foreground="White" BorderBrush="#444" TextAlignment="Center" VerticalContentAlignment="Center" FontSize="12"/>
+                                </Grid>
+
+                            </StackPanel>
+
+                        </Expander>
+
+                    </StackPanel>
+
+                </ScrollViewer>
+
+            </TabItem>
+
+
+
+            <TabItem Header="PITWALL">
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+
+                    <StackPanel Margin="20">
+
+                        <TextBlock Text="VIRTUAL RACE ENGINEER" Foreground="White" FontSize="24" FontWeight="Bold" Margin="0,0,0,20"/>
+
+
+
+                        <Border Style="{StaticResource CardStyle}" BorderBrush="#3b82f6" BorderThickness="1" Background="#252525">
+
+                            <CheckBox x:Name="ChkMasterVoice" Content="ENABLE VOICE RADIO COMM" Foreground="White" FontSize="16" FontWeight="Bold" Margin="5" Click="ChkMasterVoice_Click"/>
+
+                        </Border>
+
+                        <StackPanel x:Name="PnlVoiceSettings">
+
+                            <Border Style="{StaticResource CardStyle}">
+
+                                <StackPanel>
+
+                                    <TextBlock Text="LOCALIZATION &amp; VOICE CONTROL" Foreground="{StaticResource Brush_TextPrimary}" FontWeight="Bold" Margin="0,0,0,10"/>
+
+                                    <Grid>
+
+                                        <Grid.ColumnDefinitions>
+
+                                            <ColumnDefinition Width="*"/>
+
+                                            <ColumnDefinition Width="20"/>
+
+                                            <ColumnDefinition Width="1.5*"/>
+
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0">
+
+                                            <TextBlock Text="RADIO LANGUAGE (SCRIPT)" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" Margin="0,0,0,5"/>
+
+                                            <ComboBox Name="CmbRadioLang" Height="30" SelectionChanged="CmbRadioSettings_Changed">
+
+                                                <ComboBoxItem Content="English" Tag="EN"/>
+
+                                                <ComboBoxItem Content="Italiano" Tag="IT"/>
+
+                                                <ComboBoxItem Content="Deutsch" Tag="DE"/>
+
+                                                <ComboBoxItem Content="Espa&#241;ol" Tag="ES"/>
+
+                                                <ComboBoxItem Content="Fran&#231;ais" Tag="FR"/>
+
+                                                <ComboBoxItem Content="Dutch" Tag="NL"/>
+
+                                                <ComboBoxItem Content="Portugu&#234;s" Tag="PT"/>
+
+                                            </ComboBox>
+
+                                            <TextBlock Text="Selects the language of the words spoken." Foreground="#777" FontSize="9" Margin="0,5,0,0" TextWrapping="Wrap"/>
+
+                                            <TextBlock Text="ENGINEER VOICE" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" Margin="0,15,0,5"/>
+
+                                            <Grid>
+
+                                                <Grid.ColumnDefinitions>
+
+                                                    <ColumnDefinition Width="*"/>
+
+                                                    <ColumnDefinition Width="5"/>
+
+                                                    <ColumnDefinition Width="35"/>
+
+                                                </Grid.ColumnDefinitions>
+
+                                                <ComboBox Grid.Column="0" Name="CmbVoiceModel" Height="30" SelectionChanged="CmbVoiceModel_SelectionChanged"/>
+
+                                                <Button Grid.Column="2" Name="BtnPlaySample" Content="▶" Height="30" Width="35" Click="BtnPlaySample_Click" Background="#444" Foreground="White" BorderBrush="#666" FontWeight="Bold" ToolTip="Play Voice Preview"/>
+
+                                            </Grid>
+
+                                            <TextBlock Text="CUSTOM DRIVER NAME" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" Margin="0,15,0,5"/>
+                                            <TextBox Name="TxtCustomPlayerName" Height="30" Foreground="White" Background="#222" BorderBrush="#555" TextChanged="TxtCustomPlayerName_TextChanged" VerticalContentAlignment="Center" Padding="5,0"/>
+
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="2">
+
+                                            <TextBlock Text="NEURAL VOICE CONTROL (PIPER TTS)" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" Margin="0,0,0,5"/>
+
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+
+                                                <Button Name="BtnSetupVoice" Content="INSTALL/UPDATE VOICE" Height="30" Width="140" Margin="0,0,5,0" Click="BtnSetupVoice_Click" Background="#444" Foreground="White" BorderBrush="#666" FontWeight="Bold"/>
+
+                                                <Button Name="BtnImportModel" Content="IMPORT ONNX" Height="30" Width="90" Click="BtnImportModel_Click" Background="#444" Foreground="White" BorderBrush="#666" FontWeight="Bold"/>
+
+                                            </StackPanel>
+
+                                            <ProgressBar Name="PbVoiceDownload" Height="8" Margin="0,5,0,2" Minimum="0" Maximum="100" Value="0" Visibility="Collapsed"/>
+
+                                            <TextBlock Name="TxtVoiceStatus" Text="Status: Checking setup..." Foreground="#aaa" FontSize="10" TextWrapping="Wrap"/>
+
+                                        </StackPanel>
+
+                                    </Grid>
+
+                                    <Separator Background="#333" Margin="0,15,0,15"/>
+
+                                    <Grid>
+
+                                        <Grid.RowDefinitions>
+
+                                            <RowDefinition Height="Auto"/>
+
+                                            <RowDefinition Height="15"/>
+
+                                            <RowDefinition Height="Auto"/>
+
+                                        </Grid.RowDefinitions>
+
+                                        <Grid.ColumnDefinitions>
+
+                                            <ColumnDefinition Width="*"/>
+
+                                            <ColumnDefinition Width="20"/>
+
+                                            <ColumnDefinition Width="*"/>
+
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Row="0" Grid.Column="0">
+
+                                            <DockPanel LastChildFill="True" Margin="0,0,0,5">
+
+                                                <TextBlock Text="VOICE VOLUME" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" VerticalAlignment="Center"/>
+
+                                                <TextBlock Name="TxtVoiceVolValue" Text="100%" Foreground="White" FontSize="10" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+
+                                            </DockPanel>
+
+                                            <Slider Name="SldVoiceVolume" Minimum="0" Maximum="100" Value="100" SmallChange="1" LargeChange="10" ValueChanged="SldVolume_ValueChanged" Height="25"/>
+
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Row="0" Grid.Column="2">
+
+                                            <DockPanel LastChildFill="True" Margin="0,0,0,5">
+
+                                                <TextBlock Text="RADIO BACKGROUND NOISE" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" VerticalAlignment="Center"/>
+
+                                                <TextBlock Name="TxtNoiseVolValue" Text="30%" Foreground="White" FontSize="10" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+
+                                            </DockPanel>
+
+                                            <Slider Name="SldRadioNoiseVolume" Minimum="0" Maximum="100" Value="30" SmallChange="1" LargeChange="10" ValueChanged="SldVolume_ValueChanged" Height="25"/>
+
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Row="2" Grid.ColumnSpan="3">
+
+                                            <DockPanel LastChildFill="True" Margin="0,0,0,5">
+
+                                                <TextBlock Text="SPEECH SPEED" Foreground="{StaticResource Brush_TextMuted}" FontSize="10" VerticalAlignment="Center"/>
+
+                                                <TextBlock Name="TxtSpeechSpeedValue" Text="Normal (1.0x)" Foreground="White" FontSize="10" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+
+                                            </DockPanel>
+
+                                            <Slider Name="SldSpeechSpeed" Minimum="-100" Maximum="100" Value="0" SmallChange="5" LargeChange="20" ValueChanged="SldVolume_ValueChanged" Height="25"/>
+
+                                        </StackPanel>
+
+                                    </Grid>
+
+                                </StackPanel>
+
+                            </Border>
+
+
+
+
+
+                        </StackPanel>
+
+                    </StackPanel>
+
+                </ScrollViewer>
+
+            </TabItem>
+
+
+
+            <TabItem Header="LED LAB">
+
+                <Grid Margin="10">
+
+                    <Grid.RowDefinitions>
+
+                        <RowDefinition Height="Auto"/>
+
+                        <RowDefinition Height="*"/>
+
+                    </Grid.RowDefinitions>
+
+
+
+                    <Border Grid.Row="0" Background="#111" CornerRadius="10" Margin="0,0,0,15" ClipToBounds="True">
+
+                        <Viewbox Stretch="Uniform">
+
+                            <Grid Width="990" Height="485">
+
+                                <Image Source="pack://application:,,,/User.PluginSdkDemo;component/Images/UpscaledSideWireframe.png" Opacity="0.8"/>
+
+                                <Canvas>
+
+                                    <Ellipse Name="Dot_Btn_0" Tag="0" Style="{StaticResource GlowDotStyle}" ToolTip="Btn 0" Canvas.Left="75.4" Canvas.Top="163.2" MouseRightButtonUp="Dot_MouseRightButtonUp"/>
+
+                                    <Ellipse Name="Dot_Btn_1" Tag="1" Style="{StaticResource GlowDotStyle}" ToolTip="Btn 1" Canvas.Left="110" Canvas.Top="172" MouseRightButtonUp="Dot_MouseRightButtonUp"/>
+
+                                    <Ellipse Name="Dot_Btn_2" Tag="2" Style="{StaticResource GlowDotStyle}" ToolTip="Btn 2" Canvas.Left="139" Canvas.Top="195" MouseRightButtonUp="Dot_MouseRightButtonUp"/>
+
+                                    <Ellipse Name="Dot_Btn_3" Tag="3" Style="{StaticResource GlowDotStyle}" ToolTip="Btn 3" Canvas.Left="138.4" Canvas.Top="247.5" MouseRightButtonUp="Dot_MouseRightButtonUp"/>
+
+                                    <Ellipse Name="Dot_Btn_4" Tag="4" Style="{StaticResource GlowDotStyle}" ToolTip="Btn 4" Canvas.Left="143.2" Canvas.Top="299.8" MouseRightButtonUp="Dot_MouseRightButtonUp"/>
+
+                                    <Ellipse Name="Dot_Btn_5" Tag="5" Style="{StaticResource GlowDotStyle}" ToolTip="Btn 5" Canvas.Left="138" Canvas.Top="334.6" MouseRightButtonUp="Dot_MouseRightButtonUp" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+
+                                    <Ellipse Name="Dot_Btn_6" Tag="6" Style="{StaticResource GlowDotStyle}" ToolTip="Btn 6" Canvas.Left="355.8" Canvas.Top="335" MouseRightButtonUp="Dot_MouseRightButtonUp"/>
+
+                                    <Ellipse Name="Dot_Btn_7" Tag="7" Style="{StaticResource GlowDotStyle}" ToolTip="Btn 7" Canvas.Left="351" Canvas.Top="300" MouseRightButtonUp="Dot_MouseRightButtonUp" HorizontalAlignment="Center" VerticalAlignment="Top"/>
+
+                                    <Ellipse Name="Dot_Btn_8" Tag="8" Style="{StaticResource GlowDotStyle}" ToolTip="Btn 8" Canvas.Left="355.8" Canvas.Top="247.6" MouseRightButtonUp="Dot_MouseRightButtonUp" HorizontalAlignment="Center" VerticalAlignment="Top"/>
+
+                                    <Ellipse Name="Dot_Btn_9" Tag="9" Style="{StaticResource GlowDotStyle}" ToolTip="Btn 9" Canvas.Left="355.5" Canvas.Top="195.3" MouseRightButtonUp="Dot_MouseRightButtonUp" HorizontalAlignment="Center" VerticalAlignment="Top"/>
+
+                                    <Ellipse Name="Dot_Btn_10" Tag="10" Style="{StaticResource GlowDotStyle}" ToolTip="Btn 10" Canvas.Left="384.2" Canvas.Top="172.3" MouseRightButtonUp="Dot_MouseRightButtonUp" HorizontalAlignment="Center" VerticalAlignment="Top"/>
+
+                                    <Ellipse Name="Dot_Btn_11" Tag="11" Style="{StaticResource GlowDotStyle}" ToolTip="Btn 11" Canvas.Left="419" Canvas.Top="163.4" MouseRightButtonUp="Dot_MouseRightButtonUp"/>
+
+
+
+                                    <Ellipse Name="Dot_Btn_12" Style="{StaticResource InputDotStyle}" ToolTip="Gear Down (12)" Canvas.Left="80" Canvas.Top="227"/>
+
+                                    <Ellipse Name="Dot_Btn_13" Style="{StaticResource InputDotStyle}" ToolTip="Gear Up (13)" Canvas.Left="418" Canvas.Top="227"/>
+
+
+
+                                    <Ellipse Name="Dot_Btn_14" Style="{StaticResource InputDotStyle}" ToolTip="Toggle L (14)" Canvas.Left="578" Canvas.Top="222"/>
+
+                                    <Ellipse Name="Dot_Btn_15" Style="{StaticResource InputDotStyle}" ToolTip="Toggle R (15)" Canvas.Left="885" Canvas.Top="222"/>
+
+
+
+                                    <Ellipse Name="Dot_Btn_16" Style="{StaticResource InputDotStyle}" ToolTip="Funky L Up (16)" Canvas.Left="170" Canvas.Top="262"/>
+
+                                    <Ellipse Name="Dot_Btn_17" Style="{StaticResource InputDotStyle}" ToolTip="Funky L Down (17)" Canvas.Left="170" Canvas.Top="272"/>
+
+                                    <Ellipse Name="Dot_Btn_18" Style="{StaticResource InputDotStyle}" ToolTip="Funky L Left (18)" Canvas.Left="165" Canvas.Top="267"/>
+
+                                    <Ellipse Name="Dot_Btn_19" Style="{StaticResource InputDotStyle}" ToolTip="Funky L Right (19)" Canvas.Left="175" Canvas.Top="267"/>
+
+                                    <Ellipse Name="Dot_Btn_20" Style="{StaticResource InputDotStyle}" ToolTip="Funky L Push (20)" Canvas.Left="170" Canvas.Top="267"/>
+
+
+
+                                    <Ellipse Name="Dot_Btn_21" Style="{StaticResource InputDotStyle}" ToolTip="Funky R Up (21)" Canvas.Left="328" Canvas.Top="262"/>
+
+                                    <Ellipse Name="Dot_Btn_22" Style="{StaticResource InputDotStyle}" ToolTip="Funky R Down (22)" Canvas.Left="328" Canvas.Top="272"/>
+
+                                    <Ellipse Name="Dot_Btn_23" Style="{StaticResource InputDotStyle}" ToolTip="Funky R Left (23)" Canvas.Left="323" Canvas.Top="267"/>
+
+                                    <Ellipse Name="Dot_Btn_24" Style="{StaticResource InputDotStyle}" ToolTip="Funky R Right (24)" Canvas.Left="333" Canvas.Top="267"/>
+
+                                    <Ellipse Name="Dot_Btn_25" Style="{StaticResource InputDotStyle}" ToolTip="Funky R Push (25)" Canvas.Left="328" Canvas.Top="267"/>
+
+
+
+                                    <Ellipse Name="Dot_Btn_26" Style="{StaticResource InputDotStyle}" ToolTip="Enc Push BL (26)" Canvas.Left="121" Canvas.Top="275"/>
+
+                                    <Ellipse Name="Dot_Btn_27" Style="{StaticResource InputDotStyle}" ToolTip="Enc Push BR (27)" Canvas.Left="377" Canvas.Top="275"/>
+
+                                    <Ellipse Name="Dot_Btn_28" Style="{StaticResource InputDotStyle}" ToolTip="Enc Push TL (28)" Canvas.Left="116" Canvas.Top="223"/>
+
+                                    <Ellipse Name="Dot_Btn_29" Style="{StaticResource InputDotStyle}" ToolTip="Enc Push TR (29)" Canvas.Left="382" Canvas.Top="223" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+
+                                </Canvas>
+
+                            </Grid>
+
+                        </Viewbox>
+
+                    </Border>
+
+
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+
+                        <StackPanel Margin="0,0,5,0">
+
+
+
+                            <Expander Header="GLOBAL BRIGHTNESS &amp; IDLE" IsExpanded="False">
+
+                                <Grid>
+
+                                    <Grid.ColumnDefinitions>
+
+                                        <ColumnDefinition Width="*"/>
+
+                                        <ColumnDefinition Width="*"/>
+
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
+
+                                        <TextBlock Text="BACKLIGHT" Foreground="Gray" FontSize="10"/>
+
+                                        <Slider Name="SldBrightnessBack" Minimum="0" Maximum="255" Value="100" IsSnapToTickEnabled="True" TickFrequency="25.5"/>
+
+                                        <TextBlock Text="RPM" Foreground="Gray" FontSize="10" Margin="0,5,0,0"/>
+
+                                        <Slider Name="SldBrightnessRpm" Minimum="0" Maximum="255" Value="80" IsSnapToTickEnabled="True" TickFrequency="25.5"/>
+
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="1">
+
+                                        <TextBlock Text="IDLE ANIMATION" Foreground="Gray" FontSize="10"/>
+
+                                        <ComboBox Name="CmbIdleMode" Height="25" Margin="0,0,0,5">
+
+                                            <ComboBoxItem Content="Rainbow"/>
+
+                                            <ComboBoxItem Content="Static"/>
+
+                                            <ComboBoxItem Content="Breath"/>
+
+                                            <ComboBoxItem Content="Off"/>
+
+                                        </ComboBox>
+
+                                        <Button Name="BtnIdleColor" Content="IDLE COLOR" Height="25" Background="#333" Foreground="White" Visibility="Collapsed" FontWeight="Bold" FontSize="10"/>
+
+                                    </StackPanel>
+
+                                </Grid>
+
+                            </Expander>
+
+
+
+                            <Expander Header="RPM ENGINE CONFIGURATION" IsExpanded="False">
+
+                                <StackPanel>
+
+                                    <Grid>
+
+                                        <Grid.ColumnDefinitions>
+
+                                            <ColumnDefinition Width="*"/>
+
+                                            <ColumnDefinition Width="*"/>
+
+                                            <ColumnDefinition Width="*"/>
+
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0" Margin="0,0,10,0">
+
+                                            <TextBlock Text="START LED" Foreground="Gray" FontSize="10"/>
+
+                                            <Grid>
+
+                                                <Grid.ColumnDefinitions>
+
+                                                    <ColumnDefinition Width="Auto"/>
+
+                                                    <ColumnDefinition Width="*"/>
+
+                                                    <ColumnDefinition Width="Auto"/>
+
+                                                </Grid.ColumnDefinitions>
+
+                                                <Button Name="BtnStartMinus" Content="-" Style="{StaticResource ParamButtonStyle}"/>
+
+                                                <TextBlock Name="TxtStartVal" Grid.Column="1" Text="0" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                                                <Button Name="BtnStartPlus" Grid.Column="2" Content="+" Style="{StaticResource ParamButtonStyle}"/>
+
+                                            </Grid>
+
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="1" Margin="0,0,10,0">
+
+                                            <TextBlock Text="LED COUNT" Foreground="Gray" FontSize="10"/>
+
+                                            <Grid>
+
+                                                <Grid.ColumnDefinitions>
+
+                                                    <ColumnDefinition Width="Auto"/>
+
+                                                    <ColumnDefinition Width="*"/>
+
+                                                    <ColumnDefinition Width="Auto"/>
+
+                                                </Grid.ColumnDefinitions>
+
+                                                <Button Name="BtnCountMinus" Content="-" Style="{StaticResource ParamButtonStyle}"/>
+
+                                                <TextBlock Name="TxtCountVal" Grid.Column="1" Text="22" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                                                <Button Name="BtnCountPlus" Grid.Column="2" Content="+" Style="{StaticResource ParamButtonStyle}"/>
+
+                                            </Grid>
+
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="2">
+
+                                            <CheckBox Name="ChkTestRpm" Content="TEST BENCH" Foreground="White" FontSize="10" FontWeight="Bold" VerticalAlignment="Center" Margin="0,15,0,0"/>
+
+                                            <Slider Name="SldRpmTest" Minimum="0" Maximum="100" Value="0" IsSnapToTickEnabled="True" TickFrequency="5" Visibility="Collapsed" Margin="0,5,0,0"/>
+
+                                        </StackPanel>
+
+                                    </Grid>
+
+
+
+                                    <Separator Background="#333" Margin="0,10"/>
+
+
+
+                                    <TextBlock Text="ANIMATION STYLE" Foreground="Gray" FontSize="10"/>
+
+                                    <ComboBox Name="CmbRpmStyle" Height="25" Margin="0,0,0,5" FontSize="10">
+
+                                        <ComboBoxItem Content="LeftToRight"/>
+
+                                        <ComboBoxItem Content="RightToLeft"/>
+
+                                        <ComboBoxItem Content="CenterToSide"/>
+
+                                        <ComboBoxItem Content="SideToCenter"/>
+
+                                    </ComboBox>
+
+                                    <CheckBox Name="ChkUseGradient" Content="USE COLOR GRADIENT" Foreground="White" FontSize="10" Margin="0,5"/>
+
+
+
+                                    <Grid Name="PnlRpmGradient">
+
+                                        <Grid.ColumnDefinitions>
+
+                                            <ColumnDefinition Width="*"/>
+
+                                            <ColumnDefinition Width="5"/>
+
+                                            <ColumnDefinition Width="*"/>
+
+                                        </Grid.ColumnDefinitions>
+
+                                        <Button Name="BtnRpmStartColor" Grid.Column="0" Content="START COLOR" Height="25" Background="#333" Foreground="White" FontWeight="Bold" FontSize="10"/>
+
+                                        <Button Name="BtnRpmEndColor" Grid.Column="2" Content="END COLOR" Height="25" Background="#333" Foreground="White" FontWeight="Bold" FontSize="10"/>
+
+                                    </Grid>
+
+
+
+                                    <StackPanel Name="PnlRpmCustom" Visibility="Collapsed">
+
+                                        <TextBlock Name="TxtLedCountWarning" Text="" Foreground="{StaticResource Brush_Error}" FontSize="9" HorizontalAlignment="Right"/>
+
+                                        <Grid Margin="0,2">
+
+                                            <Grid.ColumnDefinitions>
+
+                                                <ColumnDefinition Width="35"/>
+
+                                                <ColumnDefinition Width="*"/>
+
+                                                <ColumnDefinition Width="30"/>
+
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Text="LOW" Foreground="Gray" VerticalAlignment="Center" FontSize="9"/>
+
+                                            <Button Name="BtnZoneLowColor" Grid.Column="1" Content="COLOR" Height="20" Background="#333" Foreground="White" FontSize="9"/>
+
+                                            <TextBox Name="TxtZoneLowCount" Grid.Column="2" Text="5" Background="#222" Foreground="White" FontSize="10" TextAlignment="Center"/>
+
+                                        </Grid>
+
+                                        <Grid Margin="0,2">
+
+                                            <Grid.ColumnDefinitions>
+
+                                                <ColumnDefinition Width="35"/>
+
+                                                <ColumnDefinition Width="*"/>
+
+                                                <ColumnDefinition Width="30"/>
+
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Text="MED" Foreground="Gray" VerticalAlignment="Center" FontSize="9"/>
+
+                                            <Button Name="BtnZoneMedColor" Grid.Column="1" Content="COLOR" Height="20" Background="#333" Foreground="White" FontSize="9"/>
+
+                                            <TextBox Name="TxtZoneMedCount" Grid.Column="2" Text="5" Background="#222" Foreground="White" FontSize="10" TextAlignment="Center"/>
+
+                                        </Grid>
+
+                                        <Grid Margin="0,2">
+
+                                            <Grid.ColumnDefinitions>
+
+                                                <ColumnDefinition Width="35"/>
+
+                                                <ColumnDefinition Width="*"/>
+
+                                                <ColumnDefinition Width="30"/>
+
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Text="HIGH" Foreground="Gray" VerticalAlignment="Center" FontSize="9"/>
+
+                                            <Button Name="BtnZoneHighColor" Grid.Column="1" Content="COLOR" Height="20" Background="#333" Foreground="White" FontSize="9"/>
+
+                                            <TextBox Name="TxtZoneHighCount" Grid.Column="2" Text="5" Background="#222" Foreground="White" FontSize="10" TextAlignment="Center"/>
+
+                                        </Grid>
+
+                                        <Grid Margin="0,2">
+
+                                            <Grid.ColumnDefinitions>
+
+                                                <ColumnDefinition Width="35"/>
+
+                                                <ColumnDefinition Width="*"/>
+
+                                                <ColumnDefinition Width="30"/>
+
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Text="MAX" Foreground="Gray" VerticalAlignment="Center" FontSize="9"/>
+
+                                            <Button Name="BtnZoneMaxColor" Grid.Column="1" Content="COLOR" Height="20" Background="#333" Foreground="White" FontSize="9"/>
+
+                                            <TextBox Name="TxtZoneMaxCount" Grid.Column="2" Text="7" Background="#222" Foreground="White" FontSize="10" TextAlignment="Center"/>
+
+                                        </Grid>
+
+                                    </StackPanel>
+
+                                </StackPanel>
+
+                            </Expander>
+
+
+
+                            <Expander Header="RACE FLAGS" IsExpanded="False">
+
+                                <StackPanel>
+
+                                    <Grid Margin="0,0,0,10">
+
+                                        <Grid.ColumnDefinitions>
+
+                                            <ColumnDefinition Width="*"/>
+
+                                            <ColumnDefinition Width="80"/>
+
+                                        </Grid.ColumnDefinitions>
+
+                                        <ComboBox Name="CmbFlagSelector" Height="25" Margin="0,0,10,0">
+
+                                            <ComboBoxItem Content="Yellow Flag" Tag="Yellow"/>
+
+                                            <ComboBoxItem Content="Blue Flag" Tag="Blue"/>
+
+                                            <ComboBoxItem Content="Green Flag" Tag="Green"/>
+
+                                        </ComboBox>
+
+                                        <ToggleButton Name="BtnTestFlag" Grid.Column="1" Content="TEST" Style="{StaticResource ActiveToggleStyle}"/>
+
+                                    </Grid>
+
+
+
+                                    <StackPanel Name="PnlFlagControls">
+
+                                        <TextBlock Text="ZONE A (PRIMARY)" Foreground="{StaticResource Brush_Accent}" FontSize="10" FontWeight="Bold"/>
+
+                                        <Grid Margin="0,5">
+
+                                            <Grid.ColumnDefinitions>
+
+                                                <ColumnDefinition Width="60"/>
+
+                                                <ColumnDefinition Width="*"/>
+
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Text="Start LED:" Foreground="Gray" VerticalAlignment="Center"/>
+
+                                            <TextBox Name="TxtFlagA_Start" Grid.Column="1" Background="#222" Foreground="White" TextAlignment="Center"/>
+
+                                        </Grid>
+
+                                        <Grid Margin="0,0,0,10">
+
+                                            <Grid.ColumnDefinitions>
+
+                                                <ColumnDefinition Width="60"/>
+
+                                                <ColumnDefinition Width="*"/>
+
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Text="Count:" Foreground="Gray" VerticalAlignment="Center"/>
+
+                                            <TextBox Name="TxtFlagA_Count" Grid.Column="1" Background="#222" Foreground="White" TextAlignment="Center"/>
+
+                                        </Grid>
+
+
+
+                                        <CheckBox Name="ChkFlagB_Enable" Content="ENABLE ZONE B" Foreground="{StaticResource Brush_Accent}" FontSize="10" FontWeight="Bold" Margin="0,0,0,5"/>
+
+                                        <StackPanel Name="PnlFlagZoneB">
+
+                                            <Grid Margin="0,5">
+
+                                                <Grid.ColumnDefinitions>
+
+                                                    <ColumnDefinition Width="60"/>
+
+                                                    <ColumnDefinition Width="*"/>
+
+                                                </Grid.ColumnDefinitions>
+
+                                                <TextBlock Text="Start LED:" Foreground="Gray" VerticalAlignment="Center"/>
+
+                                                <TextBox Name="TxtFlagB_Start" Grid.Column="1" Background="#222" Foreground="White" TextAlignment="Center"/>
+
+                                            </Grid>
+
+                                            <Grid Margin="0,0,0,10">
+
+                                                <Grid.ColumnDefinitions>
+
+                                                    <ColumnDefinition Width="60"/>
+
+                                                    <ColumnDefinition Width="*"/>
+
+                                                </Grid.ColumnDefinitions>
+
+                                                <TextBlock Text="Count:" Foreground="Gray" VerticalAlignment="Center"/>
+
+                                                <TextBox Name="TxtFlagB_Count" Grid.Column="1" Background="#222" Foreground="White" TextAlignment="Center"/>
+
+                                            </Grid>
+
+                                        </StackPanel>
+
+
+
+                                        <Grid>
+
+                                            <Grid.ColumnDefinitions>
+
+                                                <ColumnDefinition Width="*"/>
+
+                                                <ColumnDefinition Width="*"/>
+
+                                            </Grid.ColumnDefinitions>
+
+                                            <CheckBox Name="ChkFlagBlink" Grid.Column="0" Content="BLINKING" Foreground="White" VerticalAlignment="Center"/>
+
+                                            <StackPanel Name="PnlFlagBlinkRate" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+
+                                                <TextBlock Text="Speed (ms): " Foreground="Gray" VerticalAlignment="Center"/>
+
+                                                <TextBox Name="TxtFlagBlinkMs" Width="40" Background="#222" Foreground="White" TextAlignment="Center"/>
+
+                                            </StackPanel>
+
+                                        </Grid>
+
+                                    </StackPanel>
+
+                                </StackPanel>
+
+                            </Expander>
+
+
+
+                            <Expander Header="CAR SYSTEMS (ABS/TC)" IsExpanded="False">
+
+                                <StackPanel>
+
+                                    <Grid Margin="0,0,0,10">
+
+                                        <Grid.ColumnDefinitions>
+
+                                            <ColumnDefinition Width="*"/>
+
+                                            <ColumnDefinition Width="80"/>
+
+                                        </Grid.ColumnDefinitions>
+
+                                        <ComboBox Name="CmbCarSysSelector" Height="25" Margin="0,0,10,0">
+
+                                            <ComboBoxItem Content="ABS Active" Tag="ABS"/>
+
+                                            <ComboBoxItem Content="TC Active" Tag="TC"/>
+
+                                            <ComboBoxItem Content="Pit Limiter" Tag="Pit"/>
+
+                                        </ComboBox>
+
+                                        <ToggleButton Name="BtnTestCar" Grid.Column="1" Content="TEST" Style="{StaticResource ActiveToggleStyle}"/>
+
+                                    </Grid>
+
+
+
+                                    <StackPanel Name="PnlCarSysControls">
+
+                                        <TextBlock Text="ZONE A (PRIMARY)" Foreground="{StaticResource Brush_Accent}" FontSize="10" FontWeight="Bold"/>
+
+                                        <Grid Margin="0,5">
+
+                                            <Grid.ColumnDefinitions>
+
+                                                <ColumnDefinition Width="60"/>
+
+                                                <ColumnDefinition Width="*"/>
+
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Text="Start LED:" Foreground="Gray" VerticalAlignment="Center"/>
+
+                                            <TextBox Name="TxtCarA_Start" Grid.Column="1" Background="#222" Foreground="White" TextAlignment="Center"/>
+
+                                        </Grid>
+
+                                        <Grid Margin="0,0,0,10">
+
+                                            <Grid.ColumnDefinitions>
+
+                                                <ColumnDefinition Width="60"/>
+
+                                                <ColumnDefinition Width="*"/>
+
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Text="Count:" Foreground="Gray" VerticalAlignment="Center"/>
+
+                                            <TextBox Name="TxtCarA_Count" Grid.Column="1" Background="#222" Foreground="White" TextAlignment="Center"/>
+
+                                        </Grid>
+
+
+
+                                        <CheckBox Name="ChkCarB_Enable" Content="ENABLE ZONE B" Foreground="{StaticResource Brush_Accent}" FontSize="10" FontWeight="Bold" Margin="0,0,0,5"/>
+
+                                        <StackPanel Name="PnlCarZoneB">
+
+                                            <Grid Margin="0,5">
+
+                                                <Grid.ColumnDefinitions>
+
+                                                    <ColumnDefinition Width="60"/>
+
+                                                    <ColumnDefinition Width="*"/>
+
+                                                </Grid.ColumnDefinitions>
+
+                                                <TextBlock Text="Start LED:" Foreground="Gray" VerticalAlignment="Center"/>
+
+                                                <TextBox Name="TxtCarB_Start" Grid.Column="1" Background="#222" Foreground="White" TextAlignment="Center"/>
+
+                                            </Grid>
+
+                                            <Grid Margin="0,0,0,10">
+
+                                                <Grid.ColumnDefinitions>
+
+                                                    <ColumnDefinition Width="60"/>
+
+                                                    <ColumnDefinition Width="*"/>
+
+                                                </Grid.ColumnDefinitions>
+
+                                                <TextBlock Text="Count:" Foreground="Gray" VerticalAlignment="Center"/>
+
+                                                <TextBox Name="TxtCarB_Count" Grid.Column="1" Background="#222" Foreground="White" TextAlignment="Center"/>
+
+                                            </Grid>
+
+                                        </StackPanel>
+
+
+
+                                        <Grid>
+
+                                            <Grid.ColumnDefinitions>
+
+                                                <ColumnDefinition Width="*"/>
+
+                                                <ColumnDefinition Width="*"/>
+
+                                            </Grid.ColumnDefinitions>
+
+                                            <StackPanel Grid.Column="0">
+
+                                                <CheckBox Name="ChkCarBlink" Content="BLINKING" Foreground="White" Margin="0,0,0,5"/>
+
+                                                <StackPanel Orientation="Horizontal">
+
+                                                    <Button Name="BtnCarColor" Content="COLOR 1" Height="20" Width="50" Background="#333" Foreground="White" FontWeight="Bold" FontSize="9" Margin="0,0,5,0"/>
+
+                                                    <Button Name="BtnCarColor2" Content="COLOR 2" Height="20" Width="50" Background="#333" Foreground="White" FontWeight="Bold" FontSize="9" Visibility="Collapsed"/>
+
+                                                </StackPanel>
+
+                                            </StackPanel>
+
+                                            <StackPanel Name="PnlCarBlinkRate" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+
+                                                <TextBlock Text="Speed (ms): " Foreground="Gray" VerticalAlignment="Center"/>
+
+                                                <TextBox Name="TxtCarBlinkMs" Width="40" Background="#222" Foreground="White" TextAlignment="Center"/>
+
+                                            </StackPanel>
+
+                                        </Grid>
+
+                                    </StackPanel>
+
+                                </StackPanel>
+
+                            </Expander>
+
+
+
+                        </StackPanel>
+
+                    </ScrollViewer>
+
+                </Grid>
+
+            </TabItem>
+
+
+
+            <TabItem Header="DEBUG">
+
+                <ScrollViewer Margin="10" VerticalScrollBarVisibility="Auto">
+
+                    <StackPanel>
+
+                        <!-- Titolo e Spiegazione -->
+
+                        <TextBlock Text="LOG MANAGER SETTINGS" FontWeight="Bold" FontSize="16" Foreground="#CF1020" Margin="0,0,0,10"/>
+
+                        <TextBlock Text="Attiva gli interruttori per isolare e registrare i dati nel file CSV. Ricordati di disattivarli quando non fai debugging per mantenere i file puliti e ottimizzare le risorse." 
+
+                                   TextWrapping="Wrap" Margin="0,0,0,15" Foreground="LightGray"/>
+
+
+
+                        <!-- Contenitore delle Checkbox -->
+
+                        <Border BorderBrush="#444" BorderThickness="1" Padding="15" CornerRadius="5" Background="#111">
+
+                            <StackPanel>
+
+                                <CheckBox x:Name="ChkLogSystem" Content="Abilita Log System (Inizializzazioni, caricamenti e stati generali del plugin)" Margin="0,5" Foreground="White"/>
+
+                                <CheckBox x:Name="ChkLogFuel" Content="Abilita Log Fuel (Consumi sul giro, ricalcoli delta, step carburante)" Margin="0,5" Foreground="White"/>
+
+                                <CheckBox x:Name="ChkLogStrategy" Content="Abilita Log Strategy (Passo giocatore, calcolo Undercut, gap dinamico)" Margin="0,5" Foreground="White"/>
+
+                                <CheckBox x:Name="ChkLogRadar" Content="Abilita Log Pit Radar (Ingressi/Uscite pitlane, calibrazione fuel rate e gomme)" Margin="0,5" Foreground="White"/>
+
+                                <CheckBox x:Name="ChkLogOpponents" Content="Abilita Log Opponents (Geofence pitlane, calcolo baseline e degrado avversari)" Margin="0,5" Foreground="White"/>
+
+                                <CheckBox x:Name="ChkLogMicrosector" Content="Abilita Log Microsector (Fase 2: velocità medie best/drop, normalized times, diagnosi)" Margin="0,5" Foreground="White"/>
+
+                                <CheckBox x:Name="ChkLogWeather" Content="Abilita Log Weather (Fase 3: umidità, pressione barometrica, stato IsTrackWet e previsioni)" Margin="0,5" Foreground="White"/>
+
+                                <CheckBox x:Name="ChkLogHardware" Content="Abilita Log Hardware (Comandi input e seriali)" Margin="0,5" Foreground="White"/>
+
+                                <CheckBox x:Name="ChkLogVoice" Content="Abilita Log Voice Engineer (Messaggi generati, chiavi vocali e parlato)" Margin="0,5" Foreground="White"/>
+
+                                <CheckBox x:Name="ChkLogMergeGap" Content="Abilita Log MergeGap Monitor (File dedicato ogni 10s: distacco fisico, pit loss, gap target)" Margin="0,5" Foreground="White"/>
+
+                            </StackPanel>
+
+                        </Border>
+
+                        <!-- Sezione Unit Testing e Validazione Strategia -->
+                        <TextBlock Text="UNIT TESTING &amp; STRATEGY VALIDATION" FontWeight="Bold" FontSize="16" Foreground="#CF1020" Margin="0,20,0,10"/>
+
+                        <Border BorderBrush="#444" BorderThickness="1" Padding="15" CornerRadius="5" Background="#111">
+                            <StackPanel>
+                                <TextBlock Text="Esegui istantaneamente la suite di test automatici C# per validare tutti i calcoli matematici di MergeGap, Pit Loss e strategie di gara." Foreground="LightGray" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="BtnRunUnitTests" Content="ESEGUI UNIT TESTS STRATEGIA" Height="30" Padding="15,0" Background="#CF1020" Foreground="White" FontWeight="Bold" Click="BtnRunUnitTests_Click"/>
+                                    <TextBlock x:Name="TxtUnitTestStatus" Text="" Foreground="#4CAF50" VerticalAlignment="Center" Margin="15,0,0,0" FontWeight="Bold" FontSize="12"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+
+
+                        <!-- Placeholder per il Live Overlay che abbiamo discusso -->
+
+                        <TextBlock Text="LIVE DEBUG OVERLAY" FontWeight="Bold" FontSize="16" Foreground="#CF1020" Margin="0,25,0,10"/>
+
+                        <Border BorderBrush="#444" BorderThickness="1" Padding="15" CornerRadius="5" Background="#050505">
+
+                            <TextBlock Text="Questa sezione ospiterà i dati grezzi in tempo reale, per farti analizzare le variabili matematiche direttamente qui su SimHub mentre sei in pista." 
+
+                                       Foreground="Gray" FontStyle="Italic" TextWrapping="Wrap"/>
+
+                        </Border>
+
+                    </StackPanel>
+
+                </ScrollViewer>
+
+            </TabItem>
+
+
+
+            <TabItem Header="WORKSHOP">
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+
+                    <StackPanel Margin="20">
+
+                        <TextBlock Text="SIMRIG WORKSHOP" Foreground="White" FontSize="24" FontWeight="Bold" Margin="0,0,0,20"/>
+
+
+
+                        <Border Style="{StaticResource CardStyle}" BorderBrush="{StaticResource Brush_Error}" BorderThickness="1">
+
+                            <StackPanel>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+
+                                    <Ellipse Width="15" Height="15" Fill="{StaticResource Brush_Error}" Margin="0,0,10,0"/>
+
+                                    <TextBlock Text="RISOLUZIONE PROBLEMI DI CONNESSIONE" Foreground="{StaticResource Brush_Error}" FontWeight="Bold" FontSize="16"/>
+
+                                </StackPanel>
+
+                                <TextBlock Text="Se i dispositivi risultano 'DISCONNECTED' o lo Scan fallisce:" Foreground="White" FontWeight="Bold" Margin="0,0,0,5"/>
+
+                                <TextBlock Text="1. Disabilita il plugin Arduino nativo di SimHub per queste porte." Foreground="{StaticResource Brush_TextMuted}" TextWrapping="Wrap"/>
+
+                                <TextBlock Text="2. Chiudi Arduino IDE o altri software che usano le porte seriali." Foreground="{StaticResource Brush_TextMuted}" TextWrapping="Wrap"/>
+
+                                <TextBlock Text="3. Premi nuovamente 'SCAN DEVICES' dopo qualche secondo." Foreground="{StaticResource Brush_TextMuted}" TextWrapping="Wrap" Margin="0,0,0,15"/>
+
+                            </StackPanel>
+
+                        </Border>
+
+
+
+                        <TextBlock Text="GUIDE &amp; CALIBRAZIONE" Foreground="White" FontSize="20" FontWeight="Bold" Margin="0,20,0,15"/>
+
+
+
+                        <Expander Margin="0,0,0,10" Foreground="White">
+
+                            <Expander.Header>
+
+                                <TextBlock Text="Come Calibrare le Frizioni" Foreground="White" FontWeight="SemiBold"/>
+
+                            </Expander.Header>
+
+                            <StackPanel Margin="20,10,0,10">
+
+                                <TextBlock Text="1. Ruota il Rotary Centrale sulla posizione 'Clutch Calibration'." Foreground="{StaticResource Brush_TextMuted}"/>
+
+                                <TextBlock Text="2. Segui le istruzioni a schermo su SimHub." Foreground="{StaticResource Brush_TextMuted}"/>
+
+                                <TextBlock Text="3. Premi a fondo e rilascia entrambe le leve." Foreground="{StaticResource Brush_TextMuted}"/>
+
+                                <TextBlock Text="4. Premi SAVE sul volante." Foreground="{StaticResource Brush_TextMuted}"/>
+
+                            </StackPanel>
+
+                        </Expander>
+
+                    </StackPanel>
+
+                </ScrollViewer>
+
+            </TabItem>
+
+            <TabItem Header="UNITS">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="20">
+                        <TextBlock Text="MEASUREMENT UNITS" Foreground="White" FontSize="24" FontWeight="Bold" Margin="0,0,0,20"/>
+                        <Border Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="DISPLAY PREFERENCES" Foreground="{StaticResource Brush_TextPrimary}" FontWeight="Bold" Margin="0,0,0,15"/>
+
+                                <!-- Speed Unit -->
+                                <Grid Margin="0,0,0,15">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="200"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Speed Unit" VerticalAlignment="Center" Foreground="{StaticResource Brush_TextMuted}"/>
+                                    <ComboBox Grid.Column="1" Name="CmbSpeedUnit" Height="30">
+                                        <ComboBoxItem Content="Kilometers per Hour (km/h)" Tag="kmh"/>
+                                        <ComboBoxItem Content="Miles per Hour (mph)" Tag="mph"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <!-- Temperature Unit -->
+                                <Grid Margin="0,0,0,15">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="200"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Temperature Unit" VerticalAlignment="Center" Foreground="{StaticResource Brush_TextMuted}"/>
+                                    <ComboBox Grid.Column="1" Name="CmbTempUnit" Height="30">
+                                        <ComboBoxItem Content="Celsius (°C)" Tag="C"/>
+                                        <ComboBoxItem Content="Fahrenheit (°F)" Tag="F"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <!-- Pressure Unit -->
+                                <Grid Margin="0,0,0,15">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="200"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Pressure Unit" VerticalAlignment="Center" Foreground="{StaticResource Brush_TextMuted}"/>
+                                    <ComboBox Grid.Column="1" Name="CmbPressureUnit" Height="30">
+                                        <ComboBoxItem Content="Bar (bar)" Tag="bar"/>
+                                        <ComboBoxItem Content="Kilopascal (kPa)" Tag="kpa"/>
+                                        <ComboBoxItem Content="Pounds per Square Inch (psi)" Tag="psi"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <!-- Warning Notice for In-Game Units Sync -->
+                                <Border Background="#1F2A38" BorderBrush="#00E5FF" BorderThickness="1" CornerRadius="6" Padding="12,10" Margin="0,5,0,15">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="⚠️ " FontSize="14" VerticalAlignment="Center"/>
+                                        <TextBlock Text="NOTA IMPORTANTE: Assicurati che l'unità di misura della pressione selezionata qui coincida con quella configurata nelle opzioni di iRacing / in-game per la corretta applicazione delle macro nei pit stop." 
+                                                   TextWrapping="Wrap" Foreground="#E0E0E0" FontSize="11" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+        </TabControl>
+
+    </Grid>
+
+</UserControl>
+

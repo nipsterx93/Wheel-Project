@@ -1,0 +1,10 @@
+namespace SimRIG;
+
+public enum CalibrationMode
+{
+	None,
+	SplashAndDash,
+	TyreChange,
+	DriveThrough,
+	StopAndGo
+}

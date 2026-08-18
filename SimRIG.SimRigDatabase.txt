@@ -1,0 +1,12 @@
+using System.Collections.Generic;
+
+namespace SimRIG;
+
+public class SimRigDatabase
+{
+	public List<TrackRecord> Tracks { get; set; } = new List<TrackRecord>();
+
+
+	public List<ClassRecord> Classes { get; set; } = new List<ClassRecord>();
+
+}

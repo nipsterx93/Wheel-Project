@@ -1,0 +1,161 @@
+namespace SimRIG;
+
+public class TrackRecord
+{
+	public string TrackClassID { get; set; }
+
+	public string TrackID { get; set; }
+
+	public string CarClass { get; set; }
+
+	public double PitTransitTime { get; set; }
+
+	public double PitDriveThroughTime { get; set; }
+
+	public double PitDistanceMeters { get; set; }
+
+	public double PitInOutAccDecTime { get; set; }
+
+	public bool PlayerRecordSet { get; set; }
+
+	public double PitEntryPct { get; set; } = -1.0;
+
+
+	public double PitExitPct { get; set; } = -1.0;
+
+
+	public double ExclusionMargin { get; set; } = 0.05;
+
+
+	public double ExtendedPitEntryPct
+	{
+		get
+		{
+			if (!HasValidCleanSectorBounds())
+			{
+				return -1.0;
+			}
+			double num = PitEntryPct - ExclusionMargin;
+			if (num < 0.0)
+			{
+				num += 1.0;
+			}
+			return num;
+		}
+	}
+
+	public double ExtendedPitExitPct
+	{
+		get
+		{
+			if (!HasValidCleanSectorBounds())
+			{
+				return -1.0;
+			}
+			double num = PitExitPct + ExclusionMargin;
+			if (num >= 1.0)
+			{
+				num -= 1.0;
+			}
+			return num;
+		}
+	}
+
+	public bool HasValidCleanSectorBounds()
+	{
+		if (PitEntryPct != -1.0)
+		{
+			return PitExitPct != -1.0;
+		}
+		return false;
+	}
+
+	public bool IsInPitLaneZone(double pos)
+	{
+		if (!HasValidCleanSectorBounds())
+		{
+			return false;
+		}
+		if (PitEntryPct < PitExitPct)
+		{
+			if (pos >= PitEntryPct)
+			{
+				return pos <= PitExitPct;
+			}
+			return false;
+		}
+		if (!(pos >= PitEntryPct))
+		{
+			return pos <= PitExitPct;
+		}
+		return true;
+	}
+
+	public bool IsInExtendedPitLaneZone(double pos)
+	{
+		if (!HasValidCleanSectorBounds())
+		{
+			return false;
+		}
+		double num = PitEntryPct - ExclusionMargin;
+		if (num < 0.0)
+		{
+			num += 1.0;
+		}
+		double num2 = PitExitPct + ExclusionMargin;
+		if (num2 >= 1.0)
+		{
+			num2 -= 1.0;
+		}
+		if (num < num2)
+		{
+			if (pos >= num)
+			{
+				return pos <= num2;
+			}
+			return false;
+		}
+		if (!(pos >= num))
+		{
+			return pos <= num2;
+		}
+		return true;
+	}
+
+	public bool IsInExtendedSectorRacingZone(double pos)
+	{
+		if (!HasValidCleanSectorBounds())
+		{
+			return false;
+		}
+		return !IsInExtendedPitLaneZone(pos);
+	}
+
+	public double GetExtendedSectorRacingZoneWeight()
+	{
+		if (!HasValidCleanSectorBounds())
+		{
+			return 1.0;
+		}
+		double num = PitExitPct + ExclusionMargin;
+		if (num >= 1.0)
+		{
+			num -= 1.0;
+		}
+		double num2 = PitEntryPct - ExclusionMargin;
+		if (num2 < 0.0)
+		{
+			num2 += 1.0;
+		}
+		double num3 = num2 - num;
+		if (num3 <= 0.0)
+		{
+			num3 += 1.0;
+		}
+		if (num3 < 0.1)
+		{
+			num3 = 0.1;
+		}
+		return num3;
+	}
+}
