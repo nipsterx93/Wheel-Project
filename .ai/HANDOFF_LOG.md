@@ -46,7 +46,10 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 **Task:** fix del logging strategico emerso dal replay `20260818_213214`
 **Piano:** —
-**Commit:** `37bd42a` (lock) · `<fix>` · `<release>`
+**Commit:** `37bd42a` (lock) · `e711e37` (fix + rilascio lock)
+
+> Nota di protocollo: il rilascio del lock è finito **dentro** il commit di fix invece che in un
+> commit dedicato. Deviazione mia, non del protocollo — la prossima volta due commit separati.
 
 ### Causa reale, più profonda dell'ipotesi iniziale
 
