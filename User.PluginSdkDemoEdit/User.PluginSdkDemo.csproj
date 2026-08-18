@@ -69,15 +69,15 @@
     </Reference>
     <Reference Include="Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>E:\SimHub\Newtonsoft.Json.dll</HintPath>
+      <HintPath>$(SIMHUB_INSTALL_PATH)Newtonsoft.Json.dll</HintPath>
     </Reference>
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
     <Reference Include="SharpDX">
-      <HintPath>E:\SimHub\SharpDX.dll</HintPath>
+      <HintPath>$(SIMHUB_INSTALL_PATH)SharpDX.dll</HintPath>
     </Reference>
     <Reference Include="SharpDX.DirectInput">
-      <HintPath>E:\SimHub\SharpDX.DirectInput.dll</HintPath>
+      <HintPath>$(SIMHUB_INSTALL_PATH)SharpDX.DirectInput.dll</HintPath>
     </Reference>
     <Reference Include="SimHub.Logging, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>

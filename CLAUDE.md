@@ -33,8 +33,7 @@ Ogni build **installa** il plugin nel SimHub reale. Conseguenze:
 
 ## Test
 
-Runner console custom (`TestRunner.cs`), **non** NUnit/xUnit. Il progetto di test **non è nella
-solution**: va buildato esplicitamente.
+Runner console custom (`TestRunner.cs`), **non** NUnit/xUnit. Il progetto di test è incluso nella solution `User.PluginSdkDemo.sln` (quindi viene compilato automaticamente con la build principale), oppure può essere compilato singolarmente:
 
 ```bash
 "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/User.PluginSdkDemo.Tests.csproj" -p:Configuration=Debug -v:minimal -nologo
