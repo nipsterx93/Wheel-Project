@@ -46,7 +46,7 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 **Task:** RelativeGapDelta (s/macrosettore) affiancato a RelativePace + SessionTime guida nell'event log
 **Piano:** —
-**Commit:** `981e4d2` (lock) · `<fix>` · `<release>`
+**Commit:** `981e4d2` (lock) · `6f0c0ec` (feat) · rilascio in commit dedicato
 
 ### 1. SessionTime come base temporale guida dell'event log
 
