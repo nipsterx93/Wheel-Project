@@ -8,12 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      claude        # NONE | antigravity | claude | codex | human
-since:      2026-08-18T22:05:00Z
-task:       Fix logging strategico — payload `data` perso nell'event log, header mai scritti
-scope:      LogManager.cs, TargetStrategyManager.cs (solo sanitizzazione campo CSV),
-            User.PluginSdkDemo.Tests/**, .ai/**
-expires:    2026-08-19T03:00:00Z
+owner:      NONE          # NONE | antigravity | claude | codex | human
+since:      2026-08-18T22:15:00Z
+task:       —
+scope:      —
+expires:    —
 ```
 
 **Regole del lock**

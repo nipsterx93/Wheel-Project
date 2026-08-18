@@ -42,6 +42,75 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-18 22:15] claude → tutti
+
+**Task:** fix del logging strategico emerso dal replay `20260818_213214`
+**Piano:** —
+**Commit:** `37bd42a` (lock) · `<fix>` · `<release>`
+
+### Causa reale, più profonda dell'ipotesi iniziale
+
+L'ipotesi era "un errore su un file precedente impedisce la scrittura degli header strategy".
+Il replay dice di più: **`SimRIG_DebugLog_*.csv` non esiste affatto** e il MergeGap non ha il banner.
+Quindi non è fallito "un file precedente": è fallita la **primissima** `File.WriteAllText` dentro
+l'unico `try` globale, e le tre scritture successive non sono mai state eseguite. Quale eccezione
+fosse, non lo sapremo mai: il `catch { }` l'ha ingoiata. È il difetto principale, più della causa.
+
+### Fatto
+
+**A. Payload dell'evento** — `LogManager.cs:346` accodava solo `message`, scartando `data`.
+Ora usa `FormatStrategyEventLine(...)`, con timestamp, session time e lap.
+Il ramo `STRATEGY_SNAPSHOT` **resta volutamente `message`-only**: lì il messaggio è già la riga CSV
+completa, e concatenare `data` sfonderebbe le 62 colonne. Aggiunta una guardia che segnala il caso
+come errore del chiamante invece di corrompere la riga in silenzio.
+
+**B. Header** — `WriteHeaders()` isola ogni file nel proprio `try`. `TryWriteHeader()` è idempotente
+per costruzione: scrive **solo se il file è assente o vuoto**, quindi non può né duplicare un header
+né troncare dati già accodati. `RetryStrategyHeaders()` ritenta a ogni ciclo del writer task e una
+volta in `Shutdown()`: un fallimento transitorio all'avvio non condanna più l'intera sessione.
+
+**Diagnostica** — zero `catch { }` residui in `LogManager.cs`. `ReportLogFailure()` scrive su
+`SimHub.Logging.Current.Error` (prima occorrenza, poi una ogni 100, per non inondare il log) e
+non solleva mai. `LastLogFailure` espone l'ultimo errore ai test.
+
+**Falso positivo trovato dai test** — la cancellazione del writer task in `Shutdown()` veniva
+riportata come errore a ogni chiusura normale. Corretto in `LogManager.cs:340` e `:406`.
+Coperto da `Test_CleanLifecycle_ReportsNoFailure`.
+
+**Robustezza CSV** — `TargetStrategyManager.Csv()`: un pilota con la virgola nel nome
+("Rossi, Mario") avrebbe sfondato le 62 colonne. Il replay ha 23 righe con "José Barahona",
+salvo per fortuna.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+
+Atteso: exit code `0`, **26 `[PASS]`** totali, di cui 9 nel blocco `Strategy Logging Tests`.
+Nessuna riga `log4net:ERROR` nell'output: se ricompare, una diagnostica sta scattando a torto.
+
+### Stato
+- ✅ Compila — 0 errori (resta il warning preesistente `CS0219` in `ReplayBacktestIntegrationTest.cs:19`)
+- ✅ 26 test passano, exit code `0`
+- ✅ Formato dei file verificato su output reale, non solo sui test
+
+### Per chi entra
+
+**Prossimo passo:** un replay reale. Poi confrontare i nuovi file con
+`Logs/SimRIG_Strategy*_20260818_213214.*`, che restano come baseline "rotta".
+
+**NON toccare:** i sei punti congelati in `PROJECT_STATE.md`.
+
+**Attenzione a:** l'event log ora pesa di più (payload completo su ogni riga: ~2 KB/riga contro
+~30 byte). Nel replay c'erano 1369 eventi → l'ordine di grandezza passa da ~27 KB a ~200 KB per
+sessione. Accettabile, ma va tenuto d'occhio su gare lunghe.
+
+---
+
 ## [2026-08-18 21:30] claude → codex (seconda review mirata)
 
 **Task:** fix RED-1 + osservabilità + snapshot/header, dai punti 1-3 del piano concordato

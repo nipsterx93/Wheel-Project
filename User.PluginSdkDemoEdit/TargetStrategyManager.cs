@@ -213,6 +213,13 @@ namespace SimRIG
         private static string F3(double v) { return v.ToString("F3", CultureInfo.InvariantCulture); }
         private static string I(int v) { return v.ToString(CultureInfo.InvariantCulture); }
         private static string B(bool v) { return v ? "True" : "False"; }
+
+        /// <summary>Un nome pilota con la virgola ("Rossi, Mario") sfonderebbe le colonne del CSV.</summary>
+        private static string Csv(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return string.Empty;
+            return text.Replace(',', ' ').Replace('\r', ' ').Replace('\n', ' ');
+        }
         private static double W(double[] array, int index)
         {
             return (array != null && index < array.Length) ? array[index] : 0.0;
@@ -826,7 +833,7 @@ namespace SimRIG
                         string[] snapFields =
                         {
                             // --- contesto ---
-                            F3(state.SessionTimeLeftSec), I(myLap), I(macroSector), CurrentTarget.Name,
+                            F3(state.SessionTimeLeftSec), I(myLap), I(macroSector), Csv(CurrentTarget.Name),
                             F3(CurrentTarget.SignedGapSeconds), B(pInPit), B(targetIsInPit), F1(raceResult.RaceLapsRemaining),
                             // --- RelativePace: intermedi ricostruibili (spec §32) ---
                             F3(_lastPaceSample.PreviousGap), F3(_lastPaceSample.DeltaGap), F3(_lastPaceSample.DeltaTime),

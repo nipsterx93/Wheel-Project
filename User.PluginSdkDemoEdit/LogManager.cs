@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------
 using System;
 using System.IO;
+using System.Linq;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using System.Threading;
@@ -69,6 +70,22 @@ namespace SimRIG
         private Task _writerTask;
         private SessionState _sessionState;
 
+        public const string StrategyEngineVersion = "1.1.0";
+
+        // Stato degli header: se una scrittura fallisce all'avvio si riprova, ma solo finché
+        // il file è ancora vuoto (vedi TryWriteHeader).
+        private bool _debugHeaderOk;
+        private bool _mergeGapHeaderOk;
+        private bool _snapshotHeaderOk;
+        private bool _eventHeaderOk;
+
+        private readonly ConcurrentDictionary<string, int> _failureCounts = new ConcurrentDictionary<string, int>();
+
+        /// <summary>Ultimo errore di scrittura registrato, o null. Diagnostica leggibile dai test.</summary>
+        public string LastLogFailure { get; private set; }
+
+        public bool StrategyHeadersWritten { get { return _snapshotHeaderOk && _eventHeaderOk; } }
+
         // Interruttori di debug collegati alla UI
         public bool EnableLogFuel { get; set; } = false;
         public bool EnableLogStrategy { get; set; } = false;
@@ -81,13 +98,17 @@ namespace SimRIG
         public bool EnableLogVoice { get; set; } = true;
         public bool EnableLogMergeGap { get; set; } = true;
 
-        public LogManager(SessionState state)
+        /// <param name="logDirectoryOverride">
+        /// Solo per i test: reindirizza i log in una cartella temporanea. In produzione resta null
+        /// e si usa <c>{BaseDirectory}\Logs\SimRig Logs</c>.
+        /// </param>
+        public LogManager(SessionState state, string logDirectoryOverride = null)
         {
             _sessionState = state;
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
 
-            // Creazione della cartella Logs/SimRig Logs se non esiste
-            string logDir = Path.Combine(baseDir, "Logs", "SimRig Logs");
+            string logDir = logDirectoryOverride
+                ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs", "SimRig Logs");
+
             if (!Directory.Exists(logDir))
             {
                 Directory.CreateDirectory(logDir);
@@ -99,41 +120,148 @@ namespace SimRIG
             _strategySnapshotLogFilePath = Path.Combine(logDir, $"SimRIG_StrategySnapshot_{dateStr}.csv");
             _strategyEventLogFilePath = Path.Combine(logDir, $"SimRIG_StrategyEvent_{dateStr}.txt");
 
-            WriteHeader();
+            WriteHeaders();
             StartWriterTask();
         }
 
-        private void WriteHeader()
+        /// <summary>
+        /// Parametri di modello in testa a entrambi i file strategy. Le costanti del RelativePace
+        /// sono lette dalle definizioni reali: se qualcuno cambia Alpha nel tracker, l'header lo segue.
+        /// Funzione pura, senza I/O, così i test possono verificarla senza toccare il filesystem.
+        /// </summary>
+        public static string BuildModelParamsHeader()
+        {
+            var c = System.Globalization.CultureInfo.InvariantCulture;
+            return "# StrategyEngineVersion=" + StrategyEngineVersion + "\n" +
+                   "# RelativePaceAlpha=" + RelativePaceTracker.Alpha.ToString(c) + "\n" +
+                   "# RelativePaceBeta=" + RelativePaceTracker.Beta.ToString(c) + "\n" +
+                   "# RelativePaceClamp=" + RelativePaceTracker.ClampLimit.ToString(c) + "\n" +
+                   "# MinimumDeltaTime=" + RelativePaceTracker.MinimumDeltaTime.ToString(c) + "\n" +
+                   "# PitDecisionBuffer=0.8\n" +
+                   "# MaxUndercutReactionWindow=1.0\n" +
+                   "# WarmupThreshold=0.10\n" +
+                   "# FuelReserve=0.4\n" +
+                   "# UndercutPositionThreshold=-0.5\n" +
+                   "# TargetPittedRecentlyThreshold=2.0\n" +
+                   "# MinimumOvercutStay=0.5\n" +
+                   "# MinimumRaceLapsRemaining=2.0\n";
+        }
+
+        /// <summary>
+        /// Una riga di Strategy Event autoesplicativa:
+        /// <c>HH:mm:ss.fff | sessionTime | lap | EVENT_NAME | payload</c>.
+        /// Funzione pura per renderla testabile senza filesystem né SessionState.
+        /// </summary>
+        public static string FormatStrategyEventLine(string timestamp, string sessionTime, string lap,
+                                                     string message, string data)
+        {
+            string line = timestamp + " | " + sessionTime + " | " + lap + " | " + Flatten(message);
+            string payload = Flatten(data);
+            if (payload.Length > 0) line += " | " + payload;
+            return line;
+        }
+
+        private string CurrentSessionTimeText()
+        {
+            return _sessionState != null
+                ? _sessionState.SessionTimeLeftSec.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
+                : "0.0";
+        }
+
+        private string CurrentLapText()
+        {
+            return _sessionState != null
+                ? _sessionState.CurrentLap.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : "0";
+        }
+
+        /// <summary>Rimuove i ritorni a capo: una riga di log deve restare una riga sola.</summary>
+        private static string Flatten(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return string.Empty;
+            return value.Replace("\r", string.Empty).Replace("\n", " ").Trim();
+        }
+
+        /// <summary>
+        /// Scrive gli header. Ogni file è isolato: il fallimento di uno non può impedire agli altri
+        /// di essere scritti. Era esattamente il difetto che lasciava snapshot ed event senza header
+        /// perché la prima WriteAllText falliva dentro un unico try globale.
+        /// </summary>
+        private void WriteHeaders()
+        {
+            _debugHeaderOk = TryWriteHeader(_logFilePath,
+                "Timestamp;SessionTime;Lap;Type;Module;Message;Data\n", "DebugLog");
+
+            _mergeGapHeaderOk = TryWriteHeader(_mergeGapLogFilePath,
+                "========================================================================================\n" +
+                "                 SIMRIG MERGEGAP STRATEGY MONITOR (10s DEDICATED LOG)                  \n" +
+                "========================================================================================\n\n", "MergeGapLog");
+
+            _snapshotHeaderOk = TryWriteHeader(_strategySnapshotLogFilePath,
+                BuildModelParamsHeader() + SnapshotHeader + "\n", "StrategySnapshot");
+
+            _eventHeaderOk = TryWriteHeader(_strategyEventLogFilePath,
+                BuildModelParamsHeader() +
+                "# Formato: timestamp | sessionTimeLeft | lap | EVENT | payload\n" +
+                "========================================================================================\n\n", "StrategyEvent");
+        }
+
+        /// <summary>
+        /// Idempotente per costruzione: scrive solo se il file è assente o vuoto. Non può quindi
+        /// duplicare un header né troncare dati già accodati, anche se richiamata più volte.
+        /// </summary>
+        private bool TryWriteHeader(string path, string content, string label)
         {
             try
             {
-                File.WriteAllText(_logFilePath, "Timestamp;SessionTime;Lap;Type;Module;Message;Data\n");
-                File.WriteAllText(_mergeGapLogFilePath, "========================================================================================\n" +
-                                                        "                 SIMRIG MERGEGAP STRATEGY MONITOR (10s DEDICATED LOG)                  \n" +
-                                                        "========================================================================================\n\n");
-
-                // Costanti lette dalle definizioni reali, non ricopiate a mano: se qualcuno
-                // cambia Alpha nel tracker, l'header lo segue.
-                string inv(double v) { return v.ToString(System.Globalization.CultureInfo.InvariantCulture); }
-
-                string modelParams = "# StrategyEngineVersion=1.1.0\n" +
-                                     "# RelativePaceAlpha=" + inv(RelativePaceTracker.Alpha) + "\n" +
-                                     "# RelativePaceBeta=" + inv(RelativePaceTracker.Beta) + "\n" +
-                                     "# RelativePaceClamp=" + inv(RelativePaceTracker.ClampLimit) + "\n" +
-                                     "# MinimumDeltaTime=" + inv(RelativePaceTracker.MinimumDeltaTime) + "\n" +
-                                     "# PitDecisionBuffer=0.8\n" +
-                                     "# MaxUndercutReactionWindow=1.0\n" +
-                                     "# WarmupThreshold=0.10\n" +
-                                     "# FuelReserve=0.4\n" +
-                                     "# UndercutPositionThreshold=-0.5\n" +
-                                     "# TargetPittedRecentlyThreshold=2.0\n" +
-                                     "# MinimumOvercutStay=0.5\n" +
-                                     "# MinimumRaceLapsRemaining=2.0\n";
-
-                File.WriteAllText(_strategySnapshotLogFilePath, modelParams + SnapshotHeader + "\n");
-                File.WriteAllText(_strategyEventLogFilePath, modelParams + "========================================================================================\n\n");
+                if (File.Exists(path) && new FileInfo(path).Length > 0) return true;
+                File.WriteAllText(path, content);
+                return true;
             }
-            catch { }
+            catch (Exception ex)
+            {
+                ReportLogFailure(label + " header", ex);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Nuovo tentativo di scrittura header per i soli file strategy, prima di accodare dati.
+        /// Un fallimento transitorio all'avvio non deve lasciare l'intera sessione senza header.
+        /// </summary>
+        private void RetryStrategyHeaders()
+        {
+            if (!_snapshotHeaderOk)
+                _snapshotHeaderOk = TryWriteHeader(_strategySnapshotLogFilePath,
+                    BuildModelParamsHeader() + SnapshotHeader + "\n", "StrategySnapshot");
+
+            if (!_eventHeaderOk)
+                _eventHeaderOk = TryWriteHeader(_strategyEventLogFilePath,
+                    BuildModelParamsHeader() +
+                    "# Formato: timestamp | sessionTimeLeft | lap | EVENT | payload\n" +
+                    "========================================================================================\n\n", "StrategyEvent");
+        }
+
+        /// <summary>
+        /// Diagnostica dei fallimenti di scrittura. Non solleva mai: un errore di logging non deve
+        /// propagarsi nel runtime SimHub. Segnala la prima occorrenza e poi una ogni 100, per non
+        /// inondare il log di SimHub se il problema è persistente.
+        /// </summary>
+        private void ReportLogFailure(string label, Exception ex)
+        {
+            int count = _failureCounts.AddOrUpdate(label, 1, (k, v) => v + 1);
+            LastLogFailure = $"{label}: {ex.GetType().Name} - {ex.Message}";
+
+            if (count != 1 && count % 100 != 0) return;
+
+            try
+            {
+                SimHub.Logging.Current.Error($"[SimRIG][LogManager] {LastLogFailure} (occorrenza {count})");
+            }
+            catch
+            {
+                // Nessun host SimHub (es. test runner): la diagnostica resta in LastLogFailure.
+            }
         }
 
         private void StartWriterTask()
@@ -155,7 +283,7 @@ namespace SimRIG
                                 }
                             }
                         }
-                        catch { /* Ignoriamo lock temporanei */ }
+                        catch (Exception ex) { ReportLogFailure("DebugLog write", ex); }
                     }
 
                     // 2. Scrittura log dedicato MergeGap
@@ -171,8 +299,12 @@ namespace SimRIG
                                 }
                             }
                         }
-                        catch { /* Ignoriamo lock temporanei */ }
+                        catch (Exception ex) { ReportLogFailure("MergeGapLog write", ex); }
                     }
+
+                    // Gli header strategy devono precedere qualunque dato: se la scrittura all'avvio
+                    // è fallita, si riprova finché i file sono ancora vuoti.
+                    if (!_snapshotHeaderOk || !_eventHeaderOk) RetryStrategyHeaders();
 
                     // 3. Scrittura Strategy Snapshot
                     if (!_strategySnapshotQueue.IsEmpty)
@@ -187,7 +319,7 @@ namespace SimRIG
                                 }
                             }
                         }
-                        catch { }
+                        catch (Exception ex) { ReportLogFailure("StrategySnapshot write", ex); }
                     }
 
                     // 4. Scrittura Strategy Event
@@ -203,10 +335,20 @@ namespace SimRIG
                                 }
                             }
                         }
-                        catch { }
+                        catch (Exception ex) { ReportLogFailure("StrategyEvent write", ex); }
                     }
 
-                    await Task.Delay(500, _cancellationTokenSource.Token).ConfigureAwait(false);
+                    try
+                    {
+                        await Task.Delay(500, _cancellationTokenSource.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Shutdown richiesto: uscita pulita. Lasciar propagare l'eccezione
+                        // farebbe fallire il task e trasformerebbe ogni chiusura normale
+                        // in un errore diagnostico.
+                        break;
+                    }
                 }
             }, _cancellationTokenSource.Token);
         }
@@ -222,13 +364,27 @@ namespace SimRIG
 
             if (module == LogModule.STRATEGY_SNAPSHOT)
             {
+                // Il messaggio È già la riga CSV completa: accodarci altro romperebbe
+                // l'invariante delle colonne. Se arriva un data, è un errore del chiamante.
+                if (!string.IsNullOrEmpty(data))
+                {
+                    ReportLogFailure("StrategySnapshot payload",
+                        new ArgumentException("STRATEGY_SNAPSHOT non accetta un payload data: la riga è già completa."));
+                }
                 _strategySnapshotQueue.Enqueue(message);
                 return;
             }
 
             if (module == LogModule.STRATEGY_EVENT)
             {
-                _strategyEventQueue.Enqueue(message);
+                // Il payload `data` porta reason, settore e tutti gli intermedi del tracker:
+                // senza, l'event log si riduce a un elenco di nomi evento.
+                _strategyEventQueue.Enqueue(FormatStrategyEventLine(
+                    DateTime.Now.ToString("HH:mm:ss.fff"),
+                    CurrentSessionTimeText(),
+                    CurrentLapText(),
+                    message,
+                    data));
                 return;
             }
 
@@ -243,8 +399,8 @@ namespace SimRIG
             if (module == LogModule.VOICE && !EnableLogVoice) return;
 
             string timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
-            string sessTime = _sessionState != null ? _sessionState.SessionTimeLeftSec.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) : "0.0";
-            string lap = _sessionState != null ? _sessionState.CurrentLap.ToString() : "0";
+            string sessTime = CurrentSessionTimeText();
+            string lap = CurrentLapText();
 
             string safeMessage = message.Replace(";", ",").Replace("\n", " ").Replace("\r", "");
             string safeData = data.Replace(";", ",").Replace("\n", " ").Replace("\r", "");
@@ -260,7 +416,17 @@ namespace SimRIG
             {
                 _writerTask?.Wait(1000);
             }
-            catch { }
+            catch (AggregateException ex) when (ex.InnerExceptions.All(e => e is OperationCanceledException))
+            {
+                // Chiusura normale: il writer task è stato cancellato. Non è un errore, e
+                // segnalarlo inonderebbe il log di SimHub a ogni sessione.
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { ReportLogFailure("writer shutdown", ex); }
+
+            // Ultimo tentativo per gli header: una sessione brevissima potrebbe non aver mai
+            // raggiunto un ciclo del writer task.
+            RetryStrategyHeaders();
 
             while (_logQueue.TryDequeue(out string logLine))
             {
@@ -271,7 +437,7 @@ namespace SimRIG
                         sw.WriteLine(logLine);
                     }
                 }
-                catch { }
+                catch (Exception ex) { ReportLogFailure("DebugLog flush", ex); }
             }
 
             while (_mergeGapQueue.TryDequeue(out string mergeLine))
@@ -283,7 +449,7 @@ namespace SimRIG
                         sw.WriteLine(mergeLine);
                     }
                 }
-                catch { }
+                catch (Exception ex) { ReportLogFailure("MergeGapLog flush", ex); }
             }
 
             while (_strategySnapshotQueue.TryDequeue(out string line))
@@ -295,7 +461,7 @@ namespace SimRIG
                         sw.WriteLine(line);
                     }
                 }
-                catch { }
+                catch (Exception ex) { ReportLogFailure("StrategySnapshot flush", ex); }
             }
 
             while (_strategyEventQueue.TryDequeue(out string evtLine))
@@ -307,7 +473,7 @@ namespace SimRIG
                         sw.WriteLine(evtLine);
                     }
                 }
-                catch { }
+                catch (Exception ex) { ReportLogFailure("StrategyEvent flush", ex); }
             }
         }
     }
