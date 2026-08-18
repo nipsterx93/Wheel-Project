@@ -46,7 +46,7 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 **Task:** inizializzare Git e il protocollo di collaborazione multi-AI
 **Piano:** —
-**Commit:** commit iniziale di setup
+**Commit:** `f526cb3`
 
 ### Fatto
 - `.gitignore` — regole per C#/VS/SimHub: esclusi `bin/`, `obj/`, `.vs/`, `.vscode/`, `Logs/`,
