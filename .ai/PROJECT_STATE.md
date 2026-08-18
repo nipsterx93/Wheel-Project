@@ -8,11 +8,12 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-18T22:15:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-18T22:40:00Z
+task:       RelativeGapDelta (s/macrosettore) affiancato a RelativePace + SessionTime guida nell'event log
+scope:      TargetStrategyManager.cs, LogManager.cs, DataPluginDemo.cs (solo registrazione
+            e update delle 3 nuove proprietà), User.PluginSdkDemo.Tests/**, .ai/**
+expires:    2026-08-19T04:00:00Z
 ```
 
 **Regole del lock**
