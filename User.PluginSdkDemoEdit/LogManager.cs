@@ -38,6 +38,25 @@ namespace SimRIG
     /// </summary>
     public class LogManager
     {
+        /// <summary>
+        /// Intestazione dello snapshot strategico. Quest'ordine è vincolante: deve corrispondere
+        /// esattamente all'array snapFields costruito in TargetStrategyManager.Update().
+        /// Il confronto è verificato a runtime (guardia in Update) e dai test.
+        /// </summary>
+        public static readonly string SnapshotHeader =
+            "SessionTime,Lap,MacroSector,Target,SignedGap,PlayerPit,TargetPit,RaceLapsRem," +
+            "PrevGap,DeltaGap,DeltaTime,InstantPace,RelativePace,SeqValid,InvalidReason,PitSeedPending,PostPitSeed," +
+            "PlayerFuel,TargetFuel,TargetLapsUntilPit,ReactionLaps,TargetDegPace,PlayerFreshPace,PrePitGain," +
+            "TargetPitLoss,PlayerPitLoss,NetPitAdv,PlayerWarmup,PositiveGap,UndercutAdv,UndercutMargin," +
+            "UndercutPosOK,TargetNeedsPit,UndercutFuelOK,UndercutTrafOK,UndercutMarginOK,UndercutRaceLapsOK,UndercutViable,UndercutRejectReason," +
+            "WarmupW0,WarmupW1,WarmupW2,WarmupFallback,WarmupAvailable,MaxStayLaps,NEffective," +
+            "TargetRawPace,PlayerTrackPace,StayOutsideGain,TotalWarmupGain,OvercutAdv,OvercutMargin," +
+            "TargetIsInPit,TargetPittedRecently,OvercutFuelOK,OvercutTrafOK,OvercutStayOK,OvercutMarginOK,OvercutRaceLapsOK,OvercutViable,OvercutRejectReason," +
+            "StrategyDecision";
+
+        /// <summary>Numero di colonne dello snapshot, derivato dall'header stesso.</summary>
+        public static int SnapshotColumnCount { get { return SnapshotHeader.Split(',').Length; } }
+
         private string _logFilePath;
         private string _mergeGapLogFilePath;
         private ConcurrentQueue<string> _logQueue = new ConcurrentQueue<string>();
@@ -93,25 +112,25 @@ namespace SimRIG
                                                         "                 SIMRIG MERGEGAP STRATEGY MONITOR (10s DEDICATED LOG)                  \n" +
                                                         "========================================================================================\n\n");
 
-                string modelParams = "# StrategyEngineVersion=1.0.0\n" +
-                                     "# RelativePaceAlpha=0.30\n" +
-                                     "# RelativePaceClamp=10.0\n" +
+                // Costanti lette dalle definizioni reali, non ricopiate a mano: se qualcuno
+                // cambia Alpha nel tracker, l'header lo segue.
+                string inv(double v) { return v.ToString(System.Globalization.CultureInfo.InvariantCulture); }
+
+                string modelParams = "# StrategyEngineVersion=1.1.0\n" +
+                                     "# RelativePaceAlpha=" + inv(RelativePaceTracker.Alpha) + "\n" +
+                                     "# RelativePaceBeta=" + inv(RelativePaceTracker.Beta) + "\n" +
+                                     "# RelativePaceClamp=" + inv(RelativePaceTracker.ClampLimit) + "\n" +
+                                     "# MinimumDeltaTime=" + inv(RelativePaceTracker.MinimumDeltaTime) + "\n" +
                                      "# PitDecisionBuffer=0.8\n" +
                                      "# MaxUndercutReactionWindow=1.0\n" +
                                      "# WarmupThreshold=0.10\n" +
                                      "# FuelReserve=0.4\n" +
                                      "# UndercutPositionThreshold=-0.5\n" +
-                                     "# RecentPitThreshold=2.0\n" +
+                                     "# TargetPittedRecentlyThreshold=2.0\n" +
                                      "# MinimumOvercutStay=0.5\n" +
-                                     "# MinimumRaceLaps=2.0\n";
+                                     "# MinimumRaceLapsRemaining=2.0\n";
 
-                string snapshotHeader = "SessionTime,Lap,MacroSector,Target,SignedGap,PlayerPit,TargetPit,RaceLapsRem,DeltaGap,DeltaTime,InstantPace,RelativePace," +
-                                        "PlayerFuel,TargetFuel,TargetLapsUntilPit,ReactionLaps,TargetDegPace,PlayerFreshPace,PrePitGain,TargetPitLoss,PlayerPitLoss,NetPitAdv,PlayerWarmup,UndercutAdv,UndercutMargin," +
-                                        "UndercutPosOK,TargetNeedsPit,UndercutFuelOK,UndercutTrafOK,UndercutMarginOK,UndercutRaceLapsOK,UndercutViable,UndercutRejectReason," +
-                                        "WarmupAvailable,NEffective,TargetRawPace,StayOutsideGain,TotalWarmupGain,OvercutAdv,OvercutMargin," +
-                                        "TargetIsInPit,TargetPittedRecently,OvercutFuelOK,OvercutTrafOK,OvercutStayOK,OvercutMarginOK,OvercutRaceLapsOK,OvercutViable,OvercutRejectReason,StrategyDecision\n";
-
-                File.WriteAllText(_strategySnapshotLogFilePath, modelParams + snapshotHeader);
+                File.WriteAllText(_strategySnapshotLogFilePath, modelParams + SnapshotHeader + "\n");
                 File.WriteAllText(_strategyEventLogFilePath, modelParams + "========================================================================================\n\n");
             }
             catch { }

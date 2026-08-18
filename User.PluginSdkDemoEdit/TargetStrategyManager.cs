@@ -181,6 +181,7 @@ namespace SimRIG
         private bool _lastUndercutViable = false;
         private bool _lastOvercutViable = false;
         private int _snapshotTickCounter = 0;
+        private bool _snapshotWidthWarned = false;
 
 
 
@@ -190,12 +191,32 @@ namespace SimRIG
         private int _lastLogSector = -1;
         private DateTime _lastMergeGapLogWallTime = DateTime.MinValue;
 
-        private double _lastMacroSectorTime = 0.0;
-        private double _lastMacroSectorFluidGap = 0.0;
-        private int _lastValidMacroSector = -1;
-        private bool _emaInitialized = false;
+        private readonly RelativePaceTracker _relativePace = new RelativePaceTracker();
+
+        // Ultimo campione processato, conservato per lo snapshot (spec §32).
+        private RelativePaceSample _lastPaceSample;
 
         public TargetStrategyManager() { }
+
+        /// <summary>
+        /// Rilevamento pit del Player. Unica definizione condivisa: prima era triplicata,
+        /// con il rischio che snapshot e gate divergessero.
+        /// </summary>
+        private static bool IsPlayerInPitLane(SessionState state)
+        {
+            return state.IsInPitLane
+                || (state.TrackPositionPercent > 0.85 && state.SpeedKmh < 100.0 && state.SpeedKmh > 10.0);
+        }
+
+        // Formattatori dello snapshot CSV: cultura invariante, niente separatori decimali locali.
+        private static string F1(double v) { return v.ToString("F1", CultureInfo.InvariantCulture); }
+        private static string F3(double v) { return v.ToString("F3", CultureInfo.InvariantCulture); }
+        private static string I(int v) { return v.ToString(CultureInfo.InvariantCulture); }
+        private static string B(bool v) { return v ? "True" : "False"; }
+        private static double W(double[] array, int index)
+        {
+            return (array != null && index < array.Length) ? array[index] : 0.0;
+        }
 
         public double ComputeInterpolatedWarmup(double[] penalties, double laps)
         {
@@ -286,18 +307,20 @@ namespace SimRIG
 
                     log.Log(LogModule.STRATEGY, LogType.EVENT, "Target Changed", $"Old: {CurrentTarget.Name} | New: {targetOpp.Name} | Mode: {targetModeString}");
 
-
+                    // Anche nel canale STRATEGY_EVENT: chi analizza solo quel file deve poter
+                    // vedere la causa del reset del RelativePace (spec §11).
+                    log.Log(LogModule.STRATEGY_EVENT, LogType.EVENT, "RELATIVE_PACE_INVALIDATION",
+                        $"reason={RelativePaceInvalidationReason.TargetChanged} | old={CurrentTarget.Name} | new={targetOpp.Name}");
 
                     CurrentTarget.Name = targetOpp.Name;
 
                     CurrentTarget.ClassPosition = targetOpp.Position;
 
+                    // Reset completo, non invalidazione temporanea: il valore torna a 0.0 (spec §10).
+                    _relativePace.Reset();
                     CurrentTarget.RelativePace = 0.0;
+                    _lastPaceSample = default(RelativePaceSample);
                     _myLastMacroSector = -1;
-                    _lastValidMacroSector = -1;
-                    _emaInitialized = false;
-                    _lastMacroSectorTime = 0.0;
-                    _lastMacroSectorFluidGap = 0.0;
                     CurrentTarget.Diagnosis = "ANALYZING";
 
                     _lastLogSector = -1;
@@ -394,8 +417,7 @@ namespace SimRIG
                 {
                     double currentSignedGap = posDiff < 0 ? currentFluidGap : -currentFluidGap;
 
-                    // Relative Pace: Invalidation & Wrap Logic
-                    bool playerInPit = state.IsInPitLane || (state.TrackPositionPercent > 0.85 && state.SpeedKmh < 100.0 && state.SpeedKmh > 10.0);
+                    bool playerInPit = IsPlayerInPitLane(state);
                     bool targetInPit = false;
                     if (tracker.TrackedOpponents.ContainsKey(CurrentTarget.Name))
                     {
@@ -403,54 +425,30 @@ namespace SimRIG
                         targetInPit = oData.IsInsideGeofence || (targetOpp != null && targetOpp.IsCarInPit);
                     }
 
-                    bool isValidSequence = (_lastValidMacroSector != -1) && 
-                        ((macroSector == _lastValidMacroSector + 1) || (macroSector == 0 && _lastValidMacroSector == 19));
+                    var paceSample = _relativePace.ProcessSample(macroSector, currentSessionClock, currentSignedGap,
+                                                                 playerInPit, targetInPit, refLapTime);
+                    _lastPaceSample = paceSample;
+                    CurrentTarget.RelativePace = _relativePace.RelativePace;
 
-                    double dt = currentSessionClock - _lastMacroSectorTime;
-                    if (dt < 0) dt = -dt; // In case session time counts down
-                    
-                    if (playerInPit || targetInPit || !isValidSequence || dt < 1.0)
+                    if (paceSample.Reason != RelativePaceInvalidationReason.None)
                     {
-                        RelativePaceInvalidationReason reason = RelativePaceInvalidationReason.None;
-                        if (playerInPit) reason = RelativePaceInvalidationReason.PlayerInPit;
-                        else if (targetInPit) reason = RelativePaceInvalidationReason.TargetInPit;
-                        else if (_lastValidMacroSector == -1) reason = RelativePaceInvalidationReason.NoPreviousSeed;
-                        else if (!isValidSequence) reason = RelativePaceInvalidationReason.InvalidSequence;
-                        else if (dt < 1.0) reason = RelativePaceInvalidationReason.DeltaTimeTooSmall;
-
-                        log.Log(LogModule.STRATEGY_EVENT, LogType.EVENT, "RELATIVE_PACE_INVALIDATION", $"reason={reason} | sector={macroSector}");
-
-                        // Invalidate and re-seed
-                        _lastValidMacroSector = macroSector;
-                        _lastMacroSectorTime = currentSessionClock;
-                        _lastMacroSectorFluidGap = currentSignedGap;
-                        _emaInitialized = false; // Freeze and reset EMA for next clean seed
+                        log.Log(LogModule.STRATEGY_EVENT, LogType.EVENT, "RELATIVE_PACE_INVALIDATION",
+                            $"reason={paceSample.Reason} | sector={macroSector} | seqValid={paceSample.SequenceValid} | deltaTime={paceSample.DeltaTime:F3} | frozenPace={CurrentTarget.RelativePace:F3}");
                     }
-                    else
+                    else if (paceSample.WasPostPitSeed)
                     {
-                        // Valid transition, compute rate
-                        double deltaGap = currentSignedGap - _lastMacroSectorFluidGap;
-                        double instantPaceRate = (deltaGap / dt) * refLapTime;
-                        
-                        if (!_emaInitialized)
-                        {
-                            CurrentTarget.RelativePace = Math.Max(-10.0, Math.Min(10.0, instantPaceRate));
-                            _emaInitialized = true;
-                            log.Log(LogModule.STRATEGY_EVENT, LogType.EVENT, "RELATIVE_PACE_SEED", $"sector={macroSector} | gap={currentSignedGap:F3}");
-                        }
-                        else
-                        {
-                            double emaBefore = CurrentTarget.RelativePace;
-                            double newEma = (0.30 * instantPaceRate) + (0.70 * CurrentTarget.RelativePace);
-                            double clamped = Math.Max(-10.0, Math.Min(10.0, newEma));
-                            CurrentTarget.RelativePace = clamped;
-                            log.Log(LogModule.STRATEGY_EVENT, LogType.EVENT, "RELATIVE_PACE_UPDATE", $"sector={macroSector} | deltaGap={deltaGap:F3} | deltaTime={dt:F3} | instantRate={instantPaceRate:F3} | emaBefore={emaBefore:F3} | emaAfter={newEma:F3} | clamped={clamped:F3}");
-                        }
-
-                        // Re-seed for next sector
-                        _lastValidMacroSector = macroSector;
-                        _lastMacroSectorTime = currentSessionClock;
-                        _lastMacroSectorFluidGap = currentSignedGap;
+                        log.Log(LogModule.STRATEGY_EVENT, LogType.EVENT, "RELATIVE_PACE_POST_PIT_SEED",
+                            $"sector={macroSector} | gap={currentSignedGap:F3} | frozenPace={CurrentTarget.RelativePace:F3} | note=primo campione pulito post-pit, nessun rate calcolato");
+                    }
+                    else if (paceSample.EmaSeeded)
+                    {
+                        log.Log(LogModule.STRATEGY_EVENT, LogType.EVENT, "RELATIVE_PACE_SEED",
+                            $"sector={macroSector} | gap={currentSignedGap:F3} | instantRate={paceSample.InstantRate:F3} | emaAfter={paceSample.EmaAfter:F3} | clamped={paceSample.Clamped}");
+                    }
+                    else if (paceSample.RateComputed)
+                    {
+                        log.Log(LogModule.STRATEGY_EVENT, LogType.EVENT, "RELATIVE_PACE_UPDATE",
+                            $"sector={macroSector} | prevGap={paceSample.PreviousGap:F3} | deltaGap={paceSample.DeltaGap:F3} | deltaTime={paceSample.DeltaTime:F3} | instantRate={paceSample.InstantRate:F3} | emaBefore={paceSample.EmaBefore:F3} | emaAfter={paceSample.EmaAfterRaw:F3} | clamped={paceSample.EmaAfter:F3} | wasClamped={paceSample.Clamped}");
                     }
 
                     log.Log(LogModule.STRATEGY, LogType.FLOW, "Gap Update", $"Gap: {currentSignedGap:F2}s | RelPace: {CurrentTarget.RelativePace:F3}s | Sector: {macroSector}");
@@ -818,21 +816,53 @@ namespace SimRIG
                     if (_snapshotTickCounter >= 25)
                     {
                         _snapshotTickCounter = 0;
-                        bool pInPit = state.IsInPitLane || (state.TrackPositionPercent > 0.85 && state.SpeedKmh < 100.0 && state.SpeedKmh > 10.0);
-                        
-                        string snap = string.Format(CultureInfo.InvariantCulture,
-                            "{0:F3},{1},{2},{3},{4:F3},{5},{6},{7:F1},,,,{8:F3}," +
-                            "{9:F1},{10:F1},{11:F1},{12:F1},{13:F3},{14:F3},{15:F3},{16:F3},{17:F3},{18:F3},{19:F3},{20:F3},{21:F3}," +
-                            "{22},{23},{24},{25},{26},{27},{28},{29}," +
-                            "{30:F1},{31:F1},{32:F3},{33:F3},{34:F3},{35:F3},{36:F3}," +
-                            "{37},{38},{39},{40},{41},{42},{43},{44},{45},{46}",
-                            state.SessionTimeLeftSec, myLap, macroSector, CurrentTarget.Name, CurrentTarget.SignedGapSeconds, pInPit, targetIsInPit, raceResult.RaceLapsRemaining, CurrentTarget.RelativePace,
-                            fuel.TankLapsRemaining, targetFuelLaps, CurrentTarget.TargetLapsUntilPit, CurrentTarget.ReactionDeltaLaps, targetPaceDegraded, playerPaceFresh, prePitPaceGain, targetTotalPitLoss, playerTotalPitLoss, netPitAdvantage, playerWarmup, CurrentTarget.UndercutAdvantage, CurrentTarget.UndercutCaptureMargin,
-                            CurrentTarget.UndercutPositionOK, targetNeedsPit, CurrentTarget.UndercutFuelOK, CurrentTarget.UndercutTrafficOK, undercutMarginOK, undercutRaceLapsOK, CurrentTarget.UndercutViable, CurrentTarget.UndercutRejectReason,
-                            targetWarmupLapsAvailable, nEffective, targetRawPace, stayOutsideGain, totalWarmupGain, CurrentTarget.OvercutAdvantage, CurrentTarget.OvercutCaptureMargin,
-                            targetIsInPit, CurrentTarget.TargetPittedRecently, CurrentTarget.OvercutFuelOK, CurrentTarget.OvercutTrafficOK, overcutStayOK, overcutMarginOK, overcutRaceLapsOK, CurrentTarget.OvercutViable, CurrentTarget.OvercutRejectReason, newDecision);
-                        
-                        log.Log(LogModule.STRATEGY_SNAPSHOT, LogType.FLOW, snap);
+                        bool pInPit = IsPlayerInPitLane(state);
+
+                        double[] warmupArray = oppData.PostPitWarmupPenalties;
+                        bool warmupFallbackUsed = warmupArray == null || warmupArray.Length == 0;
+
+                        // Campi in array anziché string.Format numerato: l'ordine qui è l'unica
+                        // fonte di verità e deve corrispondere a LogManager.WriteHeader().
+                        string[] snapFields =
+                        {
+                            // --- contesto ---
+                            F3(state.SessionTimeLeftSec), I(myLap), I(macroSector), CurrentTarget.Name,
+                            F3(CurrentTarget.SignedGapSeconds), B(pInPit), B(targetIsInPit), F1(raceResult.RaceLapsRemaining),
+                            // --- RelativePace: intermedi ricostruibili (spec §32) ---
+                            F3(_lastPaceSample.PreviousGap), F3(_lastPaceSample.DeltaGap), F3(_lastPaceSample.DeltaTime),
+                            F3(_lastPaceSample.InstantRate), F3(CurrentTarget.RelativePace),
+                            B(_lastPaceSample.SequenceValid), _lastPaceSample.Reason.ToString(),
+                            B(_relativePace.PitSeedPending), B(_lastPaceSample.WasPostPitSeed),
+                            // --- Undercut ---
+                            F1(fuel.TankLapsRemaining), F1(targetFuelLaps), F1(CurrentTarget.TargetLapsUntilPit),
+                            F1(CurrentTarget.ReactionDeltaLaps), F3(targetPaceDegraded), F3(playerPaceFresh),
+                            F3(prePitPaceGain), F3(targetTotalPitLoss), F3(playerTotalPitLoss), F3(netPitAdvantage),
+                            F3(playerWarmup), F3(positiveGapToTarget), F3(CurrentTarget.UndercutAdvantage),
+                            F3(CurrentTarget.UndercutCaptureMargin),
+                            B(CurrentTarget.UndercutPositionOK), B(targetNeedsPit), B(CurrentTarget.UndercutFuelOK),
+                            B(CurrentTarget.UndercutTrafficOK), B(undercutMarginOK), B(undercutRaceLapsOK),
+                            B(CurrentTarget.UndercutViable), CurrentTarget.UndercutRejectReason.ToString(),
+                            // --- Overcut ---
+                            F3(W(warmupArray, 0)), F3(W(warmupArray, 1)), F3(W(warmupArray, 2)), B(warmupFallbackUsed),
+                            F1(targetWarmupLapsAvailable), F1(maxOvercutStayLaps), F1(nEffective),
+                            F3(targetRawPace), F3(playerRawPace), F3(stayOutsideGain), F3(totalWarmupGain),
+                            F3(CurrentTarget.OvercutAdvantage), F3(CurrentTarget.OvercutCaptureMargin),
+                            B(targetIsInPit), B(CurrentTarget.TargetPittedRecently), B(CurrentTarget.OvercutFuelOK),
+                            B(CurrentTarget.OvercutTrafficOK), B(overcutStayOK), B(overcutMarginOK),
+                            B(overcutRaceLapsOK), B(CurrentTarget.OvercutViable), CurrentTarget.OvercutRejectReason.ToString(),
+                            // --- esito ---
+                            newDecision.ToString()
+                        };
+
+                        // Un disallineamento header/dati rende il CSV muto senza errori: meglio urlarlo.
+                        if (snapFields.Length != LogManager.SnapshotColumnCount && !_snapshotWidthWarned)
+                        {
+                            _snapshotWidthWarned = true;
+                            log.Log(LogModule.SYSTEM, LogType.EVENT, "SNAPSHOT_COLUMN_MISMATCH",
+                                $"fields={snapFields.Length} | headerColumns={LogManager.SnapshotColumnCount}");
+                        }
+
+                        log.Log(LogModule.STRATEGY_SNAPSHOT, LogType.FLOW, string.Join(",", snapFields));
                     }
                     
                     // La proiezione del merge gap sul target è il distacco fisico di rientro in pista (positivo: dietro, negativo: davanti)
@@ -1185,6 +1215,8 @@ namespace SimRIG
 
             CurrentTarget.RelativePace = 0.0;
 
+            _relativePace.Reset();
+            _lastPaceSample = default(RelativePaceSample);
             _myLastMacroSector = -1;
 
             CurrentTarget.Diagnosis = "TARGET IS YOU";
@@ -1203,7 +1235,7 @@ namespace SimRIG
             double playerStintLaps = state.MaxFuelCapacity / playerFuelPerLap;
             double playerTankLaps = fuel.TankLapsRemaining;
 
-            bool playerIsInPit = state.IsInPitLane || (state.TrackPositionPercent > 0.85 && state.SpeedKmh < 100.0 && state.SpeedKmh > 10.0);
+            bool playerIsInPit = IsPlayerInPitLane(state);
 
             if (playerIsInPit)
             {
@@ -1265,6 +1297,8 @@ namespace SimRIG
 
             CurrentTarget.RelativePace = 0.0;
 
+            _relativePace.Reset();
+            _lastPaceSample = default(RelativePaceSample);
             _myLastMacroSector = -1;
 
             CurrentTarget.Diagnosis = "ANALYZING";
@@ -1317,8 +1351,8 @@ namespace SimRIG
         {
             LatchedTargetName = null;
             SetNoTarget();
-            _lastValidMacroSector = -1;
-            _emaInitialized = false;
+            _relativePace.Reset();
+            _lastPaceSample = default(RelativePaceSample);
         }
 
     }

@@ -14,6 +14,7 @@ namespace User.PluginSdkDemo.Tests
             {
                 PitLossUnitTests.RunAllTests();
                 MergeGapUnitTests.RunAllTests();
+                RelativePaceUnitTests.RunAllTests();
                 ReplayBacktestIntegrationTest.RunMisanoGt3Backtest();
                 MisanoHuracanGT3ReplayTest.RunFullReplayMergeGapValidation();
 

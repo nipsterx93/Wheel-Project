@@ -55,6 +55,7 @@
     <Compile Include="TestRunner.cs" />
     <Compile Include="UnitTests\PitLossUnitTests.cs" />
     <Compile Include="UnitTests\MergeGapUnitTests.cs" />
+    <Compile Include="UnitTests\RelativePaceUnitTests.cs" />
     <Compile Include="IntegrationTests\ReplayBacktestIntegrationTest.cs" />
     <Compile Include="IntegrationTests\MisanoHuracanGT3ReplayTest.cs" />
     <Compile Include="Replay\SimHubReplayRAMReader.cs" />
