@@ -8,18 +8,12 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      claude        # NONE | antigravity | claude | codex | human
-since:      2026-08-18T19:02:00Z
-task:       Fix RED-1 (reference pit-contaminata nel RelativePace) + osservabilità + snapshot/header
-scope:      TargetStrategyManager.cs, RelativePaceTracker.cs (nuovo), LogManager.cs,
-            User.PluginSdkDemo.csproj, User.PluginSdkDemo.Tests/** , .ai/**
-expires:    2026-08-19T00:00:00Z
+owner:      NONE          # NONE | antigravity | claude | codex | human
+since:      2026-08-18T21:30:00Z
+task:       —
+scope:      —
+expires:    —
 ```
-
-**Fuori scope in questo turno** (richiedono una decisione esplicita prima di essere toccati):
-`CanFinishWithoutPitting` (Y-1), `OvercutTrafficOK` (Y-2), modello warmup / `PaceDropDueToTyres` (Y-11),
-euristica di rilevamento pit (Y-9, solo deduplicazione senza cambio di comportamento),
-`LapsSinceLastPit` continuo (Y-3), deadband HUD (Y-8).
 
 **Regole del lock**
 
@@ -31,6 +25,22 @@ euristica di rilevamento pit (Y-9, solo deduplicazione senza cambio di comportam
 4. `scope` è vincolante: se durante il lavoro serve toccare file fuori scope, si allarga il lock esplicitamente (nuovo commit) invece di sconfinare in silenzio.
 5. Lock stantio: se `expires` è passata, un altro agente può forzare il rilascio annotandolo in `HANDOFF_LOG.md`.
 6. Il lock è **disciplina, non tecnologia**. La vera rete di sicurezza è Git: commit piccoli e frequenti, così ogni sovrascrittura accidentale è diffabile e reversibile.
+
+---
+
+## 🚧 Congelati in attesa di decisione
+
+Prendere il lock **non** autorizza a toccare questi punti: servono decisioni di prodotto, non di
+implementazione. Chi decide, aggiorni questa tabella prima di far partire il lavoro.
+
+| ID | Punto | Decisione richiesta |
+|----|-------|---------------------|
+| Y-1 | `CanFinishWithoutPitting` | Va mantenuta? Se sì va approvata come estensione, e le serve un `RejectReason` dedicato: oggi si maschera da `RaceTooLate`. Rischio noto: silenzia un overcut vincente quando il Player finisce col carburante ma il Target deve fermarsi. |
+| Y-2 | `OvercutTrafficOK` cablato a `true` | Implementare il check o rimuovere il gate? Oggi è inerte e la dashboard espone un `true` privo di significato. |
+| Y-11 | Modello warmup | La media mobile a 4 giri di `PaceDropDueToTyres` include i giri post-pit su gomma fredda, che vengono poi ri-sommati come warmup esplicito. Filtrare quei giri dalla media, o accettare il double counting? |
+| Y-3 | `LapsSinceLastPit` | Renderlo continuo come da spec §26 richiede una misura frazionaria di giro sul target: esiste già in `OpponentTelemetryData`? |
+| Y-8 | Deadband HUD 0.05 | La spec §30 lo richiede ma non definisce il formato: cosa mostrare per `|RelativePace| < 0.05` — `0.0s/lap`, `~0`, stringa vuota? |
+| Y-9 | Euristica pit del Player | `TrackPositionPercent > 0.85 && 10 < SpeedKmh < 100` classifica come "in pit" anche un tornante lento di fine giro. Sostituire con il solo `IsInPitLane`, o con la geofence già usata per gli avversari? |
 
 ---
 
@@ -61,11 +71,13 @@ Rilevati durante il setup e la verifica:
 
 1. ~~**Il progetto di test non è nella solution.**~~ ✅ *Risolto:* `User.PluginSdkDemo.Tests.csproj` aggiunto a `User.PluginSdkDemo.sln`.
 2. ~~**Path assoluti hardcoded nel `.csproj`.**~~ ✅ *Risolto:* reference a `Newtonsoft.Json` e `SharpDX` convertite in `$(SIMHUB_INSTALL_PATH)`.
-3. **File `*_LEGACY.cs` orfani.** `DataPluginDemo_LEGACY.cs`, `FuelCalculator_LEGACY.cs`,
+3. ~~**RED-1 — reference pit-contaminata nel RelativePace.**~~ ✅ *Risolto* (commit `1e296cf`):
+   `RelativePaceTracker.cs` con flag di contaminazione, test obbligatori 8 e 9 a copertura.
+4. **File `*_LEGACY.cs` orfani.** `DataPluginDemo_LEGACY.cs`, `FuelCalculator_LEGACY.cs`,
    `PitStrategyManager_LEGACY.cs` (~180 KB totali) sono sul disco ma **non** nel `<Compile>`
    del csproj: non vengono compilati. Rischio concreto che un agente li legga o li modifichi
    credendoli attivi.
-4. **File sorgente molto grandi.** `DataPluginDemo.cs` (~155 KB), `OpponentTracker.cs` (~105 KB),
+5. **File sorgente molto grandi.** `DataPluginDemo.cs` (~155 KB), `OpponentTracker.cs` (~105 KB),
    `SettingsControlDemo.xaml` (~99 KB). Vanno letti a fette, non in blocco.
 
 ---
