@@ -8,12 +8,18 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-18T17:15:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-18T19:02:00Z
+task:       Fix RED-1 (reference pit-contaminata nel RelativePace) + osservabilità + snapshot/header
+scope:      TargetStrategyManager.cs, RelativePaceTracker.cs (nuovo), LogManager.cs,
+            User.PluginSdkDemo.csproj, User.PluginSdkDemo.Tests/** , .ai/**
+expires:    2026-08-19T00:00:00Z
 ```
+
+**Fuori scope in questo turno** (richiedono una decisione esplicita prima di essere toccati):
+`CanFinishWithoutPitting` (Y-1), `OvercutTrafficOK` (Y-2), modello warmup / `PaceDropDueToTyres` (Y-11),
+euristica di rilevamento pit (Y-9, solo deduplicazione senza cambio di comportamento),
+`LapsSinceLastPit` continuo (Y-3), deadband HUD (Y-8).
 
 **Regole del lock**
 
