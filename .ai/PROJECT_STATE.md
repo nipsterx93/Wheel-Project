@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      antigravity
-since:      2026-08-18T17:05:00Z
-task:       fix-project-config-debts
-scope:      User.PluginSdkDemoEdit/User.PluginSdkDemo.csproj, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/User.PluginSdkDemo.Tests.csproj, User.PluginSdkDemoEdit/User.PluginSdkDemo.sln, .ai/*
-expires:    2026-08-18T18:00:00Z
+owner:      NONE          # NONE | antigravity | claude | codex | human
+since:      2026-08-18T17:15:00Z
+task:       —
+scope:      —
+expires:    —
 ```
 
 **Regole del lock**
@@ -31,7 +31,7 @@ expires:    2026-08-18T18:00:00Z
 ## 📍 Stato corrente
 
 **Fase:** setup del protocollo di collaborazione multi-AI.
-**Milestone attiva:** M0 — Infrastruttura (git + `.ai/` + `CLAUDE.md`).
+**Milestone attiva:** M0 — Infrastruttura & Debiti di configurazione.
 
 ### Contesto del progetto
 
@@ -44,21 +44,17 @@ annunci vocali (Piper TTS) e telemetria.
 
 | ID | Milestone | Stato |
 |----|-----------|-------|
-| M0 | Infrastruttura collaborazione multi-AI (git, `.ai/`, `CLAUDE.md`) | ✅ fatto |
+| M0 | Infrastruttura collaborazione multi-AI (git, `.ai/`, `CLAUDE.md`, config fix) | ✅ fatto |
 | M1 | — da definire | ⬜ |
 
 ---
 
 ## ⚠️ Debiti noti (da affrontare, non ancora pianificati)
 
-Rilevati durante il setup, registrati qui perché nessuno se li dimentichi:
+Rilevati durante il setup e la verifica:
 
-1. **Il progetto di test non è nella solution.** `User.PluginSdkDemo.sln` referenzia solo
-   `User.PluginSdkDemo.csproj`. `User.PluginSdkDemo.Tests.csproj` va buildato a mano.
-   Finché resta fuori, è facile che i test smettano di compilare senza che nessuno se ne accorga.
-2. **Path assoluti hardcoded nel `.csproj`.** Alcune reference puntano a `E:\SimHub\...`
-   (Newtonsoft.Json, SharpDX, SharpDX.DirectInput) invece di usare `$(SIMHUB_INSTALL_PATH)`
-   come tutte le altre. Su una macchina con SimHub altrove la build si rompe.
+1. ~~**Il progetto di test non è nella solution.**~~ ✅ *Risolto:* `User.PluginSdkDemo.Tests.csproj` aggiunto a `User.PluginSdkDemo.sln`.
+2. ~~**Path assoluti hardcoded nel `.csproj`.**~~ ✅ *Risolto:* reference a `Newtonsoft.Json` e `SharpDX` convertite in `$(SIMHUB_INSTALL_PATH)`.
 3. **File `*_LEGACY.cs` orfani.** `DataPluginDemo_LEGACY.cs`, `FuelCalculator_LEGACY.cs`,
    `PitStrategyManager_LEGACY.cs` (~180 KB totali) sono sul disco ma **non** nel `<Compile>`
    del csproj: non vengono compilati. Rischio concreto che un agente li legga o li modifichi
