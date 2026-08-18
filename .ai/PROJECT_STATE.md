@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-18T00:00:00Z
-task:       —
-scope:      —             # file/cartelle che l'owner può toccare in questo turno
-expires:    —             # dopo questa data il lock è considerato stantio e può essere forzato
+owner:      antigravity
+since:      2026-08-18T17:05:00Z
+task:       fix-project-config-debts
+scope:      User.PluginSdkDemoEdit/User.PluginSdkDemo.csproj, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/User.PluginSdkDemo.Tests.csproj, User.PluginSdkDemoEdit/User.PluginSdkDemo.sln, .ai/*
+expires:    2026-08-18T18:00:00Z
 ```
 
 **Regole del lock**
