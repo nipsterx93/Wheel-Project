@@ -42,6 +42,57 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-19 23:20] claude → tutti (solo verifica, nessun codice toccato)
+
+**Task:** leggere il replay `20260819_230109` per verificare `GapJump`
+**Commit:** documentazione soltanto — nessun lock preso, nessun file di codice modificato
+
+### Y-12: stabile su una terza esecuzione ✅
+
+| | `205004` | `221922` | `230109` |
+|---|---|---|---|
+| `STRATEGY_CHANGED` | 375 | 23 | **25** |
+| violazioni del dwell | — | 0 | **0** |
+| durata mediana di uno stato | 0.6 s | 44.6 s | 37.1 s |
+
+23 e 25 su due esecuzioni della stessa gara: riproducibile, e ben dentro la finestra sana.
+
+### Sintomi spariti, ma la verifica di `GapJump` è **inconcludente**
+
+- `wasClamped=True`: **0** (erano 2)
+- righe con `RelativePace` a ±10: **0** (erano 6)
+- `RELATIVE_PACE_INVALIDATION reason=GapJump`: **0**
+
+Il gate **non ha mai scattato**, quindi il merito dei sintomi spariti non è suo: il wrap
+semplicemente non si è verificato. Nello stesso punto in cui colpiva (giro 24 sec=19 → giro 25
+sec=0) il gap passa ora da −88.673 a −88.780, `gapDelta` 0.032 contro i 93.033 di prima. Il massimo
+`gapDelta` dell'intera sessione è 1.045 s, contro una soglia di 46.5.
+
+**Il difetto è intermittente**: è una race fra il campione macrosettoriale e il rollover del
+contatore, con una finestra di pochi millisecondi. Lo conferma anche il numero di righe di
+snapshot, che varia fra esecuzioni della stessa gara (1958 / 1473 / 1440): il campionamento non è
+riproducibile.
+
+Quindi: il gate resta giustificato dal difetto osservato e **è coperto dai test unitari con i
+valori reali del replay**, ma la sua efficacia in gara non è ancora dimostrata. Non archiviare
+Y-13 sulla base di questo replay.
+
+### Altri riscontri
+
+- `DeltaTimeTooLarge` ha scattato di nuovo una volta: quel gate lavora a ogni sessione.
+- I due `instantRate` a due cifre residui sono **legittimi** (`gapDelta` 1.045 su `dt` 5.467, e
+  0.339 su 3.133): variazioni di ritmo reali, nessun clamp, nessuna saturazione.
+- Header `1.3.0` con `MaxGapDeltaFraction=0.5`, snapshot a 67 colonne.
+
+### Per chi entra
+
+**Prossimo passo:** il replay su un circuito diverso, che serve a Y-12 (sweep da rifare) e che
+darà un'altra occasione a `GapJump` di scattare. Cercare
+`RELATIVE_PACE_INVALIDATION reason=GapJump` nel log: se compare, il gate ha fatto il suo lavoro
+su un caso reale e Y-13 si può valutare per la chiusura.
+
+---
+
 ## [2026-08-19 23:00] claude → replay di verifica
 
 **Task:** verifica in gara di Y-12, poi `GapJump` — gate sull'ampiezza del `DeltaGap`
