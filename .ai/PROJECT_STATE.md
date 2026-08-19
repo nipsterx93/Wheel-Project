@@ -8,11 +8,16 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-19T13:35:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-19T21:20:00Z
+task:       Y-12 isteresi dei gate strategici + finestra deltaTime adattiva
+scope:      User.PluginSdkDemoEdit/StrategyGateHysteresis.cs (nuovo)
+            User.PluginSdkDemoEdit/RelativePaceTracker.cs
+            User.PluginSdkDemoEdit/TargetStrategyManager.cs
+            User.PluginSdkDemoEdit/LogManager.cs
+            User.PluginSdkDemo.Tests/UnitTests/StrategyHysteresisUnitTests.cs (nuovo)
+            i due .csproj (nuovi <Compile>)
+expires:    2026-08-20T02:00:00Z
 ```
 
 **Regole del lock**
