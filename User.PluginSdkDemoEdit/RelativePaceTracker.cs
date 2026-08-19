@@ -42,6 +42,10 @@ namespace SimRIG
 
         /// <summary>Macrosettori di assestamento ancora da scartare dopo questo campione.</summary>
         public int PostPitSectorsRemaining;
+
+        /// <summary>Estremi della finestra di plausibilità applicata a DeltaTime, per il log.</summary>
+        public double MinDeltaTime;
+        public double MaxDeltaTime;
     }
 
     /// <summary>
@@ -60,6 +64,21 @@ namespace SimRIG
         public const double ClampLimit = 10.0;
         public const double MinimumDeltaTime = 1.0;
         public const int MacroSectorCount = 20;
+
+        /// <summary>
+        /// Un campione vale solo se il tempo trascorso somiglia a un macrosettore vero.
+        /// La finestra è una frazione del macrosettore nominale (refLapTime / 20), non una
+        /// costante: 4.7 s a Misano non sono i 6.5 s di un circuito lungo.
+        ///
+        /// Il solo pavimento a 1 s non bastava. Nel replay 20260819_205004 sono passati due
+        /// campioni degeneri che hanno saturato il clamp:
+        ///   dt=1.600 s  con gapDelta=3.642  -> instantRate 212.4 s/giro  (frammento di settore)
+        ///   dt=20.266 s con gapDelta=13.038 -> instantRate  60.3 s/giro  (4 settori persi,
+        ///                                                                 trattati come uno)
+        /// Il secondo caso lasciava l'EMA incollata a +10.0 per le ultime 16 righe della gara.
+        /// </summary>
+        public const double MinSectorFraction = 0.5;
+        public const double MaxSectorFraction = 2.0;
 
         /// <summary>
         /// Macrosettori puliti da scartare dopo una fase di pit prima di riprendere a misurare.
@@ -126,11 +145,26 @@ namespace SimRIG
             if (dt < 0.0) dt = -dt; // il clock di sessione è un conto alla rovescia
             sample.DeltaTime = dt;
 
+            // Finestra di plausibilità del campione, ancorata al macrosettore nominale.
+            // Con refLapTime non utilizzabile si ricade sul solo pavimento assoluto: meglio un
+            // gate debole che una finestra calcolata su un tempo di giro inventato.
+            double nominalSector = refLapTime > 0.0 ? refLapTime / MacroSectorCount : 0.0;
+            double minDeltaTime = MinimumDeltaTime;
+            double maxDeltaTime = double.MaxValue;
+            if (nominalSector > 0.0)
+            {
+                minDeltaTime = Math.Max(MinimumDeltaTime, nominalSector * MinSectorFraction);
+                maxDeltaTime = nominalSector * MaxSectorFraction;
+            }
+            sample.MinDeltaTime = minDeltaTime;
+            sample.MaxDeltaTime = maxDeltaTime;
+
             sample.SequenceValid = (_lastValidMacroSector != -1) && (ForwardDistance(macroSector) == 1);
 
-            if (inPit || !sample.SequenceValid || dt < MinimumDeltaTime)
+            if (inPit || !sample.SequenceValid || dt < minDeltaTime || dt > maxDeltaTime)
             {
-                sample.Reason = ClassifyInvalidation(macroSector, playerInPit, targetInPit, sample.SequenceValid);
+                sample.Reason = ClassifyInvalidation(macroSector, playerInPit, targetInPit,
+                                                     sample.SequenceValid, dt, minDeltaTime, maxDeltaTime);
                 Reseed(macroSector, sessionClock, signedGap);
                 _emaInitialized = false; // il prossimo rate pulito ri-inizializza l'EMA
                 sample.WasReseeded = true;
@@ -188,7 +222,9 @@ namespace SimRIG
         }
 
         private RelativePaceInvalidationReason ClassifyInvalidation(int macroSector, bool playerInPit,
-                                                                    bool targetInPit, bool sequenceValid)
+                                                                    bool targetInPit, bool sequenceValid,
+                                                                    double dt, double minDeltaTime,
+                                                                    double maxDeltaTime)
         {
             if (playerInPit) return RelativePaceInvalidationReason.PlayerInPit;
             if (targetInPit) return RelativePaceInvalidationReason.TargetInPit;
@@ -202,6 +238,7 @@ namespace SimRIG
                 return RelativePaceInvalidationReason.InvalidSequence; // salto all'indietro
             }
 
+            if (dt > maxDeltaTime) return RelativePaceInvalidationReason.DeltaTimeTooLarge;
             return RelativePaceInvalidationReason.DeltaTimeTooSmall;
         }
 

@@ -53,7 +53,8 @@ namespace SimRIG
             "WarmupW0,WarmupW1,WarmupW2,WarmupFallback,WarmupAvailable,MaxStayLaps,NEffective," +
             "TargetRawPace,PlayerTrackPace,StayOutsideGain,TotalWarmupGain,OvercutAdv,OvercutMargin," +
             "TargetIsInPit,TargetPittedRecently,OvercutFuelOK,OvercutTrafOK,OvercutStayOK,OvercutMarginOK,OvercutRaceLapsOK,OvercutViable,OvercutRejectReason," +
-            "StrategyDecision";
+            "StrategyDecision," +
+            "CandidateDecision,TimeInDecision,MinDeltaTime,MaxDeltaTime";
 
         /// <summary>Numero di colonne dello snapshot, derivato dall'header stesso.</summary>
         public static int SnapshotColumnCount { get { return SnapshotHeader.Split(',').Length; } }
@@ -70,7 +71,7 @@ namespace SimRIG
         private Task _writerTask;
         private SessionState _sessionState;
 
-        public const string StrategyEngineVersion = "1.1.0";
+        public const string StrategyEngineVersion = "1.2.0";
 
         // Stato degli header: se una scrittura fallisce all'avvio si riprova, ma solo finché
         // il file è ancora vuoto (vedi TryWriteHeader).
@@ -158,12 +159,17 @@ namespace SimRIG
                    "# RelativePaceBeta=" + RelativePaceTracker.Beta.ToString(c) + "\n" +
                    "# RelativePaceClamp=" + RelativePaceTracker.ClampLimit.ToString(c) + "\n" +
                    "# MinimumDeltaTime=" + RelativePaceTracker.MinimumDeltaTime.ToString(c) + "\n" +
+                   "# MinSectorFraction=" + RelativePaceTracker.MinSectorFraction.ToString(c) + "\n" +
+                   "# MaxSectorFraction=" + RelativePaceTracker.MaxSectorFraction.ToString(c) + "\n" +
                    "# PostPitSettlingSectors=" + RelativePaceTracker.PostPitSettlingSectors.ToString(c) + "\n" +
                    "# PitDecisionBuffer=0.8\n" +
                    "# MaxUndercutReactionWindow=1.0\n" +
                    "# WarmupThreshold=0.10\n" +
                    "# FuelReserve=0.4\n" +
-                   "# UndercutPositionThreshold=-0.5\n" +
+                   "# UndercutPositionThreshold=" + StrategyGateHysteresis.UndercutPositionThreshold.ToString(c) + "\n" +
+                   "# PositionHysteresis=" + StrategyGateHysteresis.PositionHysteresis.ToString(c) + "\n" +
+                   "# MarginHysteresis=" + StrategyGateHysteresis.MarginHysteresis.ToString(c) + "\n" +
+                   "# MinimumStateDwell=" + StrategyGateHysteresis.MinimumStateDwell.ToString(c) + "\n" +
                    "# TargetPittedRecentlyThreshold=2.0\n" +
                    "# MinimumOvercutStay=0.5\n" +
                    "# MinimumRaceLapsRemaining=2.0\n";

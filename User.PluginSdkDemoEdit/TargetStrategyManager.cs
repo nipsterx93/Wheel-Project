@@ -27,6 +27,7 @@ namespace SimRIG
         InvalidSequence,
         MissingSector,
         DeltaTimeTooSmall,
+        DeltaTimeTooLarge,
         TargetChanged,
         NoPreviousSeed
     }
@@ -204,6 +205,9 @@ namespace SimRIG
         private int _snapshotTickCounter = 0;
         private bool _snapshotWidthWarned = false;
 
+        /// <summary>Isteresi dei gate strategici (Y-12). Resettata insieme a _relativePace.</summary>
+        private readonly StrategyGateHysteresis _hysteresis = new StrategyGateHysteresis();
+
 
 
 
@@ -360,6 +364,7 @@ namespace SimRIG
 
                     // Reset completo, non invalidazione temporanea: il valore torna a 0.0 (spec §10).
                     _relativePace.Reset();
+                    _hysteresis.Reset();
                     CurrentTarget.RelativePace = 0.0;
                     CurrentTarget.RelativeGapDelta = 0.0;
                     CurrentTarget.RelativeGapDeltaValid = false;
@@ -755,10 +760,13 @@ namespace SimRIG
                     double positiveGapToTarget = Math.Max(0.0, CurrentTarget.SignedGapSeconds);
                     CurrentTarget.UndercutCaptureMargin = CurrentTarget.UndercutAdvantage - positiveGapToTarget;
 
-                    CurrentTarget.UndercutPositionOK = CurrentTarget.SignedGapSeconds >= -0.5;
+                    // Y-12: i due gate che causavano il churn passano per una banda morta.
+                    // Non cambia la soglia, cambia quanto deve muoversi il segnale per farla
+                    // attraversare: dentro la banda lo stato precedente si conserva.
+                    CurrentTarget.UndercutPositionOK = _hysteresis.UpdatePosition(CurrentTarget.SignedGapSeconds);
                     CurrentTarget.UndercutFuelOK = fuel.TankLapsRemaining >= 1.0;
                     CurrentTarget.UndercutTrafficOK = !pitExitTrafficConflict;
-                    bool undercutMarginOK = CurrentTarget.UndercutCaptureMargin > 0.0;
+                    bool undercutMarginOK = _hysteresis.UpdateUndercutMargin(CurrentTarget.UndercutCaptureMargin);
                     bool undercutRaceLapsOK = raceResult.RaceLapsRemaining > 2.0;
 
                     CurrentTarget.UndercutRejectReason = StrategyRejectReason.None;
@@ -811,7 +819,7 @@ namespace SimRIG
 
                     bool overcutTargetPitting = targetIsInPit || CurrentTarget.TargetPittedRecently;
                     bool overcutStayOK = nEffective >= 0.5;
-                    bool overcutMarginOK = CurrentTarget.OvercutCaptureMargin > 0.0;
+                    bool overcutMarginOK = _hysteresis.UpdateOvercutMargin(CurrentTarget.OvercutCaptureMargin);
                     bool overcutRaceLapsOK = raceResult.RaceLapsRemaining > 2.0;
 
                     CurrentTarget.OvercutRejectReason = StrategyRejectReason.None;
@@ -831,16 +839,21 @@ namespace SimRIG
                     // ==========================================
                     // 🧠 DECISION ENGINE
                     // ==========================================
-                    StrategyDecision newDecision = StrategyDecision.Neutral;
+                    StrategyDecision candidateDecision = StrategyDecision.Neutral;
                     if (CurrentTarget.UndercutViable && CurrentTarget.OvercutViable)
                     {
                         if (CurrentTarget.UndercutCaptureMargin > CurrentTarget.OvercutCaptureMargin)
-                            newDecision = StrategyDecision.Undercut;
+                            candidateDecision = StrategyDecision.Undercut;
                         else
-                            newDecision = StrategyDecision.Overcut;
+                            candidateDecision = StrategyDecision.Overcut;
                     }
-                    else if (CurrentTarget.UndercutViable) newDecision = StrategyDecision.Undercut;
-                    else if (CurrentTarget.OvercutViable) newDecision = StrategyDecision.Overcut;
+                    else if (CurrentTarget.UndercutViable) candidateDecision = StrategyDecision.Undercut;
+                    else if (CurrentTarget.OvercutViable) candidateDecision = StrategyDecision.Overcut;
+
+                    // Y-12: permanenza minima. Le bande morte tagliano le oscillazioni per ampiezza,
+                    // questa per frequenza — metà di quelle misurate durava meno di 0.6 s, sotto la
+                    // soglia di reazione di chi guida. Il candidato resta visibile nello snapshot.
+                    StrategyDecision newDecision = _hysteresis.UpdateDecision(candidateDecision, state.SessionTimeLeftSec);
 
                     CurrentTarget.Decision = newDecision;
 
@@ -907,7 +920,12 @@ namespace SimRIG
                             B(CurrentTarget.OvercutTrafficOK), B(overcutStayOK), B(overcutMarginOK),
                             B(overcutRaceLapsOK), B(CurrentTarget.OvercutViable), CurrentTarget.OvercutRejectReason.ToString(),
                             // --- esito ---
-                            newDecision.ToString()
+                            newDecision.ToString(),
+                            // --- isteresi (Y-12): il candidato pre-dwell resta visibile, così un
+                            //     confronto candidato/deciso misura quanto sta filtrando il dwell ---
+                            candidateDecision.ToString(),
+                            F1(_hysteresis.TimeInDecision(state.SessionTimeLeftSec)),
+                            F3(_lastPaceSample.MinDeltaTime), F3(_lastPaceSample.MaxDeltaTime)
                         };
 
                         // Un disallineamento header/dati rende il CSV muto senza errori: meglio urlarlo.
@@ -1272,6 +1290,7 @@ namespace SimRIG
             CurrentTarget.RelativePace = 0.0;
 
             _relativePace.Reset();
+            _hysteresis.Reset();
             _lastPaceSample = default(RelativePaceSample);
             CurrentTarget.RelativeGapDelta = 0.0;
             CurrentTarget.RelativeGapDeltaValid = false;
@@ -1356,6 +1375,7 @@ namespace SimRIG
             CurrentTarget.RelativePace = 0.0;
 
             _relativePace.Reset();
+            _hysteresis.Reset();
             _lastPaceSample = default(RelativePaceSample);
             CurrentTarget.RelativeGapDelta = 0.0;
             CurrentTarget.RelativeGapDeltaValid = false;
@@ -1412,6 +1432,7 @@ namespace SimRIG
             LatchedTargetName = null;
             SetNoTarget();
             _relativePace.Reset();
+            _hysteresis.Reset();
             _lastPaceSample = default(RelativePaceSample);
             CurrentTarget.RelativeGapDelta = 0.0;
             CurrentTarget.RelativeGapDeltaValid = false;

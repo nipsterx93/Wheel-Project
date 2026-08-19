@@ -387,12 +387,13 @@ namespace User.PluginSdkDemo.Tests
         private static void Test_SnapshotHeaderMatchesFieldCount()
         {
             int columns = LogManager.SnapshotColumnCount;
-            Assert(columns == 63, $"header snapshot: attese 63 colonne, trovate {columns}");
+            Assert(columns == 67, $"header snapshot: attese 67 colonne, trovate {columns}");
 
             string header = LogManager.SnapshotHeader;
             foreach (string required in new[] { "DeltaGap", "DeltaTime", "InstantPace", "PrevGap",
                                                 "SeqValid", "InvalidReason", "PitSeedPending", "PostPitSeed",
-                                                "MaxStayLaps", "PlayerTrackPace", "WarmupFallback", "PositiveGap" })
+                                                "MaxStayLaps", "PlayerTrackPace", "WarmupFallback", "PositiveGap",
+                                                "CandidateDecision", "TimeInDecision", "MinDeltaTime", "MaxDeltaTime" })
             {
                 Assert(header.Contains(required), $"colonna mancante nell'header snapshot: {required}");
             }
