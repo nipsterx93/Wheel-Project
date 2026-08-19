@@ -121,8 +121,27 @@ se il primo `SEED` ha `clamped=True`, qualcosa è regredito.
 | 3 | I file di log non avevano intestazione | ✅ risolto (regge anche se svuoti la cartella) |
 | 4 | Il ritmo saturava per mezzo giro dopo ogni sosta | ✅ risolto |
 | 5 | Log scritti anche fuori dalla gara | ✅ risolto |
-| 6 | Undercut/overcut oscillano decine di volte al minuto | ✅ risolto (Y-12), da confermare in gara |
-| 7 | Campioni degeneri saturavano il ritmo a fine gara | ✅ risolto, da confermare in gara |
+| 6 | Undercut/overcut oscillano decine di volte al minuto | ✅ risolto (Y-12), **verificato in gara: 375 → 23** |
+| 7 | Campioni degeneri saturavano il ritmo a fine gara | ✅ risolto, verificato in gara |
+| 8 | Il ritmo impazziva per un istante a ogni cambio giro | ✅ risolto, da confermare in gara |
+
+---
+
+## I tre controlli sul ritmo relativo
+
+Il ritmo si calcola confrontando il gap fra due macrosettori consecutivi. Tre cose possono rendere
+quel confronto una sciocchezza, e ognuna ha il suo controllo:
+
+| Controllo | Scarta il campione se… | Perché |
+|---|---|---|
+| **Sosta** | c'è di mezzo un pit | Il gap cambia di 20 s per motivi che non sono il ritmo |
+| **Tempo** | è passato meno di mezzo macrosettore o più del doppio | Un frammento di settore, o quattro settori persi contati come uno |
+| **Ampiezza** | il gap è saltato di oltre mezzo giro | Al cambio giro il conto salta di un giro esatto e torna: non è ritmo, è aritmetica |
+
+L'ultimo è il più insidioso perché **il tempo trascorso sembra normale**: 4 secondi, un macrosettore
+perfetto. È il salto del gap a essere impossibile — 93 secondi, cioè esattamente un giro di Misano.
+Senza quel controllo il ritmo schizzava a 2160 s/giro e restava al massimo per una decina di secondi
+a ogni cambio giro.
 
 ---
 

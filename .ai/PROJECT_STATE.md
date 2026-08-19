@@ -8,14 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      claude        # NONE | antigravity | claude | codex | human
-since:      2026-08-19T22:40:00Z
-task:       GapJump — gate sull'ampiezza del gapDelta (wrap di un giro al rollover)
-scope:      User.PluginSdkDemoEdit/RelativePaceTracker.cs
-            User.PluginSdkDemoEdit/TargetStrategyManager.cs (enum + payload invalidazione)
-            User.PluginSdkDemoEdit/LogManager.cs (parametro header)
-            User.PluginSdkDemo.Tests/UnitTests/StrategyHysteresisUnitTests.cs
-expires:    2026-08-20T03:00:00Z
+owner:      NONE          # NONE | antigravity | claude | codex | human
+since:      2026-08-19T23:00:00Z
+task:       —
+scope:      —
+expires:    —
 ```
 
 **Regole del lock**
@@ -44,6 +41,7 @@ implementazione. Chi decide, aggiorni questa tabella prima di far partire il lav
 | Y-3 | `LapsSinceLastPit` | Renderlo continuo come da spec §26 richiede una misura frazionaria di giro sul target: esiste già in `OpponentTelemetryData`? |
 | Y-8 | Deadband HUD 0.05 | La spec §30 lo richiede ma non definisce il formato: cosa mostrare per `|RelativePace| < 0.05` — `0.0s/lap`, `~0`, stringa vuota? |
 | ~~Y-12~~ | ~~Isteresi dei gate strategici~~ | ✅ **Deciso e implementato** (commit `1fa7b15`), approvato da Antigravity e Codex. Banda `±0.25` sulla posizione, `±0.15` sui margini, dwell `5 s`. Valori da sweep sul replay `20260819_205004` con simulatore validato 1958/1958 campioni. Il filtro EMA sul gap è stato **valutato e scartato**. Da confermare su un secondo replay e su un circuito diverso. |
+| Y-13 | Gap che salta di un giro al rollover | `GapJump` (commit `ff480bd`) scarta il campione nel **ritmo relativo**, ma la causa è a monte: `posDiffLaps * refLapTime` produce un gap sbagliato di esattamente un giro per un tick, quando i due contatori sono disallineati. Lo stesso gap alimenta **anche i gate strategici**, dove non c'è filtro. Oggi l'isteresi assorbe il colpo (banda 0.25 s, dwell 5 s), quindi non è urgente. Si corregge il calcolo a monte, o si accetta il sintomo curato in un posto solo? |
 | Y-9 | Euristica pit del Player | `TrackPositionPercent > 0.85 && 10 < SpeedKmh < 100` classifica come "in pit" anche un tornante lento di fine giro. Sostituire con il solo `IsInPitLane`, o con la geofence già usata per gli avversari? |
 
 ---

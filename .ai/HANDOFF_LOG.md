@@ -42,6 +42,113 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-19 23:00] claude → replay di verifica
+
+**Task:** verifica in gara di Y-12, poi `GapJump` — gate sull'ampiezza del `DeltaGap`
+**Commit:** `6f62dd4` (lock) · `ff480bd` (fix) · rilascio in commit dedicato
+
+### 1. Y-12 verificato in gara ✅
+
+Replay `20260819_221922`, **stessa gara** del precedente (26 giri, 39.9 min), quindi confronto diretto:
+
+| | prima | ora |
+|---|---|---|
+| `STRATEGY_CHANGED` | 375 | **23** |
+| al minuto | 9.39 | **0.58** |
+| durata mediana di uno stato | 0.6 s | **44.6 s** |
+| stato più breve | 0 s | **5.00 s** |
+| violazioni del dwell | — | **0** |
+
+**−94%**, e il numero atterra sopra il fondo scala di ~10 cambi realmente persistenti: l'isteresi
+sta togliendo rumore, non segnale. Il minimo esatto di 5.00 s conferma che il dwell è vincolante.
+
+`DeltaTimeTooLarge` ha scattato una volta su `deltaTime=20.267`, esattamente il caso patologico
+del replay precedente. Tre sequenze di sosta su tre perfette.
+
+**Nota utile per interpretare i log:** nello snapshot il candidato pre-dwell cambia 19 volte e la
+decisione 23 — la decisione sembra cambiare *più* del candidato. È un artefatto del campionamento
+(1 riga ogni 25 tick): il dwell sfasa i cambi nel tempo. Il numero autorevole è l'event log.
+Ne segue però una cosa vera: **il grosso del lavoro l'hanno fatto le bande morte, non il dwell** —
+se il dwell fosse il vincolo dominante la mediana sarebbe 5 s, non 44.6 s.
+
+### 2. `GapJump`, difetto nuovo emerso dallo stesso replay
+
+Restavano 2 `wasClamped=True`, ma di famiglia diversa. Al rollover del contatore giri
+(lap 24 sec=19 → lap 25 sec=0) il gap salta di **un giro intero** e torna subito:
+
+```
+gapDelta= 93.033 | deltaTime=4.000 -> instantRate= 2160.4
+gapDelta=-92.976 | deltaTime=3.800 -> instantRate=-2279.8
+```
+
+`deltaTime` è del tutto plausibile, quindi i due gate temporali non potevano vederlo: qui il
+difetto è l'**ampiezza**. Il clamp conteneva il danno (±10 invece di 2160) ma lasciava il
+`RelativePace` falso e saturo per 6 righe, ~9 s di gara.
+
+Nello snapshot il gap risulta stabile a −88.7: il transitorio dura meno del campionamento a 0.9 s.
+**Si vede solo nell'event log** — utile ricordarlo per i difetti futuri.
+
+**Soglia scelta sui dati, non a occhio.** Distribuzione di `abs(gapDelta)` sul replay:
+
+| p50 | p90 | p95 | p99 | poi | max |
+|---|---|---|---|---|---|
+| 0.073 | 0.313 | 0.373 | **0.540** | *(vuoto)* | **93.033** |
+
+Due ordini di grandezza vuoti fra segnale e artefatto, quindi la soglia esatta conta poco.
+`MaxGapDeltaFraction = 0.5` (mezzo giro) perché è il punto di mezzo naturale — oltre metà giro un
+salto è più plausibilmente un wrap che un episodio di gara — ed è **già la convenzione usata per il
+wrap del MergeGap** in `TargetStrategyManager.cs:701`. A Misano vale ~47 s: 87 volte il p99 del
+segnale legittimo, metà dell'artefatto.
+
+### Fatto
+
+- `RelativePaceTracker.cs` — terzo gate, dopo il calcolo del `DeltaGap` e prima dell'`InstantRate`.
+  Nuovo `MaxGapDelta` nel sample per il log.
+- Nuovo reason `GapJump`.
+- `RELATIVE_PACE_INVALIDATION` porta ora `gapDelta` e `maxGapDelta` nel payload, per **tutte** le
+  cause: senza, un `GapJump` nel log non sarebbe diagnosticabile.
+- Versione motore → `1.3.0`. **Snapshot invariato a 67 colonne.**
+- `Test_EmaAndClamp` aggiornato: saturava il clamp con un `deltaGap` di un giro intero, che ora è
+  respinto a monte e non ci arriverebbe mai. Usa ±2.0 s su `dt=10 s` — grande ma plausibile.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+
+Atteso: exit code `0`, **51 `[PASS]`**, di cui 16 nel blocco `Strategy Hysteresis Tests`.
+
+### Stato
+- ✅ Compila — 0 errori (resta il `CS0219` preesistente)
+- ✅ 51 test passano
+- ✅ **Regressione verificata**: con `MaxGapDeltaFraction = 0.0` il test fallisce con exit code `1`
+
+### Per chi entra
+
+**Prossimo passo:** replay di verifica. Attesi **zero `wasClamped=True`** e nessuna riga con
+`RelativePace` a ±10 fuori da una situazione reale. A ogni cambio giro dovrebbe comparire un
+`RELATIVE_PACE_INVALIDATION reason=GapJump` con `gapDelta` prossimo al tempo di giro — se **non**
+compare mai, il gate non sta scattando e va capito perché.
+
+**NON toccare:** i sei punti congelati in `PROJECT_STATE.md` (Y-1, Y-2, Y-3, Y-8, Y-9, Y-11).
+
+**Attenzione a:** `GapJump` cura il **sintomo**, non la causa. Il gap che salta di un giro esatto
+al rollover è un difetto del calcolo a monte (`posDiffLaps * refLapTime` con i due contatori
+disallineati per un tick). Scartare il campione è corretto e sufficiente per il ritmo relativo, ma
+lo stesso gap sbagliato viene usato **anche dai gate strategici**, dove non c'è nessun filtro. Con
+l'isteresi attuale un singolo campione anomalo non riesce a ribaltare la decisione — la banda è
+0.25 s e il dwell 5 s — ma la causa resta lì. Vale la pena aprirci un punto separato.
+
+**Ancora aperto:** i valori di Y-12 sono calibrati su **due replay, entrambi a Misano**.
+`PositionHysteresis` a 0.25 sta a un decimo dal cliff misurato a 0.35. Rifare lo sweep sul primo
+replay su un circuito diverso.
+
+---
+
 ## [2026-08-19 22:05] claude → replay di verifica
 
 **Task:** Y-12 (isteresi dei gate strategici) + finestra di plausibilità del `deltaTime`
