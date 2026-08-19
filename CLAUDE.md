@@ -97,6 +97,8 @@ Nell'handoff, perché io sia efficace:
 
 ## Riferimenti
 
+- `.ai/STRATEGY_ENGINE_GUIDE.md` — **come funziona il motore strategico, in parole povere.**
+  Da leggere per primo se non si ha il contesto delle sessioni precedenti.
 - `.ai/PROJECT_STATE.md` — stato, lock, milestone, debiti noti
 - `.ai/HANDOFF_LOG.md` — passaggi di consegne (ultimi 10)
 - `.ai/ARCHITECTURE.md` — ADR, mappa dei moduli, convenzioni

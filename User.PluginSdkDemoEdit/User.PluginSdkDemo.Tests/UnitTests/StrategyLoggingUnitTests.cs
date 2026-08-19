@@ -35,6 +35,7 @@ namespace User.PluginSdkDemo.Tests
             Test_PostPitSequence_IsReconstructableFromEventLog();
             Test_CleanLifecycle_ReportsNoFailure();
             Test_HeadersSurviveFolderWipedMidSession();
+            Test_StrategyLogsOnlyDuringRace();
 
             Console.WriteLine("[TEST SUCCESS] All Strategy Logging Tests Passed!");
         }
@@ -316,6 +317,60 @@ namespace User.PluginSdkDemo.Tests
                     "header duplicato nell'event log dopo il ripristino");
 
                 Console.WriteLine("  [PASS] Test_HeadersSurviveFolderWipedMidSession");
+            }
+            finally { Cleanup(dir); }
+        }
+
+        /// <summary>
+        /// I log strategici devono coprire solo la gara. Nel replay del 19/08 le fasi fuori gara
+        /// producevano 71 righe di rumore su 1021: griglia con SessionTime a −1, post-bandiera
+        /// con SessionTime a 0, e una coda di campioni identici a sessione ferma. Da quella
+        /// finestra nasceva anche un delta di −28.8 s calcolato su 146 s di sessione immobile.
+        /// </summary>
+        private static void Test_StrategyLogsOnlyDuringRace()
+        {
+            string dir = CreateTempDir();
+            try
+            {
+                var state = new SessionState();
+                var log = new LogManager(state, dir);
+
+                // Pre-gara: griglia / formazione
+                state.SessionStateStatus = 3;
+                log.Log(LogModule.STRATEGY_EVENT, LogType.EVENT, "EVT_PREGARA", "k=pre");
+                log.Log(LogModule.STRATEGY_SNAPSHOT, LogType.FLOW, "riga,pre,gara");
+
+                // Gara
+                state.SessionStateStatus = LogManager.RaceSessionStateStatus;
+                log.Log(LogModule.STRATEGY_EVENT, LogType.EVENT, "EVT_GARA", "k=race");
+                log.Log(LogModule.STRATEGY_SNAPSHOT, LogType.FLOW, "riga,in,gara");
+
+                // Post-bandiera
+                state.SessionStateStatus = 5;
+                log.Log(LogModule.STRATEGY_EVENT, LogType.EVENT, "EVT_POSTGARA", "k=post");
+                log.Log(LogModule.STRATEGY_SNAPSHOT, LogType.FLOW, "riga,post,gara");
+
+                log.Shutdown();
+
+                string events = ReadSingle(dir, "SimRIG_StrategyEvent_*.txt");
+                string snapshot = ReadSingle(dir, "SimRIG_StrategySnapshot_*.csv");
+
+                Assert(events.Contains("EVT_GARA"), "l'evento in gara deve essere scritto");
+                Assert(snapshot.Contains("riga,in,gara"), "lo snapshot in gara deve essere scritto");
+
+                Assert(!events.Contains("EVT_PREGARA"), "REGRESSIONE: evento pre-gara scritto");
+                Assert(!events.Contains("EVT_POSTGARA"), "REGRESSIONE: evento post-gara scritto");
+                Assert(!snapshot.Contains("riga,pre,gara"), "REGRESSIONE: snapshot pre-gara scritto");
+                Assert(!snapshot.Contains("riga,post,gara"), "REGRESSIONE: snapshot post-gara scritto");
+
+                Assert(log.StrategyLinesSkippedOutsideRace == 4,
+                    $"attese 4 righe scartate, contate {log.StrategyLinesSkippedOutsideRace}");
+
+                // Gli header restano: servono anche a un file che conterrà solo la gara
+                Assert(events.StartsWith("# StrategyEngineVersion="), "header event perso");
+                Assert(snapshot.StartsWith("# StrategyEngineVersion="), "header snapshot perso");
+
+                Console.WriteLine("  [PASS] Test_StrategyLogsOnlyDuringRace");
             }
             finally { Cleanup(dir); }
         }

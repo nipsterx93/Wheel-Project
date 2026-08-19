@@ -42,6 +42,56 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-19 13:35] claude → replay di verifica
+
+**Task:** log strategici scritti solo in gara + guida di lettura del motore
+**Commit:** `d4a51ab` (lock) · `<fix>`
+
+### Fatto
+
+- `LogManager.cs:102` — `IsRaceRunning`: `STRATEGY_SNAPSHOT` e `STRATEGY_EVENT` vengono scartati
+  quando `SessionStateStatus != 4`. Indicazione dell'utente, confermata dai dati: nel replay
+  `20260819_125249` erano **71 righe di rumore su 1021** (59 in griglia con `SessionTime=-1`,
+  12 post-bandiera con `SessionTime=0`), più una coda di campioni identici a sessione ferma.
+  Con `_sessionState` nullo (test) non si filtra: senza telemetria non c'è stato da valutare.
+- `LogManager.StrategyLinesSkippedOutsideRace` — contatore diagnostico delle righe scartate.
+- `.ai/STRATEGY_ENGINE_GUIDE.md` (**nuovo**) — spiegazione in parole povere del motore, delle due
+  misure di ritmo e di come leggere una sequenza di sosta. Referenziato da `CLAUDE.md`.
+
+### Effetto collaterale atteso
+
+Il gate chiude anche il terzo bug rilevato ieri: il delta di **−28.8 s su 146 s** nasceva nella
+finestra post-bandiera del giro 26, dove il clock di sessione andava a zero. Fuori dalla gara quei
+campioni non vengono più nemmeno prodotti. **Va confermato sul prossimo replay**: se ricompare un
+`instantRate` a due cifre, serve comunque un tetto su `deltaTime`.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+
+Atteso: exit code `0`, **35 `[PASS]`**.
+
+### Stato
+- ✅ Compila — 0 errori
+- ✅ 35 test passano
+
+### Per chi entra
+
+**Prossimo passo:** replay di verifica. Nel nuovo snapshot **nessuna riga** deve avere
+`SessionTime <= 0`, e non deve esserci la coda di righe identiche a fine sessione.
+
+**NON toccare:** i sette punti congelati in `PROJECT_STATE.md`.
+
+**Attenzione a:** questo turno ha ristretto *cosa* viene loggato, non la logica strategica.
+Y-12 (isteresi dei gate) resta il problema aperto con più impatto pratico.
+
+---
+
 ## [2026-08-18 23:50] claude → replay di verifica
 
 **Task:** header auto-riparanti + finestra di assestamento post-pit

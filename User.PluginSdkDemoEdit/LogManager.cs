@@ -86,6 +86,27 @@ namespace SimRIG
 
         public bool StrategyHeadersWritten { get { return _snapshotHeaderOk && _eventHeaderOk; } }
 
+        /// <summary>Stato di sessione che corrisponde alla gara in corso (bandiera verde).</summary>
+        public const int RaceSessionStateStatus = 4;
+
+        /// <summary>
+        /// I log strategici hanno senso solo a gara in corso. Griglia, formazione, pausa e
+        /// post-bandiera producono telemetria che non descrive nulla di strategico: gap congelati,
+        /// clock di sessione a −1 o a 0, campioni duplicati. Nel replay del 19/08 erano 71 righe
+        /// di rumore su 1021, e generavano un delta di −28.8 s calcolato su una finestra di 146 s
+        /// in cui la sessione era di fatto ferma.
+        ///
+        /// Con <c>_sessionState</c> nullo (test) non si filtra nulla: senza telemetria non c'è
+        /// stato da valutare.
+        /// </summary>
+        private bool IsRaceRunning
+        {
+            get { return _sessionState == null || _sessionState.SessionStateStatus == RaceSessionStateStatus; }
+        }
+
+        /// <summary>Righe strategiche scartate perché fuori dalla finestra di gara.</summary>
+        public int StrategyLinesSkippedOutsideRace { get; private set; }
+
         // Interruttori di debug collegati alla UI
         public bool EnableLogFuel { get; set; } = false;
         public bool EnableLogStrategy { get; set; } = false;
@@ -379,6 +400,16 @@ namespace SimRIG
                 if (!EnableLogMergeGap) return;
                 _mergeGapQueue.Enqueue(message);
                 return;
+            }
+
+            if (module == LogModule.STRATEGY_SNAPSHOT || module == LogModule.STRATEGY_EVENT)
+            {
+                // Fuori dalla gara non si scrive: vedi IsRaceRunning.
+                if (!IsRaceRunning)
+                {
+                    StrategyLinesSkippedOutsideRace++;
+                    return;
+                }
             }
 
             if (module == LogModule.STRATEGY_SNAPSHOT)
