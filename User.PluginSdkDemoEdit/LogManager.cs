@@ -137,6 +137,7 @@ namespace SimRIG
                    "# RelativePaceBeta=" + RelativePaceTracker.Beta.ToString(c) + "\n" +
                    "# RelativePaceClamp=" + RelativePaceTracker.ClampLimit.ToString(c) + "\n" +
                    "# MinimumDeltaTime=" + RelativePaceTracker.MinimumDeltaTime.ToString(c) + "\n" +
+                   "# PostPitSettlingSectors=" + RelativePaceTracker.PostPitSettlingSectors.ToString(c) + "\n" +
                    "# PitDecisionBuffer=0.8\n" +
                    "# MaxUndercutReactionWindow=1.0\n" +
                    "# WarmupThreshold=0.10\n" +
@@ -195,21 +196,10 @@ namespace SimRIG
         /// </summary>
         private void WriteHeaders()
         {
-            _debugHeaderOk = TryWriteHeader(_logFilePath,
-                "Timestamp;SessionTime;Lap;Type;Module;Message;Data\n", "DebugLog");
-
-            _mergeGapHeaderOk = TryWriteHeader(_mergeGapLogFilePath,
-                "========================================================================================\n" +
-                "                 SIMRIG MERGEGAP STRATEGY MONITOR (10s DEDICATED LOG)                  \n" +
-                "========================================================================================\n\n", "MergeGapLog");
-
-            _snapshotHeaderOk = TryWriteHeader(_strategySnapshotLogFilePath,
-                BuildModelParamsHeader() + SnapshotHeader + "\n", "StrategySnapshot");
-
-            _eventHeaderOk = TryWriteHeader(_strategyEventLogFilePath,
-                BuildModelParamsHeader() +
-                "# Formato: sessionTimeLeft | lap | wallClock | EVENT | payload\n" +
-                "========================================================================================\n\n", "StrategyEvent");
+            EnsureDebugHeader();
+            EnsureMergeGapHeader();
+            EnsureStrategySnapshotHeader();
+            EnsureStrategyEventHeader();
         }
 
         /// <summary>
@@ -232,21 +222,44 @@ namespace SimRIG
         }
 
         /// <summary>
-        /// Nuovo tentativo di scrittura header per i soli file strategy, prima di accodare dati.
-        /// Un fallimento transitorio all'avvio non deve lasciare l'intera sessione senza header.
+        /// Riscrive l'header se il file è assente o vuoto. Va invocata **prima di ogni append**,
+        /// non una volta sola all'avvio: fra la costruzione del LogManager e la prima scrittura
+        /// di dati passano decine di secondi, durante i quali il file può sparire — basta che
+        /// qualcuno svuoti la cartella dei log per tenerla in ordine. Con un flag "scritto una
+        /// volta" il file tornerebbe senza intestazione e nessuno se ne accorgerebbe.
+        ///
+        /// Il costo è un File.Exists + FileInfo.Length per ciclo da 500 ms, solo quando c'è
+        /// qualcosa da scrivere. Nulla di tutto questo tocca il percorso a 60 Hz.
         /// </summary>
-        private void RetryStrategyHeaders()
+        private void EnsureStrategySnapshotHeader()
         {
-            if (!_snapshotHeaderOk)
-                _snapshotHeaderOk = TryWriteHeader(_strategySnapshotLogFilePath,
-                    BuildModelParamsHeader() + SnapshotHeader + "\n", "StrategySnapshot");
-
-            if (!_eventHeaderOk)
-                _eventHeaderOk = TryWriteHeader(_strategyEventLogFilePath,
-                    BuildModelParamsHeader() +
-                    "# Formato: sessionTimeLeft | lap | wallClock | EVENT | payload\n" +
-                    "========================================================================================\n\n", "StrategyEvent");
+            _snapshotHeaderOk = TryWriteHeader(_strategySnapshotLogFilePath,
+                BuildModelParamsHeader() + SnapshotHeader + "\n", "StrategySnapshot");
         }
+
+        private void EnsureStrategyEventHeader()
+        {
+            _eventHeaderOk = TryWriteHeader(_strategyEventLogFilePath,
+                BuildModelParamsHeader() +
+                "# Formato: sessionTimeLeft | lap | wallClock | EVENT | payload\n" +
+                "========================================================================================\n\n", "StrategyEvent");
+        }
+
+        private void EnsureDebugHeader()
+        {
+            _debugHeaderOk = TryWriteHeader(_logFilePath,
+                "Timestamp;SessionTime;Lap;Type;Module;Message;Data\n", "DebugLog");
+        }
+
+        private void EnsureMergeGapHeader()
+        {
+            _mergeGapHeaderOk = TryWriteHeader(_mergeGapLogFilePath, MergeGapBanner, "MergeGapLog");
+        }
+
+        private const string MergeGapBanner =
+            "========================================================================================\n" +
+            "                 SIMRIG MERGEGAP STRATEGY MONITOR (10s DEDICATED LOG)                  \n" +
+            "========================================================================================\n\n";
 
         /// <summary>
         /// Diagnostica dei fallimenti di scrittura. Non solleva mai: un errore di logging non deve
@@ -279,6 +292,7 @@ namespace SimRIG
                     // 1. Scrittura log CSV generale
                     if (!_logQueue.IsEmpty)
                     {
+                        EnsureDebugHeader();
                         try
                         {
                             using (StreamWriter sw = File.AppendText(_logFilePath))
@@ -295,6 +309,7 @@ namespace SimRIG
                     // 2. Scrittura log dedicato MergeGap
                     if (!_mergeGapQueue.IsEmpty)
                     {
+                        EnsureMergeGapHeader();
                         try
                         {
                             using (StreamWriter sw = File.AppendText(_mergeGapLogFilePath))
@@ -308,13 +323,10 @@ namespace SimRIG
                         catch (Exception ex) { ReportLogFailure("MergeGapLog write", ex); }
                     }
 
-                    // Gli header strategy devono precedere qualunque dato: se la scrittura all'avvio
-                    // è fallita, si riprova finché i file sono ancora vuoti.
-                    if (!_snapshotHeaderOk || !_eventHeaderOk) RetryStrategyHeaders();
-
                     // 3. Scrittura Strategy Snapshot
                     if (!_strategySnapshotQueue.IsEmpty)
                     {
+                        EnsureStrategySnapshotHeader();
                         try
                         {
                             using (StreamWriter sw = File.AppendText(_strategySnapshotLogFilePath))
@@ -331,6 +343,7 @@ namespace SimRIG
                     // 4. Scrittura Strategy Event
                     if (!_strategyEventQueue.IsEmpty)
                     {
+                        EnsureStrategyEventHeader();
                         try
                         {
                             using (StreamWriter sw = File.AppendText(_strategyEventLogFilePath))
@@ -430,9 +443,8 @@ namespace SimRIG
             catch (OperationCanceledException) { }
             catch (Exception ex) { ReportLogFailure("writer shutdown", ex); }
 
-            // Ultimo tentativo per gli header: una sessione brevissima potrebbe non aver mai
-            // raggiunto un ciclo del writer task.
-            RetryStrategyHeaders();
+            // Una sessione brevissima potrebbe non aver mai raggiunto un ciclo del writer task.
+            WriteHeaders();
 
             while (_logQueue.TryDequeue(out string logLine))
             {

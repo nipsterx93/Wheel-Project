@@ -39,6 +39,9 @@ namespace SimRIG
 
         public double EmaAfter;
         public bool Clamped;
+
+        /// <summary>Macrosettori di assestamento ancora da scartare dopo questo campione.</summary>
+        public int PostPitSectorsRemaining;
     }
 
     /// <summary>
@@ -58,13 +61,25 @@ namespace SimRIG
         public const double MinimumDeltaTime = 1.0;
         public const int MacroSectorCount = 20;
 
+        /// <summary>
+        /// Macrosettori puliti da scartare dopo una fase di pit prima di riprendere a misurare.
+        /// Non basta saltarne uno: il primo campione fuori dai box viene preso mentre la vettura
+        /// sta ancora rientrando in pista e accelerando, e il rate che ne esce satura il clamp.
+        /// Nel replay del 2026-08-18 tutte e tre le soste producevano un primo rate a ±10 s/giro.
+        /// A ~4.7 s per macrosettore, 3 corrispondono a ~14 s di assestamento.
+        /// </summary>
+        public const int PostPitSettlingSectors = 3;
+
         public double RelativePace { get; private set; } = 0.0;
 
         /// <summary>
-        /// True quando la reference corrente nasce da una fase di pit e non può ancora
-        /// essere usata per calcolare un rate.
+        /// True finché la finestra di assestamento post-pit non è esaurita: la reference corrente
+        /// non può ancora essere usata per calcolare un rate.
         /// </summary>
-        public bool PitSeedPending { get { return _pitContaminatedSeed; } }
+        public bool PitSeedPending { get { return _postPitSectorsToSkip > 0; } }
+
+        /// <summary>Macrosettori puliti ancora da scartare prima di riprendere a misurare.</summary>
+        public int PostPitSectorsRemaining { get { return _postPitSectorsToSkip; } }
 
         public int LastValidMacroSector { get { return _lastValidMacroSector; } }
         public bool EmaInitialized { get { return _emaInitialized; } }
@@ -73,7 +88,7 @@ namespace SimRIG
         private double _lastMacroSectorTime = 0.0;
         private double _lastMacroSectorGap = 0.0;
         private bool _emaInitialized = false;
-        private bool _pitContaminatedSeed = false;
+        private int _postPitSectorsToSkip = 0;
 
         /// <summary>
         /// Reset completo: azzera il valore, non solo la reference. Da usare al cambio target
@@ -87,7 +102,7 @@ namespace SimRIG
             _lastMacroSectorTime = 0.0;
             _lastMacroSectorGap = 0.0;
             _emaInitialized = false;
-            _pitContaminatedSeed = false;
+            _postPitSectorsToSkip = 0;
         }
 
         public RelativePaceSample ProcessSample(int macroSector, double sessionClock, double signedGap,
@@ -102,10 +117,10 @@ namespace SimRIG
                 EmaAfter = RelativePace
             };
 
-            // Gate pit: indipendente dalla sequenza. Una volta alzato, il flag sopravvive
-            // all'uscita dai box e forza un seed pulito prima di riprendere i calcoli.
+            // Gate pit: indipendente dalla sequenza. Il contatore sopravvive all'uscita dai box
+            // e impone una finestra di assestamento prima di riprendere i calcoli.
             bool inPit = playerInPit || targetInPit;
-            if (inPit) _pitContaminatedSeed = true;
+            if (inPit) _postPitSectorsToSkip = PostPitSettlingSectors;
 
             double dt = sessionClock - _lastMacroSectorTime;
             if (dt < 0.0) dt = -dt; // il clock di sessione è un conto alla rovescia
@@ -122,17 +137,22 @@ namespace SimRIG
                 return sample;
             }
 
-            // Primo campione pulito dopo il pit. La sequenza qui è numericamente valida
-            // (i macrosettori sono avanzati regolarmente in pit lane) ma la reference
-            // precedente è stata campionata dentro la sosta: usarla farebbe attraversare
-            // il pit al DeltaGap. Si rimanda di un macrosettore.
-            if (_pitContaminatedSeed)
+            // Finestra di assestamento post-pit. La sequenza qui è numericamente valida
+            // (i macrosettori sono avanzati regolarmente in pit lane) ma i primi campioni fuori
+            // dai box sono inutilizzabili per due motivi distinti:
+            //   1. la reference precedente è stata presa dentro la sosta, quindi il DeltaGap
+            //      attraverserebbe il pit;
+            //   2. anche dopo averla scartata, la vettura sta ancora rientrando e accelerando,
+            //      e il delta che ne esce satura il clamp.
+            // Si scartano PostPitSettlingSectors macrosettori, ri-seminando ogni volta.
+            if (_postPitSectorsToSkip > 0)
             {
-                _pitContaminatedSeed = false;
+                _postPitSectorsToSkip--;
                 Reseed(macroSector, sessionClock, signedGap);
                 _emaInitialized = false;
                 sample.WasReseeded = true;
                 sample.WasPostPitSeed = true;
+                sample.PostPitSectorsRemaining = _postPitSectorsToSkip;
                 return sample;
             }
 

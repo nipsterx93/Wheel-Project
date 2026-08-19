@@ -34,6 +34,7 @@ namespace User.PluginSdkDemo.Tests
             Test_EventFile_ContainsPayloadOnDisk();
             Test_PostPitSequence_IsReconstructableFromEventLog();
             Test_CleanLifecycle_ReportsNoFailure();
+            Test_HeadersSurviveFolderWipedMidSession();
 
             Console.WriteLine("[TEST SUCCESS] All Strategy Logging Tests Passed!");
         }
@@ -269,6 +270,52 @@ namespace User.PluginSdkDemo.Tests
                     $"ciclo di vita pulito ma diagnostica emessa: {log.LastLogFailure}");
 
                 Console.WriteLine("  [PASS] Test_CleanLifecycle_ReportsNoFailure");
+            }
+            finally { Cleanup(dir); }
+        }
+
+        /// <summary>
+        /// Scenario reale del replay 20260818_230037: fra la costruzione del LogManager e la prima
+        /// scrittura di dati passano ~28 secondi, e in quella finestra la cartella dei log viene
+        /// svuotata a mano. Con un flag "header già scritto" i file tornavano privi di intestazione
+        /// e restavano così per tutta la sessione. L'header va garantito prima di ogni append.
+        /// </summary>
+        private static void Test_HeadersSurviveFolderWipedMidSession()
+        {
+            string dir = CreateTempDir();
+            try
+            {
+                var log = new LogManager(null, dir);
+                Assert(log.StrategyHeadersWritten, "header non scritti alla costruzione");
+
+                // Qualcuno svuota la cartella mentre la sessione è in corso
+                foreach (string f in Directory.GetFiles(dir)) File.Delete(f);
+                Assert(Directory.GetFiles(dir).Length == 0, "la cartella doveva restare vuota");
+
+                // Poi arrivano i dati
+                log.Log(LogModule.STRATEGY_EVENT, LogType.EVENT, "RELATIVE_PACE_UPDATE", "gapDelta=-0.200");
+                log.Log(LogModule.STRATEGY_SNAPSHOT, LogType.FLOW, "riga,dati,snapshot");
+                log.Shutdown();
+
+                string events = ReadSingle(dir, "SimRIG_StrategyEvent_*.txt");
+                string snapshot = ReadSingle(dir, "SimRIG_StrategySnapshot_*.csv");
+
+                Assert(events.StartsWith("# StrategyEngineVersion="),
+                    "REGRESSIONE: l'event log ricreato dopo lo svuotamento non ha l'header");
+                Assert(snapshot.StartsWith("# StrategyEngineVersion="),
+                    "REGRESSIONE: lo snapshot ricreato dopo lo svuotamento non ha l'header");
+                Assert(snapshot.Contains(LogManager.SnapshotHeader),
+                    "lo snapshot ricreato non contiene l'header delle colonne");
+
+                // I dati arrivati dopo devono esserci comunque
+                Assert(events.Contains("gapDelta=-0.200"), "dati persi nell'event log");
+                Assert(snapshot.Contains("riga,dati,snapshot"), "dati persi nello snapshot");
+
+                // E l'header non deve essere duplicato
+                Assert(CountOccurrences(events, "# StrategyEngineVersion=") == 1,
+                    "header duplicato nell'event log dopo il ripristino");
+
+                Console.WriteLine("  [PASS] Test_HeadersSurviveFolderWipedMidSession");
             }
             finally { Cleanup(dir); }
         }

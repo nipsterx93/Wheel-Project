@@ -115,15 +115,21 @@ namespace User.PluginSdkDemo.Tests
             s = t.ProcessSample(8, Clock(2), 27.0, true, false, RefLapTime);
             Assert(!s.RateComputed, "durante il pit il delta non è valido");
 
-            // Uscita dai box: sequenza numericamente valida, ma il riferimento è contaminato
-            s = t.ProcessSample(9, Clock(3), 28.0, false, false, RefLapTime);
-            Assert(s.WasPostPitSeed, "primo campione pulito post-pit = seed");
-            Assert(!s.RateComputed, "sul seed post-pit il delta non è valido");
+            // Uscita dai box: sequenza numericamente valida, ma i campioni del rientro vanno scartati
+            int settling = RelativePaceTracker.PostPitSettlingSectors;
+            double[] rejoinGaps = { 28.0, 30.5, 31.2, 31.4, 31.5, 31.6 };
 
-            // Primo delta valido solo al macrosettore pulito successivo
-            s = t.ProcessSample(10, Clock(4), 28.3, false, false, RefLapTime);
-            Assert(s.RateComputed, "il macrosettore successivo deve produrre il primo delta valido");
-            AssertClose(s.DeltaGap, 0.3, "il delta non deve contenere il salto della sosta");
+            for (int i = 0; i < settling; i++)
+            {
+                s = t.ProcessSample(9 + i, Clock(3 + i), rejoinGaps[i], false, false, RefLapTime);
+                Assert(s.WasPostPitSeed, $"settore {9 + i}: seed di assestamento");
+                Assert(!s.RateComputed, $"settore {9 + i}: durante l'assestamento il delta non è valido");
+            }
+
+            double lastGap = rejoinGaps[settling - 1];
+            s = t.ProcessSample(9 + settling, Clock(3 + settling), lastGap + 0.3, false, false, RefLapTime);
+            Assert(s.RateComputed, "dopo l'assestamento deve arrivare il primo delta valido");
+            AssertClose(s.DeltaGap, 0.3, "il delta non deve contenere né la sosta né il rientro");
             Assert(Math.Abs(s.DeltaGap) < 1.0, "REGRESSIONE RED-1: il delta ha attraversato il pit");
 
             // Stesso comportamento con il Target ai box
@@ -132,9 +138,14 @@ namespace User.PluginSdkDemo.Tests
             t2.ProcessSample(2, Clock(1), -3.1, false, false, RefLapTime);
             s = t2.ProcessSample(3, Clock(2), -24.0, false, true, RefLapTime);
             Assert(!s.RateComputed, "target ai box: delta non valido");
-            s = t2.ProcessSample(4, Clock(3), -24.5, false, false, RefLapTime);
-            Assert(!s.RateComputed, "seed post-pit del target: delta non valido");
-            s = t2.ProcessSample(5, Clock(4), -24.7, false, false, RefLapTime);
+
+            for (int i = 0; i < settling; i++)
+            {
+                s = t2.ProcessSample(4 + i, Clock(3 + i), -24.5 - (i * 0.7), false, false, RefLapTime);
+                Assert(!s.RateComputed, $"assestamento post-pit del target, settore {4 + i}");
+            }
+            s = t2.ProcessSample(4 + settling, Clock(3 + settling), -24.5 - ((settling - 1) * 0.7) - 0.2,
+                                 false, false, RefLapTime);
             Assert(s.RateComputed, "primo delta valido dopo il rientro del target");
             AssertClose(s.DeltaGap, -0.2, "delta pulito dopo il pit del target");
 

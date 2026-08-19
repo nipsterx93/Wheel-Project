@@ -42,6 +42,7 @@ namespace User.PluginSdkDemo.Tests
             Test_TargetChange_ResetsToZero();
             Test_EmaAndClamp();
             Test_SnapshotHeaderMatchesFieldCount();
+            Test_PostPitSettling_PreventsClampSaturation();
 
             Console.WriteLine("[TEST SUCCESS] All RelativePace Tests Passed!");
         }
@@ -160,22 +161,32 @@ namespace User.PluginSdkDemo.Tests
             AssertClose(t.RelativePace, frozenPace, 1e-9, "RelativePace deve restare congelato durante il pit");
             Assert(t.PitSeedPending, "il flag di contaminazione deve essere alzato");
 
-            // Settore 10: Player esce. La sequenza 9 -> 10 è NUMERICAMENTE VALIDA
-            // (il macrosettore avanza anche in pit lane) ma il campione 9 è contaminato.
-            s = t.ProcessSample(10, Clock(4), 28.0, false, false, RefLapTime);
-            Assert(s.SequenceValid, "9 -> 10 è numericamente valida: è proprio il caso insidioso");
-            Assert(!s.RateComputed, "REGRESSIONE RED-1: nessun rate deve attraversare il pit");
-            Assert(s.WasPostPitSeed, "il primo campione pulito post-pit deve essere un seed");
-            AssertClose(t.RelativePace, frozenPace, 1e-9, "RelativePace deve essere ancora congelato");
-            Assert(!t.PitSeedPending, "il flag deve essere consumato dal seed post-pit");
+            // Uscita dai box. Le sequenze restano NUMERICAMENTE VALIDE (il macrosettore avanza
+            // anche in pit lane): è proprio il caso insidioso. Si scartano PostPitSettlingSectors
+            // macrosettori perché la vettura sta ancora rientrando e accelerando.
+            int settling = RelativePaceTracker.PostPitSettlingSectors;
+            double[] gapsWhileSettling = { 28.0, 30.5, 31.2, 31.4, 31.5, 31.6 };
 
-            // Settore 11: primo rate pulito, reference = gap@10, non gap@9
-            s = t.ProcessSample(11, Clock(5), 28.3, false, false, RefLapTime);
-            Assert(s.RateComputed, "10 -> 11 deve produrre il primo rate pulito");
-            AssertClose(s.PreviousGap, 28.0, 1e-9, "la reference deve essere gap@10 (fuori pit)");
-            AssertClose(s.DeltaGap, 0.3, 1e-9, "DeltaGap non deve contenere il salto della sosta");
+            for (int i = 0; i < settling; i++)
+            {
+                s = t.ProcessSample(10 + i, Clock(4 + i), gapsWhileSettling[i], false, false, RefLapTime);
+                Assert(s.SequenceValid, $"settore {10 + i}: la sequenza è numericamente valida");
+                Assert(!s.RateComputed, $"REGRESSIONE: nessun rate durante l'assestamento (settore {10 + i})");
+                Assert(s.WasPostPitSeed, $"settore {10 + i} deve essere un seed di assestamento");
+                AssertClose(t.RelativePace, frozenPace, 1e-9, "RelativePace congelato per tutto l'assestamento");
+                Assert(s.PostPitSectorsRemaining == settling - 1 - i,
+                    $"contatore residuo errato al settore {10 + i}: {s.PostPitSectorsRemaining}");
+            }
+            Assert(!t.PitSeedPending, "la finestra di assestamento deve essere esaurita");
+
+            // Primo rate pulito: reference = ultimo campione dell'assestamento
+            double lastSettlingGap = gapsWhileSettling[settling - 1];
+            s = t.ProcessSample(10 + settling, Clock(4 + settling), lastSettlingGap + 0.3, false, false, RefLapTime);
+            Assert(s.RateComputed, "dopo l'assestamento deve arrivare il primo rate pulito");
+            AssertClose(s.PreviousGap, lastSettlingGap, 1e-9, "la reference deve essere l'ultimo seed di assestamento");
+            AssertClose(s.DeltaGap, 0.3, 1e-9, "DeltaGap non deve contenere né la sosta né il rientro");
             Assert(s.EmaSeeded, "l'EMA era invalidata: il primo rate pulito deve inizializzarla");
-            AssertClose(t.RelativePace, s.InstantRate, 1e-9, "EMA = InstantRate al primo campione post-pit");
+            AssertClose(t.RelativePace, s.InstantRate, 1e-9, "EMA = InstantRate al primo campione post-assestamento");
             Assert(Math.Abs(t.RelativePace) < 10.0, "il rate pulito non deve saturare il clamp");
 
             Console.WriteLine("  [PASS] Test8_PlayerPit_NoDeltaAcrossPit");
@@ -200,15 +211,23 @@ namespace User.PluginSdkDemo.Tests
             Assert(!s.RateComputed, "nessun rate con il target ai box");
             AssertClose(t.RelativePace, frozenPace, 1e-9, "RelativePace congelato");
 
-            // Target rientra in pista
-            s = t.ProcessSample(6, Clock(4), -24.5, false, false, RefLapTime);
-            Assert(s.SequenceValid, "5 -> 6 è numericamente valida");
-            Assert(!s.RateComputed, "REGRESSIONE RED-1: nessun rate con reference presa durante il pit del target");
-            Assert(s.WasPostPitSeed, "primo campione pulito = seed post-pit");
+            // Target rientra in pista: stessa finestra di assestamento del caso Player
+            int settling = RelativePaceTracker.PostPitSettlingSectors;
+            double[] gapsWhileSettling = { -24.5, -25.9, -26.2, -26.3, -26.4, -26.5 };
 
-            s = t.ProcessSample(7, Clock(5), -24.7, false, false, RefLapTime);
-            Assert(s.RateComputed, "6 -> 7 deve produrre il primo rate pulito");
-            AssertClose(s.PreviousGap, -24.5, 1e-9, "reference = gap@6");
+            for (int i = 0; i < settling; i++)
+            {
+                s = t.ProcessSample(6 + i, Clock(4 + i), gapsWhileSettling[i], false, false, RefLapTime);
+                Assert(s.SequenceValid, $"settore {6 + i}: sequenza numericamente valida");
+                Assert(!s.RateComputed, $"REGRESSIONE: nessun rate durante l'assestamento (settore {6 + i})");
+                Assert(s.WasPostPitSeed, $"settore {6 + i} deve essere un seed di assestamento");
+                AssertClose(t.RelativePace, frozenPace, 1e-9, "RelativePace congelato");
+            }
+
+            double lastSettlingGap = gapsWhileSettling[settling - 1];
+            s = t.ProcessSample(6 + settling, Clock(4 + settling), lastSettlingGap - 0.2, false, false, RefLapTime);
+            Assert(s.RateComputed, "dopo l'assestamento deve arrivare il primo rate pulito");
+            AssertClose(s.PreviousGap, lastSettlingGap, 1e-9, "reference = ultimo seed di assestamento");
             AssertClose(s.DeltaGap, -0.2, 1e-9, "DeltaGap pulito");
 
             Console.WriteLine("  [PASS] Test9_TargetPit_NoDeltaAcrossPit");
@@ -235,13 +254,24 @@ namespace User.PluginSdkDemo.Tests
             }
             AssertClose(t.RelativePace, frozenPace, 1e-9, "RelativePace congelato per tutta la sosta");
 
-            var seed = t.ProcessSample(7, Clock(6), 34.0, false, false, RefLapTime);
-            Assert(seed.WasPostPitSeed, "uscita dai box: seed obbligatorio");
-            Assert(!seed.RateComputed, "uscita dai box: nessun rate");
+            // Il contatore di assestamento riparte pieno a ogni campione in pit: qui erano quattro,
+            // quindi all'uscita restano comunque PostPitSettlingSectors macrosettori da scartare.
+            int settling = RelativePaceTracker.PostPitSettlingSectors;
+            Assert(t.PostPitSectorsRemaining == settling,
+                $"il contatore deve essere pieno all'uscita: {t.PostPitSectorsRemaining}");
 
-            var rate = t.ProcessSample(8, Clock(7), 34.4, false, false, RefLapTime);
-            Assert(rate.RateComputed, "il campione dopo il seed post-pit deve produrre il rate");
-            AssertClose(rate.PreviousGap, 34.0, 1e-9, "reference = ultimo campione fuori pit");
+            double gap = 34.0;
+            for (int i = 0; i < settling; i++)
+            {
+                var seed = t.ProcessSample(7 + i, Clock(6 + i), gap, false, false, RefLapTime);
+                Assert(seed.WasPostPitSeed, $"assestamento in corso al settore {7 + i}");
+                Assert(!seed.RateComputed, $"nessun rate durante l'assestamento (settore {7 + i})");
+                gap += 0.4;
+            }
+
+            var rate = t.ProcessSample(7 + settling, Clock(6 + settling), gap, false, false, RefLapTime);
+            Assert(rate.RateComputed, "dopo l'assestamento deve arrivare il rate");
+            AssertClose(rate.PreviousGap, gap - 0.4, 1e-9, "reference = ultimo seed di assestamento");
 
             Console.WriteLine("  [PASS] Test_PitContamination_SurvivesMultiSectorStop");
         }
@@ -305,6 +335,49 @@ namespace User.PluginSdkDemo.Tests
             AssertClose(t2.RelativePace, -10.0, 1e-9, "il clamp deve limitare a -10.0");
 
             Console.WriteLine("  [PASS] Test_EmaAndClamp");
+        }
+
+        /// <summary>
+        /// Regressione dal replay reale del 2026-08-18: con un solo macrosettore di attesa,
+        /// tutte e tre le soste producevano un primo rate che saturava il clamp (±10 s/giro),
+        /// perché il campione veniva preso mentre la vettura stava ancora rientrando in pista.
+        /// Qui si riproduce quel profilo di gap e si verifica che l'assestamento lo assorba.
+        /// </summary>
+        private static void Test_PostPitSettling_PreventsClampSaturation()
+        {
+            var t = new RelativePaceTracker();
+
+            // Regime pulito prima della sosta
+            t.ProcessSample(0, Clock(0), 9.0, false, false, RefLapTime);
+            t.ProcessSample(1, Clock(1), 9.1, false, false, RefLapTime);
+            double paceBeforePit = t.RelativePace;
+
+            // Sosta del Player
+            t.ProcessSample(2, Clock(2), 9.2, true, false, RefLapTime);
+
+            // Profilo di rientro misurato nel replay: il gap fa un balzo di +2.5s in un
+            // macrosettore (uscita box + accelerazione), poi si stabilizza.
+            double[] rejoin = { 9.204, 11.719, 11.661, 11.640, 11.628, 11.615 };
+            int settling = RelativePaceTracker.PostPitSettlingSectors;
+
+            RelativePaceSample s = default(RelativePaceSample);
+            for (int i = 0; i < settling; i++)
+            {
+                s = t.ProcessSample(3 + i, Clock(3 + i), rejoin[i], false, false, RefLapTime);
+                Assert(!s.RateComputed, $"il balzo del rientro non deve produrre un rate (settore {3 + i})");
+            }
+            AssertClose(t.RelativePace, paceBeforePit, 1e-9,
+                "RelativePace deve restare congelato su tutto il rientro");
+
+            // Primo rate reale, ormai su gap stabilizzati
+            s = t.ProcessSample(3 + settling, Clock(3 + settling), rejoin[settling], false, false, RefLapTime);
+            Assert(s.RateComputed, "dopo l'assestamento deve arrivare il rate");
+            Assert(!s.Clamped,
+                $"REGRESSIONE: il primo rate post-pit satura ancora il clamp (instantRate={s.InstantRate:F2})");
+            Assert(Math.Abs(t.RelativePace) < RelativePaceTracker.ClampLimit,
+                $"RelativePace incollato alla sbarra: {t.RelativePace:F2}");
+
+            Console.WriteLine("  [PASS] Test_PostPitSettling_PreventsClampSaturation");
         }
 
         /// <summary>

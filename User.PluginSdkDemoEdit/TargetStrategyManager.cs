@@ -493,7 +493,7 @@ namespace SimRIG
                     else if (paceSample.WasPostPitSeed)
                     {
                         log.Log(LogModule.STRATEGY_EVENT, LogType.EVENT, "RELATIVE_PACE_POST_PIT_SEED",
-                            $"sector={macroSector} | gap={currentSignedGap:F3} | frozenPace={CurrentTarget.RelativePace:F3} | note=primo campione pulito post-pit, nessun rate calcolato");
+                            $"sector={macroSector} | gap={currentSignedGap:F3} | frozenPace={CurrentTarget.RelativePace:F3} | sectorsRemaining={paceSample.PostPitSectorsRemaining} | note=assestamento post-pit, nessun rate calcolato");
                     }
                     else if (paceSample.EmaSeeded)
                     {
