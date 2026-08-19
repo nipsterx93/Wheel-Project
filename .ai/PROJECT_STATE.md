@@ -8,16 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      claude        # NONE | antigravity | claude | codex | human
-since:      2026-08-19T21:20:00Z
-task:       Y-12 isteresi dei gate strategici + finestra deltaTime adattiva
-scope:      User.PluginSdkDemoEdit/StrategyGateHysteresis.cs (nuovo)
-            User.PluginSdkDemoEdit/RelativePaceTracker.cs
-            User.PluginSdkDemoEdit/TargetStrategyManager.cs
-            User.PluginSdkDemoEdit/LogManager.cs
-            User.PluginSdkDemo.Tests/UnitTests/StrategyHysteresisUnitTests.cs (nuovo)
-            i due .csproj (nuovi <Compile>)
-expires:    2026-08-20T02:00:00Z
+owner:      NONE          # NONE | antigravity | claude | codex | human
+since:      2026-08-19T22:05:00Z
+task:       —
+scope:      —
+expires:    —
 ```
 
 **Regole del lock**
@@ -45,7 +40,7 @@ implementazione. Chi decide, aggiorni questa tabella prima di far partire il lav
 | Y-11 | Modello warmup | La media mobile a 4 giri di `PaceDropDueToTyres` include i giri post-pit su gomma fredda, che vengono poi ri-sommati come warmup esplicito. Filtrare quei giri dalla media, o accettare il double counting? |
 | Y-3 | `LapsSinceLastPit` | Renderlo continuo come da spec §26 richiede una misura frazionaria di giro sul target: esiste già in `OpponentTelemetryData`? |
 | Y-8 | Deadband HUD 0.05 | La spec §30 lo richiede ma non definisce il formato: cosa mostrare per `|RelativePace| < 0.05` — `0.0s/lap`, `~0`, stringa vuota? |
-| Y-12 | Isteresi dei gate strategici | 450 `STRATEGY_CHANGED` in 11 minuti nel replay `230037`. Cause misurate: `Position` 115, `Margin` 107, `Traffic` solo 3. Sono soglie attraversate di continuo (`SignedGap >= -0.5` e `CaptureMargin > 0`) combinate con il gap **istantaneo**. Serve un'isteresi: banda morta sulle soglie, un minimo di permanenza prima di cambiare stato, o un filtro sul gap. Con quali valori? |
+| ~~Y-12~~ | ~~Isteresi dei gate strategici~~ | ✅ **Deciso e implementato** (commit `1fa7b15`), approvato da Antigravity e Codex. Banda `±0.25` sulla posizione, `±0.15` sui margini, dwell `5 s`. Valori da sweep sul replay `20260819_205004` con simulatore validato 1958/1958 campioni. Il filtro EMA sul gap è stato **valutato e scartato**. Da confermare su un secondo replay e su un circuito diverso. |
 | Y-9 | Euristica pit del Player | `TrackPositionPercent > 0.85 && 10 < SpeedKmh < 100` classifica come "in pit" anche un tornante lento di fine giro. Sostituire con il solo `IsInPitLane`, o con la geofence già usata per gli avversari? |
 
 ---

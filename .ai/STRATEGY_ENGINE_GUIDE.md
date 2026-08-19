@@ -121,7 +121,39 @@ se il primo `SEED` ha `clamped=True`, qualcosa è regredito.
 | 3 | I file di log non avevano intestazione | ✅ risolto (regge anche se svuoti la cartella) |
 | 4 | Il ritmo saturava per mezzo giro dopo ogni sosta | ✅ risolto |
 | 5 | Log scritti anche fuori dalla gara | ✅ risolto |
-| 6 | Undercut/overcut oscillano decine di volte al minuto | ⏸ **Y-12**, serve una tua decisione |
+| 6 | Undercut/overcut oscillano decine di volte al minuto | ✅ risolto (Y-12), da confermare in gara |
+| 7 | Campioni degeneri saturavano il ritmo a fine gara | ✅ risolto, da confermare in gara |
+
+---
+
+## Perché la strategia non balla più
+
+Il motore diceva "undercut / neutral / undercut" **375 volte in 40 minuti**, quasi sempre sullo
+stesso avversario. Non era indecisione: erano due semafori piazzati esattamente dove il segnale
+traballa di più.
+
+Il gap fra due vetture non è un numero fermo. Fra una misura e l'altra si muove di circa 0.2 s solo
+per come vengono campionati i dati. Se il semaforo scatta a −0.5 s e il gap balla di ±0.2 attorno
+a −0.5, quel semaforo lampeggia in continuazione — pur non essendo successo niente in pista.
+
+Le tre contromisure, tutte misurate sui dati veri e non scelte a occhio:
+
+| Rimedio | Valore | A cosa serve |
+|---|---|---|
+| **Banda morta sulla posizione** | ±0.25 s | Il semaforo cambia solo se il gap si muove *davvero*, non per il tremolio |
+| **Banda morta sui margini** | ±0.15 s | Stessa cosa per il "mi conviene o no" |
+| **Permanenza minima** | 5 s | Una raccomandazione dura almeno 5 secondi, altrimenti non fai in tempo a leggerla |
+
+Le prime due tolgono le oscillazioni **piccole**, la terza quelle **veloci**: metà duravano meno di
+0.6 secondi. Sono complementari, non doppioni.
+
+Attesa: da ~34 cambi al minuto a ~2. Se nel prossimo replay ne vedi ancora decine, qualcosa non ha
+funzionato. La colonna `CandidateDecision` nello snapshot mostra cosa avrebbe detto il motore
+*senza* la permanenza minima: confrontarla con `StrategyDecision` dice quanto sta filtrando.
+
+**Una cosa non è cambiata:** le soglie sono le stesse di prima. Non abbiamo reso il motore più
+prudente né più aggressivo — gli abbiamo solo tolto il tremolio. Un undercut che valeva la pena
+prima, vale la pena anche adesso.
 
 I punti in attesa di decisione sono elencati in `.ai/PROJECT_STATE.md`, ognuno con la domanda
 precisa a cui rispondere. Nessun agente deve toccarli prima.

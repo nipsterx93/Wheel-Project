@@ -42,6 +42,101 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-19 22:05] claude → replay di verifica
+
+**Task:** Y-12 (isteresi dei gate strategici) + finestra di plausibilità del `deltaTime`
+**Commit:** `caf64be` (lock) · `1fa7b15` (fix) · rilascio in commit dedicato
+
+### Come sono stati trovati i valori
+
+Non a occhio. Simulatore costruito sullo snapshot del replay `20260819_205004` e **validato
+1958/1958 campioni** contro `UndercutViable` e `StrategyDecision` loggati: se il modello non
+riproduce il baseline, lo sweep non vale nulla.
+
+Tre livelli di dati, perché lo snapshot da solo inganna:
+- **snapshot** (1 campione ogni 25 tick, ~0.9 s) → effetto delle bande morte
+- **traccia degli `STRATEGY_CHANGED`** (piena risoluzione, ~27 Hz) → effetto del dwell
+- **campi `failed=` degli `UNDERCUT_NONVIABLE`** → cause esatte, non campionate
+
+Le cause vere sono `Position` 113 (60.1%), `Margin` 74 (39.4%), `Traffic` 1 (0.5%). Lo snapshot
+suggeriva 42%/46%: **sotto-campionava il colpevole principale.**
+
+### Fatto
+
+- `StrategyGateHysteresis.cs` (**nuovo**, 208 righe, nessuna dipendenza SimHub come
+  `RelativePaceTracker`) — `HysteresisLatch` (banda morta latching) + `DwellFilter` (permanenza
+  minima) + il contenitore con le tre costanti.
+- `TargetStrategyManager.cs:762` e `:818` — i due gate passano per il latch.
+  `:840` — la decisione passa per il dwell; il candidato pre-dwell resta in `candidateDecision`.
+  Reset dell'isteresi aggiunto a **tutti e quattro** i punti che già resettavano `_relativePace`.
+- `RelativePaceTracker.cs` — finestra `[0.5, 2.0] × macrosettore nominale` (`refLapTime / 20`),
+  quindi adattiva al circuito. Nuovi `MinDeltaTime`/`MaxDeltaTime` nel sample, per il log.
+- Nuovo reason `DeltaTimeTooLarge`.
+- `LogManager.cs` — snapshot **63 → 67 colonne** (in coda), header parametri esteso, versione `1.2.0`.
+
+### I valori, con lo sweep che li giustifica
+
+| parametro | valore | evidenza |
+|---|---|---|
+| `PositionHysteresis` | ±0.25 s | 0.20 → 4.09% disaccordo · **0.25 → 2.38%** · 0.30 → 2.59% · 0.35 → 11.69% e lag p90 da 5 s a **199 s** (cliff) |
+| `MarginHysteresis` | ±0.15 s | 0.10 → 3.40% · **0.15 → 2.55%** · 0.20 → 2.72% · 0.25 → 5.30% |
+| `MinimumStateDwell` | 5 s | piena risoluzione: 1 s −64% · 2 s −72% · **5 s −82%** · 10 s −87% |
+
+"Disaccordo" = frazione del tempo di gara in cui la variante diverge da una verità ripulita
+offline. Le config scelte scendono **sotto il baseline** (5.02%): tolgono rumore, non segnale.
+Robustezza verificata ridefinendo la verità a 5/10/20 s — la classifica non cambia.
+
+**Scartato:** filtro EMA sul gap a monte. A `alpha=0.2` il disaccordo sale al 16-17% e il lag p90
+a 199 s. Era l'alternativa che avevo lasciato aperta nel turno precedente: i dati l'hanno chiusa.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+
+Atteso: exit code `0`, **48 `[PASS]`**, di cui 13 nel blocco `Strategy Hysteresis Tests`.
+
+### Stato
+- ✅ Compila — 0 errori (resta il `CS0219` preesistente in `ReplayBacktestIntegrationTest.cs:19`)
+- ✅ 48 test passano
+- ✅ **Regressioni verificate** neutralizzando i tre fix uno alla volta:
+  `PositionHysteresis → 0.0`, `MaxSectorFraction → 1000.0`, `MinSectorFraction → 0.0`.
+  Ognuna fa fallire il test corrispondente con exit code `1`.
+
+### Per chi entra
+
+**Prossimo passo:** replay di verifica. Attesi **~25 `STRATEGY_CHANGED`** per sessione invece di 375
+(da ~34/min a ~2/min). Il fondo scala sono i 27 cambi realmente persistenti (≥10 s) misurati nella
+traccia: se scendessero **sotto** ~10, l'isteresi starebbe mangiando segnale e i valori vanno
+allentati. Confrontare `CandidateDecision` con `StrategyDecision` nello snapshot per misurare
+quanto filtra il dwell.
+
+Verificare anche che **non compaia più nessun `instantRate` a due cifre**, e che `RelativePace` non
+resti incollato a ±10 a fine gara.
+
+**NON toccare:** i sei punti congelati rimasti in `PROJECT_STATE.md` (Y-1, Y-2, Y-3, Y-8, Y-9, Y-11).
+
+**Attenzione a due cose.**
+
+1. **Lo snapshot è passato da 63 a 67 colonne.** Le nuove sono tutte **in coda**, quindi un parser
+   che legge per indice le prime 63 continua a funzionare — ma il conteggio cambia, e i log vecchi
+   non sono confrontabili colonna per colonna con i nuovi.
+
+2. **I valori sono calibrati su una sola sessione, un solo circuito, e un target che domina
+   la statistica** (371 flip su 375 sono `Egor Ogorodnikov3`). Sono solidi *su quei dati*. Un
+   replay su un tracciato diverso può spostarli — in particolare `PositionHysteresis`, che a 0.25
+   sta a un solo decimo dal cliff misurato a 0.35.
+
+**Trappola incontrata, per chi ripete la verifica di regressione:** ripristinare un file da backup
+con `Copy-Item` ne preserva il timestamp, quindi MSBuild salta la ricompilazione e i test girano
+sulla DLL vecchia. Serve un `-t:Rebuild` o toccare il file.
+
+---
+
 ## [2026-08-19 13:35] claude → replay di verifica
 
 **Task:** log strategici scritti solo in gara + guida di lettura del motore
