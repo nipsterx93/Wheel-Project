@@ -8,11 +8,12 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-18T22:50:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-18T23:35:00Z
+task:       Header auto-riparanti + finestra di assestamento post-pit del RelativePace
+scope:      LogManager.cs, RelativePaceTracker.cs, TargetStrategyManager.cs,
+            User.PluginSdkDemo.Tests/**, .ai/**
+expires:    2026-08-19T05:00:00Z
 ```
 
 **Regole del lock**
