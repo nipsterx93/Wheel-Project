@@ -42,6 +42,73 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-18 23:50] claude → replay di verifica
+
+**Task:** header auto-riparanti + finestra di assestamento post-pit
+**Piano:** —
+**Commit:** `780df63` (lock) · `fe37bf6` (fix)
+
+### 1. Header: la causa vera era un'altra
+
+Il fix precedente non bastava. Dal replay `20260818_230037`: i file risultano creati alle **23:01:05**,
+non alle 23:00:37 quando parte il plugin, e `SimRIG_DebugLog_*.csv` non esiste affatto.
+Fra la costruzione del `LogManager` e la prima scrittura di dati passano ~28 secondi, e in quella
+finestra **la cartella dei log era stata svuotata a mano** (pratica legittima dell'utente).
+
+Il difetto era mio: `_snapshotHeaderOk` diventava `true` dopo la prima scrittura riuscita e non
+ricontrollava più. I file ricreati da `AppendText` restavano senza header per tutta la sessione,
+e il `DebugLog` non tornava affatto perché nessuno ci scriveva mai nulla.
+
+Ora l'header è garantito **prima di ogni append** (`LogManager.cs:294,311,328,345`), non una volta
+sola. `TryWriteHeader` era già idempotente — scrive solo se il file è assente o vuoto — quindi non
+duplica nulla né tronca dati. Costo: un `File.Exists` + `FileInfo.Length` per ciclo da 500 ms, solo
+a coda non vuota. Nessun impatto sul percorso a 60 Hz.
+
+### 2. Assestamento post-pit
+
+Nel replay il primo rate post-pit **saturava il clamp in tutte e tre le soste** (1 del Player,
+2 del Target): il campione veniva preso mentre la vettura stava ancora rientrando, con balzi di
+gap fino a +2.5 s in un macrosettore → `instantRate` 39-50 s/giro → clamp a ±10.
+
+`_pitContaminatedSeed` (bool) diventa `_postPitSectorsToSkip` (int), reimpostato a
+`RelativePaceTracker.PostPitSettlingSectors = 3` a **ogni** campione in pit. A ~4.7 s per
+macrosettore sono ~14 s di assestamento. La costante è esposta nei model params del log.
+`RELATIVE_PACE_POST_PIT_SEED` riporta ora `sectorsRemaining`.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+
+Atteso: exit code `0`, **34 `[PASS]`**.
+
+### Stato
+- ✅ Compila — 0 errori
+- ✅ 34 test passano
+- ✅ **Regressioni verificate**: rimettendo `PostPitSettlingSectors = 1`, il test fallisce con
+  `REGRESSIONE: il primo rate post-pit satura ancora il clamp (instantRate=50,30)`. Ripristinato e riverificato.
+
+### Per chi entra
+
+**Prossimo passo:** replay di verifica. Nei nuovi log devono comparire header in testa a entrambi
+i file strategy, e ogni sosta deve mostrare **3** `RELATIVE_PACE_POST_PIT_SEED` con
+`sectorsRemaining=2,1,0` prima del primo rate.
+
+**NON toccare:** i sei punti congelati in `PROJECT_STATE.md`.
+
+**Attenzione a — nuovo debito da decidere (Y-12):** nel replay 450 `STRATEGY_CHANGED` in 11 minuti.
+Le cause misurate sono `Position` (115) e `Margin` (107), non il traffico. Sono due soglie
+attraversate di continuo: `SignedGapSeconds >= -0.5` e `CaptureMargin > 0`. Gli ingredienti di passo
+sono lenti (`NormalizedRaceStartPace` + `PaceDropDueToTyres`, gli stessi di `PaceDeficit`), ma
+vengono combinati con il **gap istantaneo** e poi confrontati con zero senza isteresi.
+`RelativePace` non è coinvolto: non entra in nessun gate.
+
+---
+
 ## [2026-08-18 22:40] claude → dashboard
 
 **Task:** RelativeGapDelta (s/macrosettore) affiancato a RelativePace + SessionTime guida nell'event log
