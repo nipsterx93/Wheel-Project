@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-18T23:50:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-19T13:20:00Z
+task:       Log strategici scritti solo in gara (SessionStateStatus == 4)
+scope:      LogManager.cs, User.PluginSdkDemo.Tests/**, .ai/**
+expires:    2026-08-19T18:00:00Z
 ```
 
 **Regole del lock**
