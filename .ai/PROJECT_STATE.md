@@ -8,11 +8,14 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-19T22:05:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-19T22:40:00Z
+task:       GapJump — gate sull'ampiezza del gapDelta (wrap di un giro al rollover)
+scope:      User.PluginSdkDemoEdit/RelativePaceTracker.cs
+            User.PluginSdkDemoEdit/TargetStrategyManager.cs (enum + payload invalidazione)
+            User.PluginSdkDemoEdit/LogManager.cs (parametro header)
+            User.PluginSdkDemo.Tests/UnitTests/StrategyHysteresisUnitTests.cs
+expires:    2026-08-20T03:00:00Z
 ```
 
 **Regole del lock**
