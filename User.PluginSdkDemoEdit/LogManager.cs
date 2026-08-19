@@ -71,7 +71,7 @@ namespace SimRIG
         private Task _writerTask;
         private SessionState _sessionState;
 
-        public const string StrategyEngineVersion = "1.2.0";
+        public const string StrategyEngineVersion = "1.3.0";
 
         // Stato degli header: se una scrittura fallisce all'avvio si riprova, ma solo finché
         // il file è ancora vuoto (vedi TryWriteHeader).
@@ -161,6 +161,7 @@ namespace SimRIG
                    "# MinimumDeltaTime=" + RelativePaceTracker.MinimumDeltaTime.ToString(c) + "\n" +
                    "# MinSectorFraction=" + RelativePaceTracker.MinSectorFraction.ToString(c) + "\n" +
                    "# MaxSectorFraction=" + RelativePaceTracker.MaxSectorFraction.ToString(c) + "\n" +
+                   "# MaxGapDeltaFraction=" + RelativePaceTracker.MaxGapDeltaFraction.ToString(c) + "\n" +
                    "# PostPitSettlingSectors=" + RelativePaceTracker.PostPitSettlingSectors.ToString(c) + "\n" +
                    "# PitDecisionBuffer=0.8\n" +
                    "# MaxUndercutReactionWindow=1.0\n" +

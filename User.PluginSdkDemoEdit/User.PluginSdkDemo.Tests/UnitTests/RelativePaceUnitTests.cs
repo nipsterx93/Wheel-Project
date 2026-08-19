@@ -323,15 +323,21 @@ namespace User.PluginSdkDemo.Tests
             AssertClose(t.RelativePace, 6.5, 1e-9, "EMA = 0.30*instant + 0.70*old");
 
             // Clamp: deltaGap enorme
-            s = t.ProcessSample(4, 970.0, 101.5, false, false, RefLapTime);
-            AssertClose(s.InstantRate, 1000.0, 1e-6, "InstantRate saturante");
+            // Il caso usava un deltaGap di un giro intero (100 s su un giro da 100 s): quello ora
+            // e' un GapJump e viene respinto a monte, quindi non arriverebbe mai al clamp.
+            // Il clamp resta la seconda linea di difesa per i valori grandi ma plausibili, ed e'
+            // quello che si verifica qui.
+            // deltaGap = +2.0 su dt = 10 s -> instantRate = 20.0
+            // EMA = 0.30*20.0 + 0.70*6.5 = 6.0 + 4.55 = 10.55 -> clamp a +10.0
+            s = t.ProcessSample(4, 970.0, 3.5, false, false, RefLapTime);
+            AssertClose(s.InstantRate, 20.0, 1e-6, "InstantRate saturante");
             AssertClose(t.RelativePace, 10.0, 1e-9, "il clamp deve limitare a +10.0");
             Assert(s.Clamped, "il flag Clamped deve segnalare la saturazione");
 
             // Clamp negativo
             var t2 = new RelativePaceTracker();
             t2.ProcessSample(1, 1000.0, 0.0, false, false, RefLapTime);
-            s = t2.ProcessSample(2, 990.0, -100.0, false, false, RefLapTime);
+            s = t2.ProcessSample(2, 990.0, -2.0, false, false, RefLapTime);
             AssertClose(t2.RelativePace, -10.0, 1e-9, "il clamp deve limitare a -10.0");
 
             Console.WriteLine("  [PASS] Test_EmaAndClamp");

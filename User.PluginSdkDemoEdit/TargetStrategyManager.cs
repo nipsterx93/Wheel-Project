@@ -28,6 +28,7 @@ namespace SimRIG
         MissingSector,
         DeltaTimeTooSmall,
         DeltaTimeTooLarge,
+        GapJump,
         TargetChanged,
         NoPreviousSeed
     }
@@ -493,7 +494,7 @@ namespace SimRIG
                     if (paceSample.Reason != RelativePaceInvalidationReason.None)
                     {
                         log.Log(LogModule.STRATEGY_EVENT, LogType.EVENT, "RELATIVE_PACE_INVALIDATION",
-                            $"reason={paceSample.Reason} | sector={macroSector} | seqValid={paceSample.SequenceValid} | deltaTime={paceSample.DeltaTime:F3} | frozenPace={CurrentTarget.RelativePace:F3}");
+                            $"reason={paceSample.Reason} | sector={macroSector} | seqValid={paceSample.SequenceValid} | deltaTime={paceSample.DeltaTime:F3} | gapDelta={paceSample.DeltaGap:F3} | maxGapDelta={paceSample.MaxGapDelta:F1} | frozenPace={CurrentTarget.RelativePace:F3}");
                     }
                     else if (paceSample.WasPostPitSeed)
                     {

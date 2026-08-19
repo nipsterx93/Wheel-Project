@@ -41,6 +41,9 @@ namespace User.PluginSdkDemo.Tests
             Test_DeltaTime_RejectsSwallowedSectors();
             Test_DeltaTime_WindowScalesWithLapTime();
             Test_DeltaTime_FallsBackWhenLapTimeUnknown();
+            Test_GapJump_RejectsLapRolloverWrap();
+            Test_GapJump_AllowsRealRacingIncident();
+            Test_GapJump_RecoversOnNextCleanSample();
 
             Console.WriteLine("[TEST SUCCESS] All Strategy Hysteresis Tests Passed!");
         }
@@ -314,6 +317,96 @@ namespace User.PluginSdkDemo.Tests
             Assert(!s2.RateComputed, "il pavimento assoluto deve comunque rifiutare dt < 1 s");
 
             Pass("Test_DeltaTime_FallsBackWhenLapTimeUnknown");
+        }
+
+        // ------------------------------------------------------------------
+        // Ampiezza del DeltaGap
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Caso reale dal replay 20260819_221922, al rollover del contatore giri
+        /// (lap 24 sec=19 -> lap 25 sec=0): il gap salta di un giro intero e torna indietro.
+        ///   prevGap=-88.767 -> gap=4.267   gapDelta= 93.033  dt=4.000 -> instantRate= 2160.4
+        ///   prevGap=  4.267 -> gap=-88.709 gapDelta=-92.976  dt=3.800 -> instantRate=-2279.8
+        /// I gate temporali non possono vederlo: dt e' del tutto plausibile.
+        /// </summary>
+        private static void Test_GapJump_RejectsLapRolloverWrap()
+        {
+            const double MisanoLap = 93.0;
+
+            var t = new RelativePaceTracker();
+            t.ProcessSample(19, 113.2, -88.767, false, false, MisanoLap);
+
+            // il wrap in avanti
+            var up = t.ProcessSample(0, 109.2, 4.267, false, false, MisanoLap);
+            Assert(!up.RateComputed,
+                   "REGRESSIONE: un salto di gap di un giro intero non deve produrre un rate");
+            Assert(up.Reason == RelativePaceInvalidationReason.GapJump,
+                   $"il motivo deve essere GapJump, ottenuto {up.Reason}");
+            Assert(t.RelativePace == 0.0, "il wrap non deve muovere l'EMA");
+
+            // e il ritorno, che senza il gate produceva il secondo clamp
+            var down = t.ProcessSample(1, 105.4, -88.709, false, false, MisanoLap);
+            Assert(!down.RateComputed, "REGRESSIONE: anche il rientro dal wrap non deve produrre un rate");
+            Assert(down.Reason == RelativePaceInvalidationReason.GapJump,
+                   $"il motivo deve essere GapJump anche al rientro, ottenuto {down.Reason}");
+            Assert(t.RelativePace == 0.0, "nemmeno il rientro deve muovere l'EMA");
+
+            // il DeltaGap resta leggibile per la diagnostica, ma non e' consumabile:
+            // RelativeGapDeltaValid deriva da RateComputed, che qui e' false.
+            Assert(Math.Abs(up.DeltaGap - 93.034) < 0.01,
+                   $"il DeltaGap deve restare nel sample per il log, ottenuto {up.DeltaGap:F3}");
+
+            Pass("Test_GapJump_RejectsLapRolloverWrap");
+        }
+
+        /// <summary>
+        /// La soglia sta a mezzo giro proprio per non confondere un artefatto con un episodio
+        /// di gara: un testacoda o un'uscita di pista del target costano una manciata di secondi
+        /// e devono continuare a contare come ritmo, per quanto brutto.
+        /// </summary>
+        private static void Test_GapJump_AllowsRealRacingIncident()
+        {
+            const double MisanoLap = 93.0;   // soglia = 46.5 s
+
+            var t = new RelativePaceTracker();
+            t.ProcessSample(5, 1000.0, 2.0, false, false, MisanoLap);
+
+            // il target va in testacoda e perde 15 s in un macrosettore: brutto ma vero
+            var s = t.ProcessSample(6, 995.0, -13.0, false, false, MisanoLap);
+            Assert(s.RateComputed,
+                   "un incidente di gara da 15 s deve restare un campione valido, non un GapJump");
+            Assert(s.Reason == RelativePaceInvalidationReason.None,
+                   $"nessuna invalidazione attesa, ottenuta {s.Reason}");
+            Assert(Math.Abs(s.MaxGapDelta - 46.5) < 1e-9,
+                   $"soglia attesa 46.5 s su un giro da 93 s, ottenuta {s.MaxGapDelta}");
+
+            Pass("Test_GapJump_AllowsRealRacingIncident");
+        }
+
+        /// <summary>
+        /// Dopo un wrap il campione diventa la nuova reference e l'EMA e' invalidata:
+        /// il primo campione pulito successivo deve ripartire come seed, non trascinarsi dietro
+        /// il valore precedente ne' saltare del tutto la misura.
+        /// </summary>
+        private static void Test_GapJump_RecoversOnNextCleanSample()
+        {
+            const double MisanoLap = 93.0;
+
+            var t = new RelativePaceTracker();
+            t.ProcessSample(10, 1000.0, 1.000, false, false, MisanoLap);
+            t.ProcessSample(11, 995.0, 1.100, false, false, MisanoLap);   // rate normale
+            Assert(t.RelativePace != 0.0, "precondizione: l'EMA deve essersi mossa");
+
+            var jump = t.ProcessSample(12, 990.0, 94.100, false, false, MisanoLap);
+            Assert(jump.Reason == RelativePaceInvalidationReason.GapJump, "precondizione: GapJump");
+
+            var clean = t.ProcessSample(13, 985.0, 94.200, false, false, MisanoLap);
+            Assert(clean.RateComputed, "il campione pulito dopo il wrap deve tornare a misurare");
+            Assert(clean.EmaSeeded, "e deve ri-inizializzare l'EMA, non aggiornarla");
+            Assert(!clean.Clamped, "il primo rate dopo il wrap non deve saturare il clamp");
+
+            Pass("Test_GapJump_RecoversOnNextCleanSample");
         }
     }
 }

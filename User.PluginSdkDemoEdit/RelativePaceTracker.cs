@@ -46,6 +46,9 @@ namespace SimRIG
         /// <summary>Estremi della finestra di plausibilità applicata a DeltaTime, per il log.</summary>
         public double MinDeltaTime;
         public double MaxDeltaTime;
+
+        /// <summary>Ampiezza massima ammessa per DeltaGap in questo campione, per il log.</summary>
+        public double MaxGapDelta;
     }
 
     /// <summary>
@@ -79,6 +82,26 @@ namespace SimRIG
         /// </summary>
         public const double MinSectorFraction = 0.5;
         public const double MaxSectorFraction = 2.0;
+
+        /// <summary>
+        /// Ampiezza massima plausibile per un DeltaGap, come frazione del tempo di giro.
+        ///
+        /// Al rollover del contatore giri il gap calcolato da <c>posDiffLaps * refLapTime</c> salta
+        /// di **un giro intero** e torna subito indietro: nel replay 20260819_221922, un gapDelta di
+        /// 93.033 s con un deltaTime di 4.000 s del tutto plausibile, cioè un instantRate di
+        /// 2160 s/giro. I gate temporali non possono vederlo — lì il difetto è l'ampiezza.
+        ///
+        /// Sullo stesso replay abs(gapDelta) valeva p50=0.073, p90=0.313, p99=0.540, e poi
+        /// direttamente 93.033: fra segnale e artefatto ci sono due ordini di grandezza vuoti,
+        /// quindi la soglia esatta conta poco. Mezzo giro è il punto di mezzo naturale — oltre
+        /// metà giro un salto è più plausibilmente un wrap che un evento di gara — ed è la stessa
+        /// convenzione già usata per il wrap del MergeGap in TargetStrategyManager.
+        ///
+        /// Il margine è ampio da entrambi i lati: a Misano la soglia vale ~47 s, cioè 87 volte il
+        /// p99 del segnale legittimo e la metà dell'artefatto. Un testacoda o un'uscita di pista
+        /// del target, che costano una manciata di secondi, restano dentro.
+        /// </summary>
+        public const double MaxGapDeltaFraction = 0.5;
 
         /// <summary>
         /// Macrosettori puliti da scartare dopo una fase di pit prima di riprendere a misurare.
@@ -191,6 +214,22 @@ namespace SimRIG
             }
 
             sample.DeltaGap = signedGap - _lastMacroSectorGap;
+
+            // Gate di ampiezza, indipendente dai due gate temporali: qui il tempo trascorso è
+            // plausibile ed è il salto del gap a non esserlo. Il valore resta in DeltaGap per la
+            // diagnostica — non può essere consumato per errore, perché RelativeGapDeltaValid
+            // deriva da RateComputed, che qui non viene mai alzato.
+            double maxGapDelta = refLapTime > 0.0 ? refLapTime * MaxGapDeltaFraction : 0.0;
+            sample.MaxGapDelta = maxGapDelta;
+            if (maxGapDelta > 0.0 && Math.Abs(sample.DeltaGap) > maxGapDelta)
+            {
+                sample.Reason = RelativePaceInvalidationReason.GapJump;
+                Reseed(macroSector, sessionClock, signedGap);
+                _emaInitialized = false; // il prossimo rate pulito ri-inizializza l'EMA
+                sample.WasReseeded = true;
+                return sample;
+            }
+
             sample.InstantRate = (sample.DeltaGap / dt) * refLapTime;
             sample.RateComputed = true;
 
