@@ -61,6 +61,7 @@
     <Compile Include="UnitTests\StrategyHysteresisUnitTests.cs" />
     <Compile Include="UnitTests\WarmupDoubleCountUnitTests.cs" />
     <Compile Include="UnitTests\OvercutTrafficUnitTests.cs" />
+    <Compile Include="UnitTests\PitLaneDetectionUnitTests.cs" />
     <Compile Include="IntegrationTests\ReplayBacktestIntegrationTest.cs" />
     <Compile Include="IntegrationTests\MisanoHuracanGT3ReplayTest.cs" />
     <Compile Include="Replay\SimHubReplayRAMReader.cs" />

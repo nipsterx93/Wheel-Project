@@ -137,6 +137,7 @@
     <Compile Include="RaceAnalyzer.cs" />
     <Compile Include="RelativePaceTracker.cs" />
     <Compile Include="StrategyGateHysteresis.cs" />
+    <Compile Include="PitLaneDetector.cs" />
     <Compile Include="SectorTracker.cs" />
     <Compile Include="LapSectorTimeContainer.cs" />
     <Compile Include="SessionState.cs" />

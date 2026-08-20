@@ -1,4 +1,4 @@
-// -------------------------------------------------------------------------
+﻿// -------------------------------------------------------------------------
 
 // FILE: TargetStrategyManager.cs
 
@@ -217,6 +217,9 @@ namespace SimRIG
         /// <summary>Isteresi dei gate strategici (Y-12). Resettata insieme a _relativePace.</summary>
         private readonly StrategyGateHysteresis _hysteresis = new StrategyGateHysteresis();
 
+        /// <summary>Rilevamento pit del Player (Y-9). Ha stato: la persistenza va accumulata.</summary>
+        private readonly PitLaneDetector _playerPitDetector = new PitLaneDetector();
+
         /// <summary>
         /// Quanto vicino deve stare una vettura davanti perché rovini l'overcut (Y-2).
         ///
@@ -246,11 +249,28 @@ namespace SimRIG
         /// <summary>
         /// Rilevamento pit del Player. Unica definizione condivisa: prima era triplicata,
         /// con il rischio che snapshot e gate divergessero.
+        ///
+        /// Y-9: la logica è ora la stessa cascata usata per gli avversari, dietro
+        /// <see cref="PitLaneDetector"/>. L'euristica precedente
+        /// (<c>TrackPositionPercent &gt; 0.85 &amp;&amp; 10 &lt; SpeedKmh &lt; 100</c>)
+        /// non aveva né geofence né persistenza, e bastava un tornante lento nell'ultimo 15%
+        /// del giro per farla scattare.
         /// </summary>
-        private static bool IsPlayerInPitLane(SessionState state)
+        private bool IsPlayerInPitLane(SessionState state, PitRadar radar)
         {
-            return state.IsInPitLane
-                || (state.TrackPositionPercent > 0.85 && state.SpeedKmh < 100.0 && state.SpeedKmh > 10.0);
+            // Fuori dalla geofence non si è in pit. Se il circuito non ha ancora zone calibrate
+            // il filtro si disattiva (true) invece di bloccare tutto: meglio la cascata senza
+            // questo criterio che nessun rilevamento.
+            bool spatiallyInside = true;
+            if (radar != null && state.TrackPositionPercent >= 0.0 && radar.HasCalibratedPitZone())
+            {
+                spatiallyInside = radar.IsInExtendedPitLaneZone(state.TrackPositionPercent);
+            }
+
+            double learnedLimit = radar != null ? radar.GetPitLaneSpeedLimit(state.CarClassId) : 0.0;
+
+            return _playerPitDetector.Update(state.IsInPitLane, spatiallyInside, state.SpeedKmh,
+                                             state.SessionTimeLeftSec, learnedLimit);
         }
 
         // Formattatori dello snapshot CSV: cultura invariante, niente separatori decimali locali.
@@ -513,7 +533,7 @@ namespace SimRIG
                 {
                     double currentSignedGap = posDiff < 0 ? currentFluidGap : -currentFluidGap;
 
-                    bool playerInPit = IsPlayerInPitLane(state);
+                    bool playerInPit = IsPlayerInPitLane(state, radar);
                     bool targetInPit = false;
                     if (tracker.TrackedOpponents.ContainsKey(CurrentTarget.Name))
                     {
@@ -953,7 +973,7 @@ namespace SimRIG
                     if (_snapshotTickCounter >= 25)
                     {
                         _snapshotTickCounter = 0;
-                        bool pInPit = IsPlayerInPitLane(state);
+                        bool pInPit = IsPlayerInPitLane(state, radar);
 
                         double[] warmupArray = oppData.PostPitWarmupPenalties;
                         bool warmupFallbackUsed = warmupArray == null || warmupArray.Length == 0;
@@ -1383,7 +1403,7 @@ namespace SimRIG
             double playerStintLaps = state.MaxFuelCapacity / playerFuelPerLap;
             double playerTankLaps = fuel.TankLapsRemaining;
 
-            bool playerIsInPit = IsPlayerInPitLane(state);
+            bool playerIsInPit = IsPlayerInPitLane(state, radar);
 
             if (playerIsInPit)
             {

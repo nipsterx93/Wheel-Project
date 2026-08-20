@@ -931,13 +931,79 @@ namespace SimRIG
 		}
 	}
 
-	public void UpdatePitLaneSpeedLimit(double speedLimit)
+	/// <summary>
+	/// Registra il limite di pit lane appreso osservando una vettura.
+	///
+	/// <paramref name="carClass"/> è la classe della vettura **osservata**, non quella del
+	/// Player: i record sono indicizzati per traccia+classe, e scrivere il limite di una GT3
+	/// nel record delle LMP contaminerebbe entrambi in una gara multiclasse. Passando null si
+	/// scrive nel record corrente, comportamento storico.
+	/// </summary>
+	public void UpdatePitLaneSpeedLimit(double speedLimit, string carClass = null)
 	{
-		if (_currentTrack != null)
+		TrackRecord target = _currentTrack;
+
+		if (!string.IsNullOrEmpty(carClass) && _currentTrack != null
+			&& !string.Equals(carClass, _currentTrack.CarClass, StringComparison.OrdinalIgnoreCase))
 		{
-			_currentTrack.PitLaneSpeedLimit = speedLimit;
+			string lookupKey = (_currentTrack.TrackID + "_" + carClass).ToUpper();
+			target = _database.Tracks.FirstOrDefault((TrackRecord t) => t.TrackClassID == lookupKey);
+			if (target == null)
+			{
+				target = new TrackRecord
+				{
+					TrackClassID = lookupKey,
+					TrackID = _currentTrack.TrackID,
+					CarClass = carClass
+				};
+				_database.Tracks.Add(target);
+			}
+		}
+
+		if (target != null)
+		{
+			target.PitLaneSpeedLimit = speedLimit;
 			SaveDatabase();
 		}
+	}
+
+	/// <summary>
+	/// Limite di pit lane appreso, in km/h. 0.0 se non ancora imparato.
+	///
+	/// Con <paramref name="carClass"/> nullo restituisce quello della classe corrente. Se la
+	/// classe richiesta non ha ancora un valore, ricade su qualunque classe abbia imparato un
+	/// limite sulla **stessa pista**: il limite è quasi sempre unico per circuito, quindi un
+	/// dato imparato da un'altra classe vale più di nessun dato.
+	/// </summary>
+	/// <summary>
+	/// Se il circuito corrente ha una zona box calibrata utilizzabile come filtro spaziale.
+	/// Serve a chi vuole usare la geofence come criterio: senza bordi validi il filtro va
+	/// disattivato, non applicato a vuoto.
+	/// </summary>
+	public bool HasCalibratedPitZone()
+	{
+		return _currentTrack != null && _currentTrack.HasValidCleanSectorBounds();
+	}
+
+	public double GetPitLaneSpeedLimit(string carClass = null)
+	{
+		if (_currentTrack == null) return 0.0;
+
+		if (string.IsNullOrEmpty(carClass)
+			|| string.Equals(carClass, _currentTrack.CarClass, StringComparison.OrdinalIgnoreCase))
+		{
+			if (_currentTrack.PitLaneSpeedLimit > 0.0) return _currentTrack.PitLaneSpeedLimit;
+		}
+		else
+		{
+			string lookupKey = (_currentTrack.TrackID + "_" + carClass).ToUpper();
+			var record = _database.Tracks.FirstOrDefault((TrackRecord t) => t.TrackClassID == lookupKey);
+			if (record != null && record.PitLaneSpeedLimit > 0.0) return record.PitLaneSpeedLimit;
+		}
+
+		var sameTrack = _database.Tracks.FirstOrDefault(
+			(TrackRecord t) => t.TrackID == _currentTrack.TrackID && t.PitLaneSpeedLimit > 0.0);
+		return sameTrack != null ? sameTrack.PitLaneSpeedLimit : 0.0;
 	}
 
 	public void ResetSession()

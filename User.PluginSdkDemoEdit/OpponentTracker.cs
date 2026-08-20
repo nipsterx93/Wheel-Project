@@ -875,18 +875,23 @@ namespace SimRIG
                     }
                     else
                     {
-                        // Criterio B: Persistenza velocità < 80.0 km/h per almeno 3 secondi
-                        if (tData.LastValidSpeedKmh < 80.0)
+                        // Criterio B: persistenza sotto soglia. Y-9: la soglia non è più cablata
+                        // a 80, ma derivata dal limite di pit lane appreso per questa classe.
+                        // Finché non c'è nulla di imparato il fallback vale esattamente 80.
+                        double pitSpeedThreshold = PitLaneDetector.SpeedThresholdFor(
+                            radar.GetPitLaneSpeedLimit(tData.CarClass));
+
+                        if (tData.LastValidSpeedKmh < pitSpeedThreshold)
                         {
                             if (tData.LowSpeedStartSec == null)
                             {
                                 tData.LowSpeedStartSec = currentSessionClock;
                             }
 
-                            if (Math.Abs(currentSessionClock - tData.LowSpeedStartSec.Value) >= 3.0)
+                            if (Math.Abs(currentSessionClock - tData.LowSpeedStartSec.Value) >= PitLaneDetector.LowSpeedPersistenceSec)
                             {
                                 isInsideGeofence = true;
-                                triggerReason = $"SpeedPersistence ({tData.LastValidSpeedKmh:F1} km/h for 3s)";
+                                triggerReason = $"SpeedPersistence ({tData.LastValidSpeedKmh:F1} km/h < {pitSpeedThreshold:F0} for {PitLaneDetector.LowSpeedPersistenceSec:F0}s)";
                             }
                         }
                         else
@@ -900,7 +905,7 @@ namespace SimRIG
                             double currentExtendedPitTime = tData.ExtendedPitZone.IsInside ? tData.ExtendedPitZone.GetCurrentTime(currentSessionClock) : 0.0;
                             double threshold = ClassBestExtendedPitZoneTime + 5.0;
 
-                            if (tData.LastValidSpeedKmh < 85.0 && currentExtendedPitTime > threshold)
+                            if (tData.LastValidSpeedKmh < pitSpeedThreshold + 5.0 && currentExtendedPitTime > threshold)
                             {
                                 isInsideGeofence = true;
                                 triggerReason = $"Duration ({currentExtendedPitTime:F1}s > {threshold:F1}s @ {tData.LastValidSpeedKmh:F1} km/h)";
@@ -1094,9 +1099,11 @@ namespace SimRIG
                             double roundedLimit = Math.Round(maxSpeed / 10.0) * 10.0;
                             if (roundedLimit == 50.0 || roundedLimit == 60.0 || roundedLimit == 80.0 || roundedLimit == 90.0)
                             {
-                                radar.UpdatePitLaneSpeedLimit(roundedLimit);
+                                // La classe è quella della vettura osservata: in multiclasse
+                                // scrivere nel record del Player contaminerebbe entrambe.
+                                radar.UpdatePitLaneSpeedLimit(roundedLimit, tData.CarClass);
                                 log.Log(LogModule.OPPONENTS, LogType.EVENT, "Pit Speed Limit Learned",
-                                    $"{tData.Name} | MaxSpeed: {maxSpeed:F1} km/h | Learned Limit: {roundedLimit} km/h");
+                                    $"{tData.Name} | Class: {tData.CarClass} | MaxSpeed: {maxSpeed:F1} km/h | Learned Limit: {roundedLimit} km/h");
                             }
                         }
 

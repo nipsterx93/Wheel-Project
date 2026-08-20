@@ -310,6 +310,10 @@ namespace SimRIG
             pm.AddProperty("SimRIG.Session.ClassSectorPaceDropDueToTyresRaw", t, 0.0);
             pm.AddProperty("SimRIG.Session.PlayerMicrosector", t, 0);
             pm.AddProperty("SimRIG.Session.ClassBestExtendedPitZoneTime", t, 0.0);
+            // Y-9: limite di pit lane appreso osservando le vetture in corsia, per traccia+classe.
+            // 0.0 finché non è stato imparato: la dash deve trattare lo zero come "non noto".
+            pm.AddProperty("SimRIG.Session.PitLaneSpeedLimit", t, 0.0);
+            pm.AddProperty("SimRIG.Session.PitLaneSpeedLimitKnown", t, false);
 
             pm.AddProperty("SimRIG.Strategy.IsPredictionValid", t, false);
             pm.AddProperty("SimRIG.Strategy.LeaderPaceStr", t, "00:00.000");
@@ -1609,6 +1613,10 @@ namespace SimRIG
             PluginManager.SetPropertyValue("SimRIG.Session.ClassSectorPaceDropDueToTyresRaw", t, Math.Round(OpponentTracker.ClassAverageSectorPaceDropRaw, 2));
             PluginManager.SetPropertyValue("SimRIG.Session.PlayerMicrosector", t, (int)(CurrentState.TrackPositionPercent * 100));
             PluginManager.SetPropertyValue("SimRIG.Session.ClassBestExtendedPitZoneTime", t, Math.Round(OpponentTracker.ClassBestExtendedPitZoneTime, 3));
+
+            double learnedPitLimit = PitRadar.GetPitLaneSpeedLimit(CurrentState.CarClassId);
+            PluginManager.SetPropertyValue("SimRIG.Session.PitLaneSpeedLimit", t, Math.Round(learnedPitLimit, 0));
+            PluginManager.SetPropertyValue("SimRIG.Session.PitLaneSpeedLimitKnown", t, learnedPitLimit > 0.0);
 
             PluginManager.SetPropertyValue("SimRIG.Driver.NormalizedRaceStartPace", t, Math.Round(RaceAnalyzer.Results.NormalizedRaceStartPace, 3));
             PluginManager.SetPropertyValue("SimRIG.Driver.NormalizedRaceStartPaceStr", t, FormatTime(RaceAnalyzer.Results.NormalizedRaceStartPace));

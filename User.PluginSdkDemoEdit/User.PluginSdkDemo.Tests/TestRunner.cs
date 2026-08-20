@@ -20,6 +20,7 @@ namespace User.PluginSdkDemo.Tests
                 StrategyHysteresisUnitTests.RunAllTests();
                 WarmupDoubleCountUnitTests.RunAllTests();
                 OvercutTrafficUnitTests.RunAllTests();
+                PitLaneDetectionUnitTests.RunAllTests();
                 ReplayBacktestIntegrationTest.RunMisanoGt3Backtest();
                 MisanoHuracanGT3ReplayTest.RunFullReplayMergeGapValidation();
 
