@@ -42,6 +42,119 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-20 00:30] claude → replay su circuito diverso
+
+**Task:** sbloccare Y-11, Y-2, Y-9, Y-1 dopo le decisioni prese con l'utente
+**Commit:** `74481ea` (lock) · `8b42efd` (Y-11) · `f08bf43` (Y-2) · `81a5f12` (Y-9) · `bc20a67` (Y-1)
+
+Quattro punti congelati chiusi, due archiviati senza intervento. Un commit per punto, così
+ognuno è reversibile da solo.
+
+### Y-11 — gli outlap non entrano più nella media del degrado (`8b42efd`)
+
+Il warmup era contato due volte: i giri su gomma fredda finivano in `LapHistory`
+(`RaceAnalyzer.cs:1009`), alzavano `LapMovingAverage` e quindi `PaceDropDueToTyres`, e poi la
+stessa lentezza veniva ri-sommata come warmup esplicito.
+
+Il modello di warmup del Player misura `PlayerExtendedSectorRacingZone`, una zona attraversata
+una volta per giro: `PostPitWarmupPenalties[0..2]` sono quindi **i primi tre giri post-pit**,
+esattamente quelli che finivano anche nella media a 4.
+
+`ActiveWarmupLaps()` conta il prefisso contiguo sopra soglia — lo stesso criterio del gate
+overcut, così i due lati restano allineati per costruzione. La finestra si stringe da sola man
+mano che le gomme entrano in temperatura. Rimosso il magic number `0.10`, che era ricopiato in
+tre punti: ora è `RaceAnalyzer.WarmupThreshold`.
+
+### Y-2 — `OvercutTrafficOK` implementato (`f08bf43`)
+
+Le due strategie fanno domande diverse sul traffico, e il codice rispondeva solo a una:
+
+| | domanda | misura |
+|---|---|---|
+| undercut | dove mi ritrovo all'**uscita** dai box | gap proiettato, meno il tempo perso ai box |
+| overcut | chi ho davanti **adesso**, mentre spingo | gap istantaneo |
+
+`PhysicalGapSeconds()` estratto e testato: il caso che lo rende necessario è il doppiato, che a
+88 s di conteggio su un giro da 93 è fisicamente 5 s davanti — cioè il traffico più pericoloso
+mentre spingi. Il Target non conta come traffico: è il bersaglio, non un ostacolo.
+
+Snapshot **67 → 68 colonne**, nuova `OvercutTrafficGap` in coda.
+
+### Y-9 — rilevamento pit del Player uniformato (`81a5f12`)
+
+L'euristica era `IsInPitLane || (TrackPositionPercent > 0.85 && 10 < SpeedKmh < 100)`: nessuna
+geofence, nessuna persistenza. `PitLaneDetector.cs` (nuovo, senza dipendenze SimHub) porta il
+Player sulla stessa cascata degli avversari — telemetria, geofence, fermo, velocità persistente.
+È il criterio geofence a chiudere il difetto: un tornante non è dentro la zona box.
+
+**Soglie adattive:** la soglia non è più cablata a 80 km/h ma derivata dal `PitLaneSpeedLimit`
+appreso, più 20 km/h di margine. Il limite più diffuso (60) produce esattamente 80, cioè il
+valore storico: la formula generalizza il comportamento invece di cambiarlo.
+
+**Bug corretto:** `UpdatePitLaneSpeedLimit` scriveva sempre nel record della classe del *Player*,
+anche quando il limite veniva imparato osservando un avversario di classe diversa. In multiclasse
+contaminava entrambi i record.
+
+### Y-1 — avvisi selezionati invece che silenziati (`bc20a67`)
+
+Il gate fondeva due condizioni sotto lo stesso `RejectReason`. Separate: `canFinishWithoutPitting`
+sopprime l'undercut (con il suo `NoPitNeeded`) ma **non più l'overcut** — se io arrivo in fondo e
+lui deve fermarsi, l'overcut non è rischioso, è già vinto. Era il caso che costava posizioni.
+
+`FuelSaveTarget` con due filtri di fattibilità: taglio entro il 15% del consumo, e una sola sosta
+residua. Senza il primo, il caso endurance segnalato dall'utente (100 giri, 25 litri) produrrebbe
+un consiglio di 0.25 L/giro contro un consumo di 3.0 — un taglio del 92%, ineseguibile.
+`PitRequiredNumber` **esisteva già** (`FuelManager.cs:191`) ed è il secondo filtro.
+
+### Archiviati senza intervento
+
+- **Y-3** (`LapsSinceLastPit` frazionario): imprecisione fino a un giro, trascurabile rispetto
+  alla scala delle decisioni che governa.
+- **Y-8** (deadband HUD): il dato resta com'è.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+
+Atteso: exit code `0`, **78 `[PASS]`**.
+
+### Stato
+- ✅ Compila — 0 errori (resta il `CS0219` preesistente)
+- ✅ 78 test passano
+- ✅ **Regressioni verificate** su tutti e quattro, neutralizzando un fix alla volta:
+  esclusione warmup, filtro geofence, filtro di fattibilità del fuel saving. Ognuna fa fallire
+  il test corrispondente con exit code `1`.
+
+### Per chi entra
+
+**Prossimo passo:** il replay su circuito diverso. Serve a **tre** cose ora:
+1. rifare lo sweep di Y-12 (`PositionHysteresis` a 0.25 sta a un decimo dal cliff);
+2. dare a `GapJump` un'altra occasione di scattare;
+3. verificare che il rilevamento pit del Player non sia peggiorato — controllare che i pit del
+   Player siano rilevati **tutti** e nei momenti giusti. Il rischio nuovo è il contrario di
+   prima: se la geofence del circuito non è ancora calibrata il filtro spaziale si disattiva,
+   ma se fosse calibrata *male* si perderebbero pit veri.
+
+**NON toccare:** Y-13 resta congelato.
+
+**Attenzione a — due valori stimati, non misurati.** A differenza delle bande di Y-12, questi
+non vengono da uno sweep sui dati, perché nessun replay finora contiene il fenomeno:
+- `OvercutTrafficWindowSeconds = 2.0` — serve un replay con overcut attivo e traffico vero;
+- `MaxAchievableFuelSaving = 0.15` — serve un replay con una fase di fuel saving.
+Sono documentati come tali nel codice. Non trattarli come calibrati.
+
+**Copertura, detto onestamente:** i test coprono le funzioni di decisione estratte
+(`ActiveWarmupLaps`/`IsLapExcludedFromDegradation`, `PhysicalGapSeconds`/`BlocksOvercut`,
+`PitLaneDetector`, `ComputeFuelSaving`), non la loro integrazione nei metodi chiamanti, che
+restano legati a stato SimHub non costruibile in test. Quel lato si verifica solo sul replay.
+
+---
+
 ## [2026-08-19 23:20] claude → tutti (solo verifica, nessun codice toccato)
 
 **Task:** leggere il replay `20260819_230109` per verificare `GapJump`

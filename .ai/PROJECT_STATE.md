@@ -8,18 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      claude        # NONE | antigravity | claude | codex | human
-since:      2026-08-19T23:40:00Z
-task:       Y-11, Y-2, Y-9, Y-1 — decisioni prese con l'utente, sblocco dei punti congelati
-scope:      Y-11  RaceAnalyzer.cs — escludere gli outlap dalla media di PaceDropDueToTyres
-            Y-2   TargetStrategyManager.cs — implementare OvercutTrafficOK (traffico davanti ora)
-            Y-9   TargetStrategyManager.cs + OpponentTracker.cs — rilevamento pit del Player
-                  uniformato alla cascata degli avversari; soglie adattive da PitLaneSpeedLimit
-                  appreso per classe; PitRadar.cs + PitLaneSpeedLimit per classe nel JSON
-            Y-1   FuelManager.cs + TargetStrategyManager.cs — FuelSaveTarget e selezione
-                  degli avvisi di fine gara (Opzione 1)
-            + test e .csproj se servono nuovi file
-expires:    2026-08-20T06:00:00Z
+owner:      NONE          # NONE | antigravity | claude | codex | human
+since:      2026-08-20T00:30:00Z
+task:       —
+scope:      —
+expires:    —
 ```
 
 **Regole del lock**
@@ -42,14 +35,14 @@ implementazione. Chi decide, aggiorni questa tabella prima di far partire il lav
 
 | ID | Punto | Decisione richiesta |
 |----|-------|---------------------|
-| Y-1 | `CanFinishWithoutPitting` | Va mantenuta? Se sì va approvata come estensione, e le serve un `RejectReason` dedicato: oggi si maschera da `RaceTooLate`. Rischio noto: silenzia un overcut vincente quando il Player finisce col carburante ma il Target deve fermarsi. |
-| Y-2 | `OvercutTrafficOK` cablato a `true` | Implementare il check o rimuovere il gate? Oggi è inerte e la dashboard espone un `true` privo di significato. |
-| Y-11 | Modello warmup | La media mobile a 4 giri di `PaceDropDueToTyres` include i giri post-pit su gomma fredda, che vengono poi ri-sommati come warmup esplicito. Filtrare quei giri dalla media, o accettare il double counting? |
-| Y-3 | `LapsSinceLastPit` | Renderlo continuo come da spec §26 richiede una misura frazionaria di giro sul target: esiste già in `OpponentTelemetryData`? |
-| Y-8 | Deadband HUD 0.05 | La spec §30 lo richiede ma non definisce il formato: cosa mostrare per `|RelativePace| < 0.05` — `0.0s/lap`, `~0`, stringa vuota? |
+| ~~Y-1~~ | ~~`CanFinishWithoutPitting`~~ | ✅ **Opzione 1 implementata** (`bc20a67`). Non più silenziamento indiscriminato: `canFinishWithoutPitting` sopprime l'undercut (con `RejectReason` dedicato `NoPitNeeded`) ma **non** l'overcut, che in quel caso è già vinto. Aggiunto `FuelSaveTarget` con filtro di fattibilità. |
+| ~~Y-2~~ | ~~`OvercutTrafficOK` cablato a `true`~~ | ✅ **Implementato** (`f08bf43`) come "chi ho davanti adesso", distinto dall'undercut che è proiettato all'uscita box. Finestra 2.0 s, **da calibrare** sul primo replay con overcut e traffico veri. |
+| ~~Y-11~~ | ~~Modello warmup~~ | ✅ **Corretto** (`8b42efd`). Gli outlap non entrano più nella media del degrado. Soglia `0.10` ora condivisa invece che ricopiata in tre punti. |
+| ~~Y-3~~ | ~~`LapsSinceLastPit`~~ | ⏹️ **Chiuso senza intervento.** L'imprecisione (fino a un giro) è trascurabile rispetto alla scala delle decisioni che governa. Eventualmente in futuro. |
+| ~~Y-8~~ | ~~Deadband HUD 0.05~~ | ⏹️ **Chiuso senza intervento.** Il dato resta com'è: mostrare un valore per un altro non serve a nulla. |
 | ~~Y-12~~ | ~~Isteresi dei gate strategici~~ | ✅ **Deciso e implementato** (commit `1fa7b15`), approvato da Antigravity e Codex. Banda `±0.25` sulla posizione, `±0.15` sui margini, dwell `5 s`. Valori da sweep sul replay `20260819_205004` con simulatore validato 1958/1958 campioni. Il filtro EMA sul gap è stato **valutato e scartato**. Da confermare su un secondo replay e su un circuito diverso. |
 | Y-13 | Gap che salta di un giro al rollover | `GapJump` (commit `ff480bd`) scarta il campione nel **ritmo relativo**, ma la causa è a monte: `posDiffLaps * refLapTime` produce un gap sbagliato di esattamente un giro per un tick, quando i due contatori sono disallineati. Lo stesso gap alimenta **anche i gate strategici**, dove non c'è filtro. Oggi l'isteresi assorbe il colpo (banda 0.25 s, dwell 5 s), quindi non è urgente. Si corregge il calcolo a monte, o si accetta il sintomo curato in un posto solo? **Il difetto è intermittente**: è una race fra il campione macrosettoriale e il rollover, e la finestra dura pochi millisecondi. Comparso nel replay `221922` allo stesso punto in cui il `230109` non mostra nulla (`gapDelta` 93.033 contro 0.032). Non contare quindi sull'assenza di `GapJump` in un singolo replay come prova che sia risolto. |
-| Y-9 | Euristica pit del Player | `TrackPositionPercent > 0.85 && 10 < SpeedKmh < 100` classifica come "in pit" anche un tornante lento di fine giro. Sostituire con il solo `IsInPitLane`, o con la geofence già usata per gli avversari? |
+| ~~Y-9~~ | ~~Euristica pit del Player~~ | ✅ **Uniformato** (`81a5f12`). Il Player usa la stessa cascata degli avversari via `PitLaneDetector`. Soglie di velocità ora derivate dal `PitLaneSpeedLimit` appreso per traccia+classe invece che cablate. Corretto anche un bug multiclasse nell'apprendimento. |
 
 ---
 
