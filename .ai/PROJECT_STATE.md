@@ -8,11 +8,18 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-19T23:00:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-19T23:40:00Z
+task:       Y-11, Y-2, Y-9, Y-1 — decisioni prese con l'utente, sblocco dei punti congelati
+scope:      Y-11  RaceAnalyzer.cs — escludere gli outlap dalla media di PaceDropDueToTyres
+            Y-2   TargetStrategyManager.cs — implementare OvercutTrafficOK (traffico davanti ora)
+            Y-9   TargetStrategyManager.cs + OpponentTracker.cs — rilevamento pit del Player
+                  uniformato alla cascata degli avversari; soglie adattive da PitLaneSpeedLimit
+                  appreso per classe; PitRadar.cs + PitLaneSpeedLimit per classe nel JSON
+            Y-1   FuelManager.cs + TargetStrategyManager.cs — FuelSaveTarget e selezione
+                  degli avvisi di fine gara (Opzione 1)
+            + test e .csproj se servono nuovi file
+expires:    2026-08-20T06:00:00Z
 ```
 
 **Regole del lock**
