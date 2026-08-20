@@ -286,6 +286,13 @@ namespace SimRIG
             pm.AddProperty("SimRIG.Fuel.EstimatedPitWindow", t, 0.0);
             pm.AddProperty("SimRIG.Fuel.EstimatedPitWindowTargetLap", t, 0.0);
             pm.AddProperty("SimRIG.Fuel.PitRequiredNumber", t, 0.0);
+            // Y-1: consumo per giro necessario ad arrivare in fondo senza un'altra sosta.
+            // Leggere SEMPRE FuelSavingAchievable prima: quando è false il target esiste ma
+            // non è ottenibile guidando, e mostrarlo sarebbe un consiglio impossibile.
+            pm.AddProperty("SimRIG.Fuel.FuelSaveTarget", t, 0.0);
+            pm.AddProperty("SimRIG.Fuel.FuelSaveTargetStr", t, "--.-");
+            pm.AddProperty("SimRIG.Fuel.FuelSavingRequiredPct", t, 0.0);
+            pm.AddProperty("SimRIG.Fuel.FuelSavingAchievable", t, false);
             pm.AddProperty("SimRIG.Fuel.FuelDelta", t, 0.0);
             pm.AddProperty("SimRIG.Fuel.HistoricalPerLap", t, 0.0);
             pm.AddProperty("SimRIG.Fuel.LastLapFuelUsed", t, 0.0);
@@ -1558,6 +1565,17 @@ namespace SimRIG
             PluginManager.SetPropertyValue("SimRIG.Fuel.ActionMessage", t, _msgTL);
             PluginManager.SetPropertyValue("SimRIG.Fuel.FuelToAdd", t, FuelManager.Calculations.FuelToAdd);
             PluginManager.SetPropertyValue("SimRIG.Fuel.PitRequiredNumber", t, FuelManager.Calculations.PitRequiredNumber);
+
+            bool fuelSaveAchievable = FuelManager.Calculations.IsFuelSavingAchievable;
+            PluginManager.SetPropertyValue("SimRIG.Fuel.FuelSaveTarget", t, Math.Round(FuelManager.Calculations.FuelSaveTarget, 2));
+            PluginManager.SetPropertyValue("SimRIG.Fuel.FuelSavingRequiredPct", t, Math.Round(FuelManager.Calculations.FuelSavingRequired * 100.0, 1));
+            PluginManager.SetPropertyValue("SimRIG.Fuel.FuelSavingAchievable", t, fuelSaveAchievable);
+            // Segnaposto quando il risparmio non è ottenibile: un numero mostrato lì verrebbe
+            // letto come un obiettivo da inseguire, mentre la risposta corretta è "fermati".
+            PluginManager.SetPropertyValue("SimRIG.Fuel.FuelSaveTargetStr", t,
+                fuelSaveAchievable
+                    ? FuelManager.Calculations.FuelSaveTarget.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)
+                    : "--.-");
             PluginManager.SetPropertyValue("SimRIG.Fuel.FuelDelta", t, Math.Round(FuelManager.Calculations.FuelDelta, 2));
             PluginManager.SetPropertyValue("SimRIG.Fuel.TankLapsRemaining", t, Math.Round(FuelManager.Calculations.TankLapsRemaining, 2));
             double playerPitWindowTargetLap = CurrentState.CurrentLap + FuelManager.Calculations.TankLapsRemaining;

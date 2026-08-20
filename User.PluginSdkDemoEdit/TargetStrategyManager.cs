@@ -43,6 +43,8 @@ namespace SimRIG
         InsufficientStayLaps,
         InsufficientCaptureMargin,
         RaceTooLate,
+        /// <summary>Il Player arriva in fondo col carburante che ha: fermarsi prima non ha senso (Y-1).</summary>
+        NoPitNeeded,
         Multiple
     }
 
@@ -862,7 +864,11 @@ namespace SimRIG
                     if (!CurrentTarget.UndercutFuelOK) { CurrentTarget.UndercutRejectReason = StrategyRejectReason.Fuel; undercutFails++; uFailedStr += "Fuel,"; }
                     if (!CurrentTarget.UndercutTrafficOK) { CurrentTarget.UndercutRejectReason = StrategyRejectReason.Traffic; undercutFails++; uFailedStr += "Traffic,"; }
                     if (!undercutMarginOK) { CurrentTarget.UndercutRejectReason = StrategyRejectReason.InsufficientCaptureMargin; undercutFails++; uFailedStr += "Margin,"; }
-                    if (!undercutRaceLapsOK || canFinishWithoutPitting) { CurrentTarget.UndercutRejectReason = StrategyRejectReason.RaceTooLate; undercutFails++; uFailedStr += "RaceLaps,"; }
+                    // Y-1: le due cause erano fuse in RaceTooLate e il log non le distingueva.
+                    // Restano entrambe valide **per l'undercut**: se non mi serve fermarmi,
+                    // fermarmi prima del Target non ha alcun senso.
+                    if (!undercutRaceLapsOK) { CurrentTarget.UndercutRejectReason = StrategyRejectReason.RaceTooLate; undercutFails++; uFailedStr += "RaceLaps,"; }
+                    if (canFinishWithoutPitting) { CurrentTarget.UndercutRejectReason = StrategyRejectReason.NoPitNeeded; undercutFails++; uFailedStr += "NoPitNeeded,"; }
                     
                     if (undercutFails > 1) CurrentTarget.UndercutRejectReason = StrategyRejectReason.Multiple;
 
@@ -919,7 +925,14 @@ namespace SimRIG
                     if (!CurrentTarget.OvercutFuelOK) { CurrentTarget.OvercutRejectReason = StrategyRejectReason.Fuel; overcutFails++; oFailedStr += "Fuel,"; }
                     if (!CurrentTarget.OvercutTrafficOK) { CurrentTarget.OvercutRejectReason = StrategyRejectReason.Traffic; overcutFails++; oFailedStr += "Traffic,"; }
                     if (!overcutMarginOK) { CurrentTarget.OvercutRejectReason = StrategyRejectReason.InsufficientCaptureMargin; overcutFails++; oFailedStr += "Margin,"; }
-                    if (!overcutRaceLapsOK || canFinishWithoutPitting) { CurrentTarget.OvercutRejectReason = StrategyRejectReason.RaceTooLate; overcutFails++; oFailedStr += "RaceLaps,"; }
+                    // Y-1, il caso che il gate fuso silenziava: se io arrivo in fondo col
+                    // carburante che ho e il Target deve invece fermarsi, l'overcut non è
+                    // rischioso — è già vinto. Restare fuori mentre lui perde 20 secondi ai box
+                    // è esattamente la strategia, e sopprimere l'annuncio faceva perdere una
+                    // posizione guadagnata. canFinishWithoutPitting non entra più in questo gate.
+                    // Il caso resta comunque protetto: senza `overcutTargetPitting` l'overcut
+                    // non è viable, quindi non si annuncia nulla se nemmeno lui si ferma.
+                    if (!overcutRaceLapsOK) { CurrentTarget.OvercutRejectReason = StrategyRejectReason.RaceTooLate; overcutFails++; oFailedStr += "RaceLaps,"; }
 
                     if (overcutFails > 1) CurrentTarget.OvercutRejectReason = StrategyRejectReason.Multiple;
 

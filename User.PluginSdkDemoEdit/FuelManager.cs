@@ -52,6 +52,26 @@ namespace SimRIG
 
 
 
+        /// <summary>
+        /// Consumo per giro necessario ad arrivare in fondo con quello che si ha a bordo,
+        /// **senza** un'altra sosta. Da non confondere con FuelPerLapTarget, che è il target
+        /// impostato a mano dal pilota per il rifornimento (Y-1).
+        /// Vale 0.0 quando la domanda non ha senso: previsione non valida o gara finita.
+        /// </summary>
+        public double FuelSaveTarget { get; set; } = 0.0;
+
+        /// <summary>Frazione di consumo da tagliare per centrare FuelSaveTarget. Negativa se si è già a posto.</summary>
+        public double FuelSavingRequired { get; set; } = 0.0;
+
+        /// <summary>
+        /// Se quel risparmio è realisticamente ottenibile guidando, invece che con una sosta.
+        /// È il filtro che tiene fuori i casi assurdi: 100 giri alla fine con 25 litri a bordo
+        /// non è un problema di stile di guida, è una sosta obbligata.
+        /// </summary>
+        public bool IsFuelSavingAchievable { get; set; } = false;
+
+
+
         public double UserFuelOffset { get; set; } = 0.0;
 
         public double FuelStep { get; set; } = 0.1;
@@ -71,6 +91,57 @@ namespace SimRIG
     {
 
         private const int HISTORY_SIZE = 4;
+
+        /// <summary>
+        /// Massimo risparmio di carburante ottenibile guidando, come frazione del consumo.
+        /// Oltre questa soglia il divario non si colma alzando il piede: si colma solo con una
+        /// sosta, e proporre il fuel saving sarebbe un consiglio impossibile da eseguire.
+        ///
+        /// Il 15% è la stima consueta di quanto si recupera con lift-and-coast e short-shifting
+        /// prima che il tempo perso superi quello di un rifornimento. Non viene da un replay:
+        /// nessuna sessione finora ha una fase di fuel saving misurabile.
+        /// </summary>
+        public const double MaxAchievableFuelSaving = 0.15;
+
+        /// <summary>Esito del calcolo di fuel saving (Y-1).</summary>
+        public struct FuelSavingPlan
+        {
+            /// <summary>Litri per giro necessari ad arrivare in fondo senza un'altra sosta.</summary>
+            public double Target;
+
+            /// <summary>Frazione di consumo da tagliare. Negativa se si è già sotto il necessario.</summary>
+            public double RequiredFraction;
+
+            /// <summary>Se quel taglio è ottenibile guidando invece che con una sosta.</summary>
+            public bool Achievable;
+        }
+
+        /// <summary>
+        /// Quanto bisogna consumare per arrivare in fondo con quello che si ha a bordo, e se
+        /// ha senso proporlo al pilota (Y-1).
+        ///
+        /// La divisione secca <c>carburante / giri</c> da sola produce consigli assurdi: su una
+        /// endurance con 100 giri da fare e 25 litri a bordo darebbe 0.25 L/giro, un numero
+        /// aritmeticamente vero e praticamente inutile — quella non è una scelta di guida, è una
+        /// sosta obbligata. Due filtri lo rendono azionabile:
+        ///   1. il taglio richiesto deve stare entro ciò che si ottiene alzando il piede;
+        ///   2. deve mancare **una sola** sosta: con più rifornimenti davanti, risparmiare
+        ///      carburante non evita nulla, sposta solo il problema.
+        /// </summary>
+        public static FuelSavingPlan ComputeFuelSaving(double currentFuel, double raceLapsRemaining,
+                                                       double consumption, double pitsRequired)
+        {
+            var plan = new FuelSavingPlan();
+
+            if (raceLapsRemaining <= 0.0 || consumption <= 0.0) return plan;
+
+            plan.Target = currentFuel / raceLapsRemaining;
+            plan.RequiredFraction = (consumption - plan.Target) / consumption;
+            plan.Achievable = plan.RequiredFraction > 0.0
+                              && plan.RequiredFraction <= MaxAchievableFuelSaving
+                              && pitsRequired <= 1.0;
+            return plan;
+        }
 
         private List<double> _fuelHistory = new List<double>();
 
@@ -190,6 +261,12 @@ namespace SimRIG
 
                 Calculations.PitRequiredNumber = rawFuelToAdd > 0 ? Math.Ceiling(rawFuelToAdd / state.MaxFuelCapacity) : 0.0;
 
+                var plan = ComputeFuelSaving(state.CurrentFuelLevel, raceLapsRemaining,
+                                             consumption, Calculations.PitRequiredNumber);
+                Calculations.FuelSaveTarget = plan.Target;
+                Calculations.FuelSavingRequired = plan.RequiredFraction;
+                Calculations.IsFuelSavingAchievable = plan.Achievable;
+
 
 
                 double finalFuelToAdd = 0.0;
@@ -251,6 +328,12 @@ namespace SimRIG
                 Calculations.FuelDelta = 0.0;
 
                 Calculations.PitRequiredNumber = 0.0;
+
+                Calculations.FuelSaveTarget = 0.0;
+
+                Calculations.FuelSavingRequired = 0.0;
+
+                Calculations.IsFuelSavingAchievable = false;
 
             }
 
