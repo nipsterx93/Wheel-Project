@@ -54,7 +54,7 @@ namespace SimRIG
             "TargetRawPace,PlayerTrackPace,StayOutsideGain,TotalWarmupGain,OvercutAdv,OvercutMargin," +
             "TargetIsInPit,TargetPittedRecently,OvercutFuelOK,OvercutTrafOK,OvercutStayOK,OvercutMarginOK,OvercutRaceLapsOK,OvercutViable,OvercutRejectReason," +
             "StrategyDecision," +
-            "CandidateDecision,TimeInDecision,MinDeltaTime,MaxDeltaTime";
+            "CandidateDecision,TimeInDecision,MinDeltaTime,MaxDeltaTime,OvercutTrafficGap";
 
         /// <summary>Numero di colonne dello snapshot, derivato dall'header stesso.</summary>
         public static int SnapshotColumnCount { get { return SnapshotHeader.Split(',').Length; } }
@@ -173,6 +173,7 @@ namespace SimRIG
                    "# MinimumStateDwell=" + StrategyGateHysteresis.MinimumStateDwell.ToString(c) + "\n" +
                    "# TargetPittedRecentlyThreshold=2.0\n" +
                    "# MinimumOvercutStay=0.5\n" +
+                   "# OvercutTrafficWindow=" + TargetStrategyManager.OvercutTrafficWindowSeconds.ToString("F1", c) + "\n" +
                    "# MinimumRaceLapsRemaining=2.0\n";
         }
 

@@ -115,8 +115,8 @@ namespace User.PluginSdkDemo.Tests
 
         private static void Test_SnapshotHeader_ColumnCount()
         {
-            Assert(LogManager.SnapshotColumnCount == 67,
-                $"snapshot: attese 67 colonne, trovate {LogManager.SnapshotColumnCount}");
+            Assert(LogManager.SnapshotColumnCount == 68,
+                $"snapshot: attese 68 colonne, trovate {LogManager.SnapshotColumnCount}");
 
             string[] columns = LogManager.SnapshotHeader.Split(',');
             Assert(columns.Distinct().Count() == columns.Length, "l'header snapshot contiene nomi duplicati");

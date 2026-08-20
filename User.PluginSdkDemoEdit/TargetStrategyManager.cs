@@ -145,6 +145,14 @@ namespace SimRIG
         public bool UndercutTrafficOK { get; set; } = false;
         public bool OvercutFuelOK { get; set; } = false;
         public bool OvercutTrafficOK { get; set; } = false;
+
+        /// <summary>
+        /// Distacco dalla vettura più vicina davanti al Player, in secondi e con segno negativo,
+        /// quando quella vettura sta bloccando l'overcut. Vale 0.0 quando la pista è libera:
+        /// senza questo numero un <c>OvercutTrafficOK=False</c> nel log non sarebbe diagnosticabile.
+        /// </summary>
+        public double OvercutTrafficGap { get; set; } = 0.0;
+
         public bool TargetPittedRecently { get; set; } = false;
 
         public StrategyRejectReason UndercutRejectReason { get; set; } = StrategyRejectReason.None;
@@ -209,6 +217,17 @@ namespace SimRIG
         /// <summary>Isteresi dei gate strategici (Y-12). Resettata insieme a _relativePace.</summary>
         private readonly StrategyGateHysteresis _hysteresis = new StrategyGateHysteresis();
 
+        /// <summary>
+        /// Quanto vicino deve stare una vettura davanti perché rovini l'overcut (Y-2).
+        ///
+        /// A differenza delle bande di Y-12, questo valore **non** viene da uno sweep sui dati:
+        /// nessun replay finora ha un overcut attivo abbastanza a lungo da misurarlo. È la stima
+        /// di quanto vicino bisogna stare perché l'aria sporca e la necessità di sorpassare
+        /// annullino il vantaggio di ritmo su cui l'overcut conta. Da calibrare quando ci sarà
+        /// un replay con overcut e traffico veri.
+        /// </summary>
+        public const double OvercutTrafficWindowSeconds = 2.0;
+
 
 
 
@@ -252,6 +271,33 @@ namespace SimRIG
             // Solo ASCII: la dash può usare font senza glifi estesi.
             string sign = delta > 0.0 ? "+" : string.Empty;
             return sign + delta.ToString("F2", CultureInfo.InvariantCulture) + "s/sector";
+        }
+
+        /// <summary>
+        /// Converte un distacco "a giri di distanza" nel distacco **fisico** in pista.
+        ///
+        /// Un doppiato che il conteggio dà a 88 secondi è fisicamente lì davanti a te: il modulo
+        /// sul tempo di giro riporta il valore nella finestra ±mezzo giro, che è l'unica
+        /// interpretazione sensata di "quanto è distante adesso".
+        /// Convenzione del segno: <b>negativo = davanti a me</b>, positivo = dietro.
+        /// </summary>
+        public static double PhysicalGapSeconds(double timeGap, double refLapTime)
+        {
+            if (refLapTime <= 0.0) return timeGap;
+
+            double gap = timeGap % refLapTime;
+            if (gap < 0.0) gap += refLapTime;
+            if (gap > refLapTime / 2.0) gap -= refLapTime;
+            return gap;
+        }
+
+        /// <summary>
+        /// Se una vettura a questo distacco fisico sta bloccando l'overcut (Y-2).
+        /// Solo chi è davanti conta: chi mi segue non mi rallenta.
+        /// </summary>
+        public static bool BlocksOvercut(double physicalGap, double windowSeconds)
+        {
+            return physicalGap < 0.0 && physicalGap >= -windowSeconds;
         }
 
         /// <summary>Un nome pilota con la virgola ("Rossi, Mario") sfonderebbe le colonne del CSV.</summary>
@@ -678,6 +724,15 @@ namespace SimRIG
                     bool pitExitTrafficConflict = false;
                     double minMergeGap = 999.0;
 
+                    // Y-2: traffico per l'overcut. È una domanda diversa da quella dell'undercut,
+                    // e va misurata diversamente:
+                    //   undercut -> mi fermo, quindi conta dove mi ritroverò all'USCITA dai box:
+                    //               gap proiettato, sottraendo il tempo perso ai box;
+                    //   overcut  -> resto fuori e spingo, quindi conta chi ho davanti ADESSO:
+                    //               gap istantaneo, nessuna proiezione.
+                    bool overcutTrafficConflict = false;
+                    double nearestAheadGap = 999.0;
+
                     foreach (var opp in state.Opponents)
                     {
                         if (opp.IsPlayer || !opp.TrackPositionPercent.HasValue) continue;
@@ -697,17 +752,26 @@ namespace SimRIG
                         double posDiffLaps = (myLap + myPos) - (oppLap + opp.TrackPositionPercent.Value);
                         double timeGap = posDiffLaps * refLapTime; // positivo se l'avversario è dietro, negativo se davanti
 
+                        // --- Y-2: chi ho davanti in pista in questo momento ---
+                        double physicalNowGap = PhysicalGapSeconds(timeGap, refLapTime);
+
+                        // Il Target non è traffico: se durante l'overcut ce l'ho davanti a pochi
+                        // secondi, è il bersaglio da riprendere, non un ostacolo che mi rallenta.
+                        bool isTargetCar = !string.IsNullOrEmpty(CurrentTarget.Name) && opp.Name == CurrentTarget.Name;
+                        if (!isTargetCar && BlocksOvercut(physicalNowGap, OvercutTrafficWindowSeconds))
+                        {
+                            overcutTrafficConflict = true;
+                            if (Math.Abs(physicalNowGap) < Math.Abs(nearestAheadGap))
+                            {
+                                nearestAheadGap = physicalNowGap;
+                            }
+                        }
+
                         // Distacco temporale proiettato all'uscita dai box del Player
                         double projectedExitGap = timeGap - playerTotalPitLoss;
 
                         // Applicazione del modulo per il distacco fisico reale in pista
-                        double physicalMergeGap = projectedExitGap % refLapTime;
-                        if (physicalMergeGap < 0.0) physicalMergeGap += refLapTime;
-
-                        if (physicalMergeGap > refLapTime / 2.0)
-                        {
-                            physicalMergeGap -= refLapTime; // negativo: davanti; positivo: dietro
-                        }
+                        double physicalMergeGap = PhysicalGapSeconds(projectedExitGap, refLapTime);
 
                         // Se l'avversario si trova nella bolla di merge di ±3 secondi
                         if (physicalMergeGap >= -3.0 && physicalMergeGap <= 3.0)
@@ -816,7 +880,11 @@ namespace SimRIG
                     double lapsSinceLastPit = oppData.LastPitLap > 0 ? (double)(oppData.HighestLapSeen - oppData.LastPitLap) : 999.0;
                     CurrentTarget.TargetPittedRecently = lapsSinceLastPit <= 2.0;
                     CurrentTarget.OvercutFuelOK = fuel.TankLapsRemaining >= nEffective + 0.4;
-                    CurrentTarget.OvercutTrafficOK = true; // In future: check player sector traffic
+                    // Y-2: non più cablato a true. L'overcut vive di giri veloci nella finestra in
+                    // cui il Target è ai box: una vettura davanti entro la finestra di traffico
+                    // annulla proprio il vantaggio su cui la strategia conta.
+                    CurrentTarget.OvercutTrafficOK = !overcutTrafficConflict;
+                    CurrentTarget.OvercutTrafficGap = overcutTrafficConflict ? nearestAheadGap : 0.0;
 
                     bool overcutTargetPitting = targetIsInPit || CurrentTarget.TargetPittedRecently;
                     bool overcutStayOK = nEffective >= 0.5;
@@ -926,7 +994,9 @@ namespace SimRIG
                             //     confronto candidato/deciso misura quanto sta filtrando il dwell ---
                             candidateDecision.ToString(),
                             F1(_hysteresis.TimeInDecision(state.SessionTimeLeftSec)),
-                            F3(_lastPaceSample.MinDeltaTime), F3(_lastPaceSample.MaxDeltaTime)
+                            F3(_lastPaceSample.MinDeltaTime), F3(_lastPaceSample.MaxDeltaTime),
+                            // --- Y-2: distacco da chi blocca l'overcut, 0.0 se pista libera ---
+                            F3(CurrentTarget.OvercutTrafficGap)
                         };
 
                         // Un disallineamento header/dati rende il CSV muto senza errori: meglio urlarlo.
