@@ -127,6 +127,43 @@ namespace SimRIG
         public double[] PostPitWarmupPenalties { get; } = new double[3] { 0.0, 0.0, 0.0 };
         public int PostPitTransitCount { get; set; } = -1;
 
+        /// <summary>
+        /// Penalità minima perché un giro post-pit conti come warmup (spec §29).
+        /// Era ricopiata a mano in tre punti: qui, nel gate overcut di TargetStrategyManager
+        /// e nell'header dei parametri del log.
+        /// </summary>
+        public const double WarmupThreshold = 0.10;
+
+        /// <summary>
+        /// Quanti giri post-pit il modello di warmup sta contabilizzando **separatamente**.
+        ///
+        /// Serve a non contare due volte lo stesso effetto (debito Y-11): quei giri, corsi su
+        /// gomma fredda, gonfiano la media mobile di LapMovingAverage e quindi PaceDropDueToTyres,
+        /// che rappresenta il degrado da usura — poi la stessa lentezza viene ri-sommata come
+        /// warmup esplicito. Il prefisso contiguo è lo stesso criterio usato dal gate overcut,
+        /// così i due lati restano allineati per costruzione.
+        /// </summary>
+        public int ActiveWarmupLaps()
+        {
+            int count = 0;
+            for (int i = 0; i < PostPitWarmupPenalties.Length; i++)
+            {
+                if (PostPitWarmupPenalties[i] >= WarmupThreshold) count++;
+                else break;
+            }
+            return count;
+        }
+
+        /// <summary>
+        /// Se questo giro va tenuto fuori dalla storia che alimenta il degrado (Y-11).
+        /// Estratto come metodo pubblico perché la decisione sia verificabile dai test:
+        /// dentro AnalyzePlayerLap sarebbe sepolta in uno stato che i test non possono costruire.
+        /// </summary>
+        public bool IsLapExcludedFromDegradation(int playerLapsOnTyres)
+        {
+            return playerLapsOnTyres < ActiveWarmupLaps();
+        }
+
         public RaceAnalyzer() { }
 
         public void Update(SessionState state, PitRadar radar, OpponentTracker tracker, FuelCalculations fuel, LogManager log, TyreSelectionScope tyreScope, double fuelWeightCoef = 0.03, double tempCoef = 0.05)
@@ -368,7 +405,7 @@ namespace SimRIG
 
                     int playerLapsOnTyres = Math.Max(0, Results.RaceLapsCompleted - _playerLastPitLap);
                     double distanceOnTyres = playerLapsOnTyres * state.TrackLengthMeters;
-                    AnalyzePlayerLap(state.LastLapTimeSec, state.CurrentFuelLevel, state.TrackTemperature, state.IsInPitLane, state.Flag_Black, Results.RaceLapsCompleted, state.GlobalBaselineTemp, fuelWeightCoef, tempCoef, distanceOnTyres, log);
+                    AnalyzePlayerLap(state.LastLapTimeSec, state.CurrentFuelLevel, state.TrackTemperature, state.IsInPitLane, state.Flag_Black, Results.RaceLapsCompleted, state.GlobalBaselineTemp, fuelWeightCoef, tempCoef, distanceOnTyres, playerLapsOnTyres, log);
 
 
 
@@ -882,7 +919,7 @@ namespace SimRIG
 
 
 
-        private void AnalyzePlayerLap(double lapTime, double currentFuel, double trackTemp, bool isInPit, int blackFlag, int raceLapsCompleted, double globalBaselineTemp, double fuelWeightCoef, double tempCoef, double distanceOnTyres, LogManager log)
+        private void AnalyzePlayerLap(double lapTime, double currentFuel, double trackTemp, bool isInPit, int blackFlag, int raceLapsCompleted, double globalBaselineTemp, double fuelWeightCoef, double tempCoef, double distanceOnTyres, int playerLapsOnTyres, LogManager log)
 
         {
 
@@ -1006,9 +1043,24 @@ namespace SimRIG
 
 
 
-            NormalizedTimes.LapHistory.Add(normalizedLap);
+            // Y-11: i giri ancora nella finestra di warmup non entrano nella storia da cui si
+            // ricava il degrado. Sono lenti per la gomma fredda, non per l'usura, e quella
+            // lentezza è già contabilizzata a parte come warmup: sommarla anche qui la conterebbe
+            // due volte. Fuori dalla finestra il giro rientra normalmente.
+            int warmupLapsActive = ActiveWarmupLaps();
+            bool isWarmupLap = IsLapExcludedFromDegradation(playerLapsOnTyres);
 
-            RawTimes.LapHistory.Add(lapTime);
+            if (isWarmupLap)
+            {
+                log.Log(LogModule.STRATEGY, LogType.EVENT, "Player Lap Excluded From Degradation",
+                    $"lapsOnTyres={playerLapsOnTyres} | warmupLapsActive={warmupLapsActive} | normalizedLap={normalizedLap:F3} | reason=ancora in warmup, gia' contato dal modello");
+            }
+            else
+            {
+                NormalizedTimes.LapHistory.Add(normalizedLap);
+
+                RawTimes.LapHistory.Add(lapTime);
+            }
 
 
 

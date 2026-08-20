@@ -165,7 +165,7 @@ namespace SimRIG
                    "# PostPitSettlingSectors=" + RelativePaceTracker.PostPitSettlingSectors.ToString(c) + "\n" +
                    "# PitDecisionBuffer=0.8\n" +
                    "# MaxUndercutReactionWindow=1.0\n" +
-                   "# WarmupThreshold=0.10\n" +
+                   "# WarmupThreshold=" + RaceAnalyzer.WarmupThreshold.ToString("F2", c) + "\n" +
                    "# FuelReserve=0.4\n" +
                    "# UndercutPositionThreshold=" + StrategyGateHysteresis.UndercutPositionThreshold.ToString(c) + "\n" +
                    "# PositionHysteresis=" + StrategyGateHysteresis.PositionHysteresis.ToString(c) + "\n" +

@@ -18,6 +18,7 @@ namespace User.PluginSdkDemo.Tests
                 StrategyLoggingUnitTests.RunAllTests();
                 RelativeGapDeltaUnitTests.RunAllTests();
                 StrategyHysteresisUnitTests.RunAllTests();
+                WarmupDoubleCountUnitTests.RunAllTests();
                 ReplayBacktestIntegrationTest.RunMisanoGt3Backtest();
                 MisanoHuracanGT3ReplayTest.RunFullReplayMergeGapValidation();
 

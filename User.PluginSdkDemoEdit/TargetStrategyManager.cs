@@ -794,7 +794,7 @@ namespace SimRIG
                         targetWarmupLapsAvailable = 0.0;
                         for (int i = 0; i < oppData.PostPitWarmupPenalties.Length; i++)
                         {
-                            if (oppData.PostPitWarmupPenalties[i] >= 0.10)
+                            if (oppData.PostPitWarmupPenalties[i] >= RaceAnalyzer.WarmupThreshold)
                                 targetWarmupLapsAvailable += 1.0;
                             else
                                 break;
