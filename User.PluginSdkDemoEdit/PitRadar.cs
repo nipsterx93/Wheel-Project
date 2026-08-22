@@ -711,6 +711,65 @@ namespace SimRIG
 		return incoming >= existing;
 	}
 
+	/// <summary>Litri minimi perché il rapporto litri/tempo sia significativo.</summary>
+	public const double MinLitresForFuelRate = 5.0;
+
+	/// <summary>Durata minima dell'erogazione, per non dividere per un tempo quasi nullo.</summary>
+	public const double MinFuelingSeconds = 1.0;
+
+	/// <summary>Sosta minima perché un tempo fermo valga come cambio gomme.</summary>
+	public const double MinStationaryForTyres = 5.0;
+
+	/// <summary>Cosa si può imparare da una sosta non guidata.</summary>
+	public struct NaturalPitObservation
+	{
+		public bool FuelRateUsable;
+		public double FuelFillRate;
+
+		public bool TyreTimeUsable;
+		public double TyreChangeTime;
+	}
+
+	/// <summary>
+	/// Estrae ciò che una sosta **naturale** può insegnare, senza la procedura guidata.
+	///
+	/// Serve al pilota che salta la practice e va diretto in gara: la sua prima sosta vera è il
+	/// dato migliore disponibile, e prima veniva buttata via perché la scrittura di FuelFillRate
+	/// avveniva solo dentro CalibrationMode.SplashAndDash, che scatta solo con una richiesta di
+	/// esattamente 20 litri.
+	///
+	/// Si accettano **solo soste inequivocabili**: benzina sola, o gomme sole. In una sosta mista
+	/// il tempo fermo non si separa fra le due cause senza conoscerne già una — è il modello
+	/// Sequential/Simultaneous, che merita test propri e resta fuori scope per ora.
+	/// </summary>
+	public static NaturalPitObservation ObserveNaturalPitStop(double fuelRequested,
+															  TyreSelectionScope tyres,
+															  double litresAdded,
+															  double fuelingSeconds,
+															  double stationarySeconds)
+	{
+		var observation = new NaturalPitObservation();
+
+		bool tyresTouched = tyres != TyreSelectionScope.None;
+
+		// Solo benzina: nessuna gomma toccata, quindi tutto il tempo di erogazione è carburante.
+		if (!tyresTouched && litresAdded >= MinLitresForFuelRate && fuelingSeconds >= MinFuelingSeconds)
+		{
+			observation.FuelRateUsable = true;
+			observation.FuelFillRate = litresAdded / fuelingSeconds;
+		}
+
+		// Solo gomme: nessun carburante richiesto né erogato, quindi il tempo fermo è tutto gomme.
+		if (tyresTouched && fuelRequested <= 0.0 && litresAdded < MinLitresForFuelRate
+			&& stationarySeconds >= MinStationaryForTyres)
+		{
+			observation.TyreTimeUsable = true;
+			observation.TyreChangeTime = stationarySeconds;
+		}
+
+		return observation;
+	}
+
 	public void SaveDatabase()
 	{
 		try
@@ -907,11 +966,13 @@ namespace SimRIG
 				if (num3 > 0.5)
 				{
 					double num4 = 20.0 / num3;
-					if (_currentClass.FuelFillRate == 0.0)
+					// Procedura guidata: isolata per costruzione, quindi Confirmed.
+					if (CanOverwrite(_currentClass.FuelFillRateConfidence, CalibrationConfidence.Confirmed))
 					{
 						_currentClass.FuelFillRate = num4;
+						_currentClass.FuelFillRateConfidence = CalibrationConfidence.Confirmed;
 						flag = true;
-						log.Log(LogModule.RADAR, LogType.EVENT, "Fuel Fill Rate Calibrated", $"{num4:F2} L/s");
+						log.Log(LogModule.RADAR, LogType.EVENT, "Fuel Fill Rate Calibrated", $"{num4:F2} L/s | confidence=Confirmed");
 					}
 				}
 				if (_currentTrack.PitTransitTime == 0.0 && num2 > 0.5)
@@ -922,11 +983,13 @@ namespace SimRIG
 			}
 			else if (_activeMode == CalibrationMode.TyreChange)
 			{
-				if (_currentClass.TyreChangeTime == 0.0 && _pitBoxTimeCache > 0.5)
+				if (_pitBoxTimeCache > 0.5
+					&& CanOverwrite(_currentClass.TyreChangeTimeConfidence, CalibrationConfidence.Confirmed))
 				{
 					_currentClass.TyreChangeTime = _pitBoxTimeCache;
+					_currentClass.TyreChangeTimeConfidence = CalibrationConfidence.Confirmed;
 					flag = true;
-					log.Log(LogModule.RADAR, LogType.EVENT, "Tyre Change Time Calibrated", $"{_pitBoxTimeCache:F1}s");
+					log.Log(LogModule.RADAR, LogType.EVENT, "Tyre Change Time Calibrated", $"{_pitBoxTimeCache:F1}s | confidence=Confirmed");
 				}
 				if (_currentTrack.PitTransitTime == 0.0 && num2 > 0.5)
 				{
@@ -948,6 +1011,37 @@ namespace SimRIG
 				_currentTrack.PitTransitTime = num2;
 				flag = true;
 				log.Log(LogModule.RADAR, LogType.EVENT, "Transit Time Calibrated", num2.ToString("F2"));
+			}
+			else
+			{
+				// Nessuna procedura guidata in corso: e' una sosta normale. Se e' pulita,
+				// e' comunque il dato migliore che abbiamo. Prima veniva buttata via, perche'
+				// FuelFillRate si scriveva solo dentro SplashAndDash, cioe' a 20 litri esatti.
+				double litresAdded = Math.Max(0.0, state.CurrentFuelLevel - _fuelLevelAtStopStart);
+				double fuelingSeconds = Math.Abs(_lastFuelIncreaseTime - _fuelStartTime);
+
+				NaturalPitObservation observed = ObserveNaturalPitStop(fuelToAdd, selectedTyres,
+									litresAdded, fuelingSeconds, _pitBoxTimeCache);
+
+				if (observed.FuelRateUsable
+					&& CanOverwrite(_currentClass.FuelFillRateConfidence, CalibrationConfidence.EstimatedPlayer))
+				{
+					_currentClass.FuelFillRate = observed.FuelFillRate;
+					_currentClass.FuelFillRateConfidence = CalibrationConfidence.EstimatedPlayer;
+					flag = true;
+					log.Log(LogModule.RADAR, LogType.EVENT, "Fuel Fill Rate Learned (Natural Stop)",
+						$"{observed.FuelFillRate:F2} L/s | litres={litresAdded:F1} | seconds={fuelingSeconds:F1} | confidence=EstimatedPlayer");
+				}
+
+				if (observed.TyreTimeUsable
+					&& CanOverwrite(_currentClass.TyreChangeTimeConfidence, CalibrationConfidence.EstimatedPlayer))
+				{
+					_currentClass.TyreChangeTime = observed.TyreChangeTime;
+					_currentClass.TyreChangeTimeConfidence = CalibrationConfidence.EstimatedPlayer;
+					flag = true;
+					log.Log(LogModule.RADAR, LogType.EVENT, "Tyre Change Time Learned (Natural Stop)",
+						$"{observed.TyreChangeTime:F1}s | confidence=EstimatedPlayer");
+				}
 			}
 			if (flag)
 			{
