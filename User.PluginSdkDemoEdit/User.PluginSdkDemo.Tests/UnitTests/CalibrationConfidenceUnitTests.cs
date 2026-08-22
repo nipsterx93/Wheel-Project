@@ -34,6 +34,9 @@ namespace User.PluginSdkDemo.Tests
             Test_Regression_ExistingDatabaseIsNotDowngraded();
             Test_MigrationLeavesEmptyRecordsAlone();
             Test_MigrationIsIdempotent();
+            Test_Regression_StatusAccountsForGeofences();
+            Test_StatusDistinguishesEstimatedFromMeasured();
+            Test_StatusListsWhatIsMissing();
 
             Console.WriteLine("[TEST SUCCESS] All Calibration Confidence Tests Passed!");
         }
@@ -221,6 +224,77 @@ namespace User.PluginSdkDemo.Tests
                    "una stima dichiarata non deve essere promossa a Confirmed dalla migrazione");
 
             Pass("Test_MigrationIsIdempotent");
+        }
+
+        /// <summary>
+        /// Il difetto dello stato precedente: guardava solo PitTransitTime e FuelFillRate, quindi
+        /// un circuito con le **geofence** non calibrate risultava comunque READY — proprio il caso
+        /// in cui il rilevamento pit del Player perde colpi.
+        /// </summary>
+        private static void Test_Regression_StatusAccountsForGeofences()
+        {
+            string missing;
+            string status = PitRadar.BuildCalibrationStatus(
+                geofenceCalibrated: false,
+                pitTransitTime: 36.0,
+                fuelFillRate: 2.62,
+                tyreChangeTime: 27.0,
+                geofenceConfidence: CalibrationConfidence.Unknown,
+                fuelConfidence: CalibrationConfidence.Confirmed,
+                tyreConfidence: CalibrationConfidence.Confirmed,
+                missing: out missing);
+
+            Assert(status != "READY",
+                   "REGRESSIONE: senza geofence calibrate lo stato non puo' essere READY");
+            Assert(missing.Contains("PIT ZONES"),
+                   $"le zone mancanti devono essere elencate, ottenuto '{missing}'");
+
+            Pass("Test_Regression_StatusAccountsForGeofences");
+        }
+
+        private static void Test_StatusDistinguishesEstimatedFromMeasured()
+        {
+            string missing;
+
+            // Tutto presente e tutto misurato.
+            string measured = PitRadar.BuildCalibrationStatus(true, 36.0, 2.62, 27.0,
+                CalibrationConfidence.Confirmed, CalibrationConfidence.Confirmed,
+                CalibrationConfidence.Confirmed, out missing);
+            Assert(measured == "READY", $"tutto misurato deve dare READY, ottenuto '{measured}'");
+            Assert(missing == "", "non deve mancare nulla");
+
+            // Tutto presente ma il fill rate viene da una sosta di gara.
+            string estimated = PitRadar.BuildCalibrationStatus(true, 36.0, 2.62, 27.0,
+                CalibrationConfidence.Confirmed, CalibrationConfidence.EstimatedPlayer,
+                CalibrationConfidence.Confirmed, out missing);
+            Assert(estimated == "READY (ESTIMATED)",
+                   $"un dato stimato deve essere dichiarato, ottenuto '{estimated}'");
+            Assert(missing == "", "ma non manca nulla: funziona, e' solo meno preciso");
+
+            Pass("Test_StatusDistinguishesEstimatedFromMeasured");
+        }
+
+        private static void Test_StatusListsWhatIsMissing()
+        {
+            string missing;
+
+            // Circuito e classe mai visti: tutto da fare.
+            string fresh = PitRadar.BuildCalibrationStatus(false, 0.0, 0.0, 0.0,
+                CalibrationConfidence.Unknown, CalibrationConfidence.Unknown,
+                CalibrationConfidence.Unknown, out missing);
+            Assert(fresh == "NEEDS FULL CALIBRATION",
+                   $"con quattro dati mancanti serve la calibrazione completa, ottenuto '{fresh}'");
+
+            // Manca solo il tempo gomme.
+            string partial = PitRadar.BuildCalibrationStatus(true, 36.0, 2.62, 0.0,
+                CalibrationConfidence.Confirmed, CalibrationConfidence.Confirmed,
+                CalibrationConfidence.Unknown, out missing);
+            Assert(partial.Contains("TYRE TIME"),
+                   $"lo stato deve dire cosa manca, ottenuto '{partial}'");
+            Assert(!partial.Contains("FUEL RATE"),
+                   "e non deve elencare cio' che c'e' gia'");
+
+            Pass("Test_StatusListsWhatIsMissing");
         }
     }
 }

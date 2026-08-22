@@ -468,6 +468,100 @@ namespace SimRIG
 
 	public string CalibrationStatus { get; private set; } = "ANALYZING";
 
+	/// <summary>Geofence della corsia box calibrate per il circuito corrente.</summary>
+	public bool IsGeofenceCalibrated
+	{
+		get { return _currentTrack != null && _currentTrack.HasValidCleanSectorBounds(); }
+	}
+
+	/// <summary>Confidenza delle geofence correnti. Unknown se il circuito non è ancora noto.</summary>
+	public CalibrationConfidence GeofenceConfidence
+	{
+		get { return _currentTrack != null ? _currentTrack.GeofenceConfidence : CalibrationConfidence.Unknown; }
+	}
+
+	public CalibrationConfidence FuelFillRateConfidence
+	{
+		get { return _currentClass != null ? _currentClass.FuelFillRateConfidence : CalibrationConfidence.Unknown; }
+	}
+
+	public CalibrationConfidence TyreChangeTimeConfidence
+	{
+		get { return _currentClass != null ? _currentClass.TyreChangeTimeConfidence : CalibrationConfidence.Unknown; }
+	}
+
+	/// <summary>
+	/// Elenco leggibile di cosa manca ancora. Vuoto quando tutto è calibrato.
+	/// Serve alla dash e all'ingegnere vocale: "READY" da solo non dice cosa fare.
+	/// </summary>
+	public string CalibrationMissing { get; private set; } = "";
+
+	/// <summary>
+	/// Ricalcola lo stato di calibrazione.
+	///
+	/// La versione precedente guardava solo PitTransitTime e FuelFillRate: un circuito con le
+	/// **geofence** non calibrate risultava comunque READY, che è proprio il caso in cui il
+	/// rilevamento pit del Player perde colpi. Ora le zone contano, e lo stato distingue un dato
+	/// stimato da uno misurato invece di dire solo presente/assente.
+	/// </summary>
+	private void RefreshCalibrationStatus()
+	{
+		if (_currentTrack == null || _currentClass == null)
+		{
+			CalibrationStatus = "ANALYZING";
+			CalibrationMissing = "";
+			return;
+		}
+
+		string missing;
+		CalibrationStatus = BuildCalibrationStatus(
+			IsGeofenceCalibrated,
+			_currentTrack.PitTransitTime,
+			_currentClass.FuelFillRate,
+			_currentClass.TyreChangeTime,
+			_currentTrack.GeofenceConfidence,
+			_currentClass.FuelFillRateConfidence,
+			_currentClass.TyreChangeTimeConfidence,
+			out missing);
+		CalibrationMissing = missing;
+	}
+
+	/// <summary>
+	/// Costruisce stato ed elenco dei mancanti. Statico e senza stato interno, così la logica
+	/// che la dash e l'ingegnere vocale leggono è verificabile senza toccare il disco.
+	/// </summary>
+	public static string BuildCalibrationStatus(bool geofenceCalibrated, double pitTransitTime,
+												double fuelFillRate, double tyreChangeTime,
+												CalibrationConfidence geofenceConfidence,
+												CalibrationConfidence fuelConfidence,
+												CalibrationConfidence tyreConfidence,
+												out string missing)
+	{
+		var pending = new List<string>();
+		if (!geofenceCalibrated) pending.Add("PIT ZONES");
+		if (pitTransitTime == 0.0) pending.Add("PIT TRANSIT");
+		if (fuelFillRate == 0.0) pending.Add("FUEL RATE");
+		if (tyreChangeTime == 0.0) pending.Add("TYRE TIME");
+
+		missing = string.Join(", ", pending);
+
+		if (pending.Count == 0)
+		{
+			// Tutto presente: resta da dire se è *misurato* o solo dedotto. Un dato stimato
+			// funziona, ma il pilota deve sapere che una calibrazione vera lo migliorerebbe.
+			bool anyEstimated =
+				geofenceConfidence < CalibrationConfidence.Confirmed
+				|| fuelConfidence < CalibrationConfidence.Confirmed
+				|| tyreConfidence < CalibrationConfidence.Confirmed;
+
+			return anyEstimated ? "READY (ESTIMATED)" : "READY";
+		}
+
+		if (pending.Count >= 3) return "NEEDS FULL CALIBRATION";
+
+		return "NEEDS " + missing;
+	}
+
 
 	public double LastStationaryTime { get; private set; }
 
@@ -843,22 +937,7 @@ namespace SimRIG
 		{
 			SaveDatabase();
 		}
-		if (_currentTrack.PitTransitTime == 0.0 && _currentClass.FuelFillRate == 0.0)
-		{
-			CalibrationStatus = "NEEDS FULL CALIBRATION";
-		}
-		else if (_currentTrack.PitTransitTime == 0.0)
-		{
-			CalibrationStatus = "NEEDS PIT TRANSIT";
-		}
-		else if (_currentClass.FuelFillRate == 0.0)
-		{
-			CalibrationStatus = "NEEDS FUEL CALIBRATION";
-		}
-		else
-		{
-			CalibrationStatus = "READY";
-		}
+		RefreshCalibrationStatus();
 		// Gate di autorizzazione: valutato a ogni tick, prima di qualunque scrittura di geofence.
 		_geofenceGate.Update(state.IsInPitLane, state.TrackPositionPercent, sessionClock, state.TrackLengthMeters);
 

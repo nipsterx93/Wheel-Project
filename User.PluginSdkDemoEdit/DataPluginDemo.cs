@@ -529,6 +529,14 @@ namespace SimRIG
             pm.AddProperty("SimRIG.Pit.TransitDriveThrough", t, 0.0);
             pm.AddProperty("SimRIG.Pit.MeasuredFuelFillRate", t, 0.0);
             pm.AddProperty("SimRIG.Pit.CalibrationStatus", t, "ANALYZING");
+            // Cosa manca ancora, in chiaro. "READY" da solo non dice al pilota cosa fare.
+            pm.AddProperty("SimRIG.Pit.CalibrationMissing", t, "");
+            pm.AddProperty("SimRIG.Pit.GeofenceCalibrated", t, false);
+            // Confidenza dei tre dati: un valore stimato funziona, ma una calibrazione vera
+            // lo migliorerebbe, e il pilota deve poterlo sapere.
+            pm.AddProperty("SimRIG.Pit.GeofenceConfidence", t, "Unknown");
+            pm.AddProperty("SimRIG.Pit.FuelRateConfidence", t, "Unknown");
+            pm.AddProperty("SimRIG.Pit.TyreTimeConfidence", t, "Unknown");
             pm.AddProperty("SimRIG.Pit.PlayerPitCount", t, 0);
             pm.AddProperty("SimRIG.Pit.LeaderPitCount", t, 0);
             pm.AddProperty("SimRIG.Pit.PitLaneZoneRacingTime", t, 0.0);
@@ -1890,6 +1898,11 @@ namespace SimRIG
             PluginManager.SetPropertyValue("SimRIG.Pit.TransitDriveThrough", t, Math.Round(PitRadar.PitDriveThroughTime, 2));
             PluginManager.SetPropertyValue("SimRIG.Pit.MeasuredFuelFillRate", t, Math.Round(PitRadar.MeasuredFuelFillRate, 2));
             PluginManager.SetPropertyValue("SimRIG.Pit.CalibrationStatus", t, PitRadar.CalibrationStatus);
+            PluginManager.SetPropertyValue("SimRIG.Pit.CalibrationMissing", t, PitRadar.CalibrationMissing);
+            PluginManager.SetPropertyValue("SimRIG.Pit.GeofenceCalibrated", t, PitRadar.IsGeofenceCalibrated);
+            PluginManager.SetPropertyValue("SimRIG.Pit.GeofenceConfidence", t, PitRadar.GeofenceConfidence.ToString());
+            PluginManager.SetPropertyValue("SimRIG.Pit.FuelRateConfidence", t, PitRadar.FuelFillRateConfidence.ToString());
+            PluginManager.SetPropertyValue("SimRIG.Pit.TyreTimeConfidence", t, PitRadar.TyreChangeTimeConfidence.ToString());
             PluginManager.SetPropertyValue("SimRIG.Pit.PlayerPitCount", t, RaceAnalyzer.Results.PlayerPitCount);
             PluginManager.SetPropertyValue("SimRIG.Pit.LeaderPitCount", t, RaceAnalyzer.Results.LeaderPitCount);
             PluginManager.SetPropertyValue("SimRIG.Pit.PitLaneZoneRacingTime", t, Math.Round(tgt.PitLaneZoneRacingTime, 2));
