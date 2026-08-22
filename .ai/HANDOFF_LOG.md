@@ -42,6 +42,32 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-20 03:15] claude → prossima chat (correzione + insight sulla sottrazione)
+
+**Task:** nessuno — solo analisi su due osservazioni dell'utente, nessun codice toccato.
+
+Due correzioni al turno precedente, entrambe confluite nell'aggiornamento di Y-14.
+
+**Correzione su "non impareremo mai TyreChangeTime da un replay, punto".** Era falso in
+generale: vero solo per un'analisi automatica non presidiata. Un replay *presidiato* — qualcuno
+guarda la sosta e riproduce lo scope gomme a mano in tempo reale sui tasti volante — funziona,
+perché il plugin non distingue quei tasti premuti mentre si guarda una riproduzione da quelli
+premuti in gara. Resta comunque `EstimatedPlayer`, mai `Confirmed`.
+
+**Insight dell'utente, verificato e più solido della mia proposta di ieri**: si può derivare
+`TyreChangeTime` per sottrazione — `StationaryTime − RefuelingTime` — usando solo dati già
+grondati in telemetria, senza mai leggere lo scope. Verificato che è **esatto solo per layout
+Sequential**; per Simultaneous la sottrazione sottostima, serve un'uguaglianza diversa. Trovato un
+fatto concreto e tempestivo: `IsPitLayoutSequential` (`PitRadar.cs:335`) presume Sequential per
+ogni gioco **tranne iRacing**, e Simultaneous per iRacing finché non rilevato — se Daytona/IMSA è
+iRacing, il default è già il caso sfavorevole alla sottrazione naive. Il meccanismo che
+confermerebbe il layout richiede di conoscere già sia il tempo benzina sia quello gomme: stesso
+uovo-e-gallina per una classe mai vista. Dettaglio completo in Y-14, `PROJECT_STATE.md`.
+
+Non implementato: solo analisi, su richiesta esplicita dell'utente.
+
+---
+
 ## [2026-08-20 03:00] claude → prossima chat (context window in esaurimento)
 
 **Task:** nessuno — solo analisi, nessun codice toccato, nessun lock preso.
