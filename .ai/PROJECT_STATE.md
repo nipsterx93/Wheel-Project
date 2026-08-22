@@ -8,16 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      claude        # NONE | antigravity | claude | codex | human
-since:      2026-08-20T01:00:00Z
-task:       Apprendimento autonomo delle calibrazioni — piano .ai/plans/2026-08-20-calibration-learning.md
-scope:      User.PluginSdkDemoEdit/TrackPositionValidator.cs (nuovo)
-            User.PluginSdkDemoEdit/PitRadar.cs
-            User.PluginSdkDemoEdit/OpponentTracker.cs
-            User.PluginSdkDemoEdit/DataPluginDemo.cs (CalibrationStatus + proprietà)
-            User.PluginSdkDemo.Tests/UnitTests/ (nuovi test)
-            i due .csproj
-expires:    2026-08-20T08:00:00Z
+owner:      NONE          # NONE | antigravity | claude | codex | human
+since:      2026-08-20T02:30:00Z
+task:       —
+scope:      —
+expires:    —
 ```
 
 **Regole del lock**

@@ -157,14 +157,32 @@ quella invece di aggiungerne una nuova, più proprietà granulari per la dash.
 
 Ogni fase è un commit separato e reversibile da solo.
 
-| # | fase | file | rischio |
+| # | fase | file | stato |
 |---|---|---|---|
-| 1 | `TrackPositionValidator` | nuovo, senza dipendenze SimHub | basso — codice nuovo, isolato |
-| 2 | Livelli di confidenza | `PitRadar.cs` (`TrackRecord`, `ClassRecord`) | medio — tocca lo schema JSON |
-| 3 | Gate di autorizzazione | `PitRadar.cs` | medio — cambia *quando* si scrive |
-| 4 | Fuel/gomme da sosta pulita | `PitRadar.cs` | medio |
-| 5 | `CalibrationStatus` esteso | `PitRadar.cs`, `DataPluginDemo.cs` | basso |
-| 6 | Stima geofence da opponent | `OpponentTracker.cs` | alto — lasciare per ultimo |
+| 1 | `TrackPositionValidator` | nuovo, senza dipendenze SimHub | ✅ `9c8d638` |
+| 2 | Livelli di confidenza | `PitRadar.cs` (`TrackRecord`, `ClassRecord`) | ✅ `2c64469` |
+| 3 | Gate di autorizzazione | `PitRadar.cs`, `GeofenceCalibrationGate.cs` (nuovo) | ✅ `467e8c7` |
+| 4 | Fuel/gomme da sosta pulita | `PitRadar.cs` | ✅ `b0dd7a7` |
+| 5 | `CalibrationStatus` esteso | `PitRadar.cs`, `DataPluginDemo.cs` | ✅ `9c3aa9b` |
+| 6 | Stima geofence da opponent | `OpponentTracker.cs` | ⏸ **rimandata dopo il replay** |
+
+### Perché la fase 6 è rimandata
+
+Non per mancanza di tempo. È il **fallback** per il pilota che salta la practice, quindi si attiva
+solo quando tutto il resto ha già fallito — è la fase meno urgente. Ma soprattutto: la formula di
+reverse-engineering va tarata su dati reali, e a Daytona il database è vergine. Il replay mostrerà
+la calibrazione avvenire da zero, e quei numeri dicono se la stima cade vicino o lontano dal vero.
+Costruirla prima significherebbe indovinare le soglie invece di misurarle — lo stesso errore che
+si è evitato con Y-12.
+
+### Difetto trovato durante l'implementazione (fase 3)
+
+Il flag "tragitto genuino" era nato come **latch che non si abbassava mai**: bastava guidare due
+campioni dopo l'uscita dai box per autorizzare qualunque rientro successivo, ESC compreso — cioè
+il difetto che il gate doveva chiudere. Ora una discontinuità invalida il tragitto accumulato: il
+flag non significa "ho guidato prima o poi" ma "il tragitto fino a qui è credibile".
+
+L'ha scoperto il test, non una rilettura del codice.
 
 **Compatibilità JSON:** i record esistenti non hanno i campi di confidenza. Un valore già presente
 senza livello dichiarato va trattato come `Confirmed` — è stato quasi certamente misurato dal

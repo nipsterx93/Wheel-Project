@@ -42,6 +42,99 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-20 02:30] claude → replay Daytona (IMSA multiclasse)
+
+**Task:** apprendimento autonomo delle calibrazioni, fasi 1-5 di 6
+**Piano:** `.ai/plans/2026-08-20-calibration-learning.md`
+**Commit:** `21a5167` (lock+piano) · `9c8d638` · `2c64469` · `467e8c7` · `b0dd7a7` · `9c3aa9b`
+
+Un commit per fase, ognuno reversibile da solo.
+
+### Il problema di partenza, verificato nel codice
+
+1. **Si scriveva senza sapere da dove si arrivava.** `PitEntryPct` alla prima transizione utile di
+   `IsInPitLane`, nessun filtro di sessione in tutto `PitRadar.cs`. Partendo dai box finiva
+   registrata la posizione del **pit box**.
+2. **Il primo valore vinceva per sempre.** `HasValidCleanSectorBounds()` verifica solo `!= -1.0`.
+3. **Il carburante si imparava solo dal test guidato** a 20 litri esatti — una sosta reale non
+   insegnava nulla.
+
+### Fasi 1-3: quando è lecito calibrare
+
+`TrackPositionValidator` (fase 1) distingue la guida dal teletrasporto per **plausibilità del
+movimento**: un salto che il tempo trascorso non giustifica è un artefatto. Stesso principio di
+`MaxSectorFraction` e `GapJump`. Scartate su indicazione dell'utente sia una soglia temporale
+(aggirabile, e su pista nuova non c'è un tempo da cui derivarla) sia una soglia di percorso
+(assume che l'ingresso box sia tardi nel giro — vero a Misano, non in generale).
+
+`GeofenceCalibrationGate` (fase 3) sostituisce la sequenza `True→False→True` — che in gara non
+parte mai, mancando il `True` iniziale — con **una condizione sola**: prima di fidarsi di un
+ingresso, dev'esserci stato un campione genuino in pista in questa sessione. Copre entrambi i
+casi: dai box si autorizza dopo l'uscita vera, dalla griglia si è già in pista e il primo pit stop
+vale.
+
+### Fase 2: gerarchia dei dati
+
+`Unknown < EstimatedOpponent < EstimatedPlayer < Confirmed`, con regola unica `CanOverwrite`.
+Una stima non può mai cancellare una misura. **Migrazione**: Newtonsoft applica i default ai campi
+assenti, quindi senza intervento il database esistente nascerebbe `Unknown` e sarebbe sovrascrivibile
+da una stima peggiore. `MigrateLegacyConfidence` promuove a `Confirmed` i dati già presenti; è
+idempotente e non tocca le stime dichiarate.
+
+### Fase 4: imparare da una sosta vera
+
+`ObserveNaturalPitStop` accetta solo soste **inequivocabili** (benzina sola o gomme sole). In una
+sosta mista il tempo fermo non si separa senza conoscerne già una parte — fuori scope per ora.
+Verificato sull'esempio reale: 16 L in 6.1 s → **2.62 L/s**, esattamente il valore già nel database.
+
+### Fase 5: dire cosa manca
+
+`CalibrationStatus` copriva solo transito e carburante: un circuito con geofence non calibrate
+risultava `READY`, proprio il caso in cui il rilevamento pit del Player perde colpi. Ora copre
+quattro dati, elenca i mancanti e distingue `READY` da `READY (ESTIMATED)`.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+
+Atteso: exit code `0`, **111 `[PASS]`**.
+
+### Stato
+- ✅ Compila — 0 errori (resta il `CS0219` preesistente)
+- ✅ 111 test passano
+- ✅ **Regressioni verificate** su fasi 1, 2, 3 neutralizzando un fix alla volta
+
+### Per chi entra
+
+**Prossimo passo: il replay Daytona.** Il database è **vergine** per quel circuito, quindi si
+vedrà la calibrazione avvenire da zero. Cosa guardare nel log RADAR:
+
+| evento | significato |
+|---|---|
+| `Pit Entry Pct Calibrated` | il gate ha autorizzato — verificare che il valore sia plausibile |
+| `Pit Entry Pct Calibration Skipped` | il gate ha bloccato — il payload dice perché |
+| `Fuel Fill Rate Learned (Natural Stop)` | imparato da una sosta vera invece che dal test guidato |
+
+Verificare anche `SimRIG_Data.json`: deve comparire un record per **ogni classe** IMSA incontrata,
+con il proprio `PitLaneSpeedLimit`. È la prima sessione multiclasse, quindi la prima prova reale
+del fix di ieri sull'apprendimento per classe.
+
+**Fase 6 (stima geofence dagli avversari) rimandata di proposito.** È il fallback per chi salta la
+practice, quindi la meno urgente; ma soprattutto la formula di reverse-engineering va tarata su
+dati veri, e Daytona li fornirà. Costruirla prima significherebbe indovinare le soglie.
+
+**NON toccare:** Y-13 resta congelato.
+
+**Attenzione a:** `PitRadar.cs` usa **TAB**, non spazi. Un Edit con spazi fallisce il match
+silenziosamente — è costato due tentativi in questo turno.
+
+---
+
 ## [2026-08-20 00:30] claude → replay su circuito diverso
 
 **Task:** sbloccare Y-11, Y-2, Y-9, Y-1 dopo le decisioni prese con l'utente
