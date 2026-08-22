@@ -42,6 +42,43 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-20 03:00] claude → prossima chat (context window in esaurimento)
+
+**Task:** nessuno — solo analisi, nessun codice toccato, nessun lock preso.
+
+Due limiti sollevati dall'utente prima del replay Daytona, verificati nel codice e aggiunti come
+Y-14 e Y-15 in `PROJECT_STATE.md`. Non sono difetti in quanto costruito stanotte — dicono **cosa si
+può concludere da un replay** riprodotto senza un pilota dal vivo:
+
+- **Y-14**: `TyreManager.CurrentScope` è pilotato solo dai tasti volante, mai dalla telemetria.
+  In un replay resta a `None`. Conseguenza diretta sulla Fase 4 appena costruita: il ramo "solo
+  gomme" di `ObserveNaturalPitStop` non scatterà mai durante l'analisi di stanotte, anche davanti
+  a una sosta con cambio gomme vero. **Il lato benzina non è affetto** — `litresAdded` viene dalla
+  variazione reale di `CurrentFuelLevel`, non dallo scope. Quindi dal replay Daytona: valutabile il
+  lato benzina (se càpita una sosta pulita), non valutabile il lato gomme — non riportarlo come
+  "non funziona", semplicemente non è testabile così.
+- **Y-15**: manca un confronto automatico fra `SimRIG.Fuel.FuelToAdd` (la raccomandazione) e quanto
+  viene realmente versato. Diverso dalla Fase 4 (quella impara la velocità di erogazione dai litri
+  reali, non giudica il consiglio). Il dato grezzo c'è già nel log `Pit Complete`; manca solo
+  l'abbinamento col valore predetto, da congelare al momento di `PitLaneEntered`.
+
+Nessuno dei due blocca il replay di stanotte. Sono debiti registrati per non perderli nel passaggio
+alla chat successiva.
+
+### Per chi entra (nuova chat)
+
+**Stato del lock:** libero (`NONE`), nessun turno in corso.
+
+**Lavoro pendente più fresco:** Fasi 1-5 dell'apprendimento calibrazioni chiuse (turno precedente,
+commit `9c8d638`…`9c3aa9b`), Fase 6 deliberatamente rimandata al replay Daytona. Quel replay non è
+ancora stato analizzato in questa sessione — è il prossimo passo naturale.
+
+**Leggere in ordine:** `CLAUDE.md` → `PROJECT_STATE.md` (lock, punti congelati incl. Y-13/Y-14/Y-15)
+→ questo file dall'alto → `.ai/plans/2026-08-20-calibration-learning.md` se serve il dettaglio della
+Fase 6.
+
+---
+
 ## [2026-08-20 02:30] claude → replay Daytona (IMSA multiclasse)
 
 **Task:** apprendimento autonomo delle calibrazioni, fasi 1-5 di 6
