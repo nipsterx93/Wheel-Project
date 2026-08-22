@@ -22,6 +22,7 @@ namespace User.PluginSdkDemo.Tests
                 OvercutTrafficUnitTests.RunAllTests();
                 PitLaneDetectionUnitTests.RunAllTests();
                 FuelSavingUnitTests.RunAllTests();
+                TrackPositionValidatorUnitTests.RunAllTests();
                 ReplayBacktestIntegrationTest.RunMisanoGt3Backtest();
                 MisanoHuracanGT3ReplayTest.RunFullReplayMergeGapValidation();
 

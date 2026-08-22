@@ -138,6 +138,7 @@
     <Compile Include="RelativePaceTracker.cs" />
     <Compile Include="StrategyGateHysteresis.cs" />
     <Compile Include="PitLaneDetector.cs" />
+    <Compile Include="TrackPositionValidator.cs" />
     <Compile Include="SectorTracker.cs" />
     <Compile Include="LapSectorTimeContainer.cs" />
     <Compile Include="SessionState.cs" />
