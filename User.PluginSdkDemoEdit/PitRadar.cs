@@ -271,6 +271,15 @@ namespace SimRIG
 
 	private bool? _isSequentialLayoutDetected;
 
+	/// <summary>
+	/// Autorizza la scrittura delle geofence (vedi GeofenceCalibrationGate). Prima le due
+	/// percentuali si registravano alla prima transizione utile di IsInPitLane, senza sapere
+	/// se ci si arrivasse guidando: partendo dai box finiva registrata la posizione del box.
+	/// </summary>
+	private readonly GeofenceCalibrationGate _geofenceGate = new GeofenceCalibrationGate();
+
+	public GeofenceCalibrationGate GeofenceGate => _geofenceGate;
+
 	private bool _playerIsInsideStrictGeofence;
 
 	private double? _playerStrictEntryTime;
@@ -791,6 +800,9 @@ namespace SimRIG
 		{
 			CalibrationStatus = "READY";
 		}
+		// Gate di autorizzazione: valutato a ogni tick, prima di qualunque scrittura di geofence.
+		_geofenceGate.Update(state.IsInPitLane, state.TrackPositionPercent, sessionClock, state.TrackLengthMeters);
+
 		if (state.IsInPitLane)
 		{
 			if (!_pitEntryTime.HasValue)
@@ -801,11 +813,23 @@ namespace SimRIG
 				_isFueling = false;
 				_lastFuelIncreaseTime = 0.0;
 				_fuelStartTime = 0.0;
-				if (_currentTrack.PitEntryPct == -1.0)
+
+				// Si registra solo arrivando da un tragitto genuino, e solo se il dato che
+				// andremmo a sostituire non è più forte di questo (Confirmed dal Player).
+				if (_geofenceGate.CanCalibrateEntry
+					&& CanOverwrite(_currentTrack.GeofenceConfidence, CalibrationConfidence.Confirmed))
 				{
 					_currentTrack.PitEntryPct = state.TrackPositionPercent;
 					SaveDatabase();
-					log.Log(LogModule.RADAR, LogType.EVENT, "Pit Entry Pct Calibrated", state.TrackPositionPercent.ToString("F3"));
+					log.Log(LogModule.RADAR, LogType.EVENT, "Pit Entry Pct Calibrated",
+						$"{state.TrackPositionPercent:F3} | confidence=Confirmed");
+				}
+				else if (_geofenceGate.PitLaneEntered && !_geofenceGate.CanCalibrateEntry)
+				{
+					// Ingresso non credibile: partenza dai box, teletrasporto, o sessione appena
+					// iniziata. Va detto, altrimenti una calibrazione mancante sembra un bug.
+					log.Log(LogModule.RADAR, LogType.EVENT, "Pit Entry Pct Calibration Skipped",
+						$"pos={state.TrackPositionPercent:F3} | genuineTrackSample={_geofenceGate.HasGenuineTrackSample} | continuity={_geofenceGate.LastContinuity}");
 				}
 				if (fuelToAdd == 20.0 && selectedTyres == TyreSelectionScope.None)
 				{
@@ -853,11 +877,17 @@ namespace SimRIG
 		}
 		else if (_pitEntryTime.HasValue)
 		{
-			if (_currentTrack.PitExitPct == -1.0)
+			// L'uscita si registra solo se il relativo ingresso era autorizzato: entry ed exit
+			// devono venire dallo stesso transito, altrimenti la zona sarebbe composta da due
+			// osservazioni scollegate. Qui la coppia si chiude, quindi si dichiara la confidenza.
+			if (_geofenceGate.CanCalibrateExit
+				&& CanOverwrite(_currentTrack.GeofenceConfidence, CalibrationConfidence.Confirmed))
 			{
 				_currentTrack.PitExitPct = state.TrackPositionPercent;
+				_currentTrack.GeofenceConfidence = CalibrationConfidence.Confirmed;
 				SaveDatabase();
-				log.Log(LogModule.RADAR, LogType.EVENT, "Pit Exit Pct Calibrated", state.TrackPositionPercent.ToString("F3"));
+				log.Log(LogModule.RADAR, LogType.EVENT, "Pit Exit Pct Calibrated",
+					$"{state.TrackPositionPercent:F3} | confidence=Confirmed | entry={_currentTrack.PitEntryPct:F3}");
 			}
 			if (_stopStartTime.HasValue)
 			{
@@ -1106,6 +1136,9 @@ namespace SimRIG
 
 	public void ResetSession()
 	{
+		// L'autorizzazione a calibrare non sopravvive al cambio di sessione: quello che si è
+		// osservato in practice non dice nulla su come inizierà la gara.
+		_geofenceGate.Reset();
 		_pitEntryTime = null;
 		_stopStartTime = null;
 		_isFueling = false;
