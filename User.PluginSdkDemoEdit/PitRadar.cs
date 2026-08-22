@@ -19,6 +19,32 @@ namespace SimRIG
 		StopAndGo
 	}
 
+	/// <summary>
+	/// Quanto è affidabile un dato calibrato. I valori sono **ordinati per forza crescente**:
+	/// la regola di scrittura è sempre "si sovrascrive solo con confidenza maggiore o uguale",
+	/// quindi una stima non può mai cancellare una misura.
+	/// </summary>
+	public enum CalibrationConfidence
+	{
+		/// <summary>Mai osservato.</summary>
+		Unknown = 0,
+
+		/// <summary>Dedotto dagli avversari. Il più debole: nessuna telemetria diretta, solo stime.</summary>
+		EstimatedOpponent = 1,
+
+		/// <summary>
+		/// Misurato sul Player durante una sosta di gara, ma solo se **pulita**: benzina sola o
+		/// gomme sole. In una sosta mista il tempo fermo non si separa fra le due cause.
+		/// </summary>
+		EstimatedPlayer = 2,
+
+		/// <summary>
+		/// Procedura di calibrazione guidata. Isolata per costruzione, quindi è la verità di
+		/// riferimento e non viene mai sovrascritta automaticamente.
+		/// </summary>
+		Confirmed = 3
+	}
+
 	public class ClassRecord
 	{
 		public string CarClass { get; set; }
@@ -26,6 +52,10 @@ namespace SimRIG
 		public double FuelFillRate { get; set; }
 
 		public double TyreChangeTime { get; set; }
+
+		public CalibrationConfidence FuelFillRateConfidence { get; set; } = CalibrationConfidence.Unknown;
+
+		public CalibrationConfidence TyreChangeTimeConfidence { get; set; } = CalibrationConfidence.Unknown;
 	}
 
 	public class SimRigDatabase
@@ -64,6 +94,14 @@ namespace SimRIG
 		public double PitEntryPct { get; set; } = -1.0;
 
 		public double PitExitPct { get; set; } = -1.0;
+
+		/// <summary>
+		/// Confidenza della **coppia** entry+exit. Un solo flag e non due: i due valori nascono
+		/// sempre insieme dalla stessa osservazione, sia nel flusso Player (stesso ciclo box) sia
+		/// in quello opponent (stesso attraversamento), quindi separarli aggiungerebbe stati
+		/// senza un caso d'uso reale.
+		/// </summary>
+		public CalibrationConfidence GeofenceConfidence { get; set; } = CalibrationConfidence.Unknown;
 
 		public double ExclusionMargin { get; set; } = 0.05;
 
@@ -568,6 +606,8 @@ namespace SimRIG
 			_database = new SimRigDatabase();
 		}
 
+		MigrateLegacyConfidence();
+
 		if (_database.Cars == null)
 		{
 			_database.Cars = new List<CarRecord>();
@@ -602,6 +642,64 @@ namespace SimRIG
 
 			SaveDatabase();
 		}
+	}
+
+	/// <summary>
+	/// Promuove a Confirmed i dati salvati **prima** che esistessero i livelli di confidenza.
+	///
+	/// Necessaria perché Newtonsoft applica il default della proprietà ai campi assenti dal JSON:
+	/// senza questa migrazione un database esistente nascerebbe Unknown, e una stima dedotta dagli
+	/// avversari potrebbe sovrascrivere una calibrazione fatta a mano dal pilota. Un dato già
+	/// presente è quasi certamente stato misurato dal Player, quindi va trattato come tale.
+	///
+	/// Idempotente: agisce solo dove il valore c'è ma la confidenza è ancora Unknown.
+	/// </summary>
+	private void MigrateLegacyConfidence()
+	{
+		MigrateLegacyConfidence(_database);
+	}
+
+	/// <summary>Overload statico, per poter verificare la migrazione senza toccare il disco.</summary>
+	public static void MigrateLegacyConfidence(SimRigDatabase database)
+	{
+		if (database == null) return;
+
+		if (database.Tracks != null)
+		{
+			foreach (TrackRecord track in database.Tracks)
+			{
+				if (track.GeofenceConfidence == CalibrationConfidence.Unknown
+					&& track.PitEntryPct != -1.0 && track.PitExitPct != -1.0)
+				{
+					track.GeofenceConfidence = CalibrationConfidence.Confirmed;
+				}
+			}
+		}
+
+		if (database.Classes != null)
+		{
+			foreach (ClassRecord cls in database.Classes)
+			{
+				if (cls.FuelFillRateConfidence == CalibrationConfidence.Unknown && cls.FuelFillRate > 0.0)
+				{
+					cls.FuelFillRateConfidence = CalibrationConfidence.Confirmed;
+				}
+				if (cls.TyreChangeTimeConfidence == CalibrationConfidence.Unknown && cls.TyreChangeTime > 0.0)
+				{
+					cls.TyreChangeTimeConfidence = CalibrationConfidence.Confirmed;
+				}
+			}
+		}
+	}
+
+	/// <summary>
+	/// La regola unica di scrittura: un dato entra solo se **almeno forte quanto** quello che
+	/// sostituisce. L'uguaglianza è ammessa perché una nuova osservazione dello stesso livello
+	/// è un aggiornamento legittimo (una calibrazione rifatta, una stima raffinata).
+	/// </summary>
+	public static bool CanOverwrite(CalibrationConfidence existing, CalibrationConfidence incoming)
+	{
+		return incoming >= existing;
 	}
 
 	public void SaveDatabase()

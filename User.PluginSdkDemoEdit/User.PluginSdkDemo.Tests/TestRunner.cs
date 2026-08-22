@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace User.PluginSdkDemo.Tests
 {
@@ -23,6 +23,7 @@ namespace User.PluginSdkDemo.Tests
                 PitLaneDetectionUnitTests.RunAllTests();
                 FuelSavingUnitTests.RunAllTests();
                 TrackPositionValidatorUnitTests.RunAllTests();
+                CalibrationConfidenceUnitTests.RunAllTests();
                 ReplayBacktestIntegrationTest.RunMisanoGt3Backtest();
                 MisanoHuracanGT3ReplayTest.RunFullReplayMergeGapValidation();
 
