@@ -622,6 +622,26 @@ namespace SimRIG
 		return false;
 	}
 
+	/// <summary>
+	/// Sotto questa velocita' la vettura e' ferma. Stessa soglia gia' usata dal percorso spaziale
+	/// piu' sotto: e' un "fermo o quasi", non una misura di velocita'.
+	/// </summary>
+	public const double StationarySpeedKmh = 0.5;
+
+	/// <summary>
+	/// Il Player e' fermo in corsia box?
+	///
+	/// <c>IsInPitBox</c> da solo non basta: e' il flag grezzo del gioco, che si alza soltanto nello
+	/// stallo assegnato mentre il servizio e' in corso. Una sosta in corsia che non sia il proprio
+	/// stallo — cedere una posizione a un compagno, scontare una penalita' — non lo fa mai scattare,
+	/// e prima veniva contata come tempo fermo pari a zero.
+	/// </summary>
+	public static bool IsPlayerStationaryInPit(SessionState state)
+	{
+		if (state == null) return false;
+		return state.IsInPitBox || state.SpeedKmh < StationarySpeedKmh;
+	}
+
 	public bool IsInExtendedPitLaneZone(double pos)
 	{
 		if (_currentTrack != null)
@@ -983,7 +1003,15 @@ namespace SimRIG
 				}
 				log.Log(LogModule.RADAR, LogType.EVENT, "Player Pit Entry", $"Mode: {_activeMode}");
 			}
-			if (state.IsInPitBox)
+			// "Fermo ai box" e' la stessa cosa qui e nel percorso spaziale piu' sotto (riga ~1178),
+			// che usa velocita' **oppure** IsInPitBox. Prima qui c'era il solo IsInPitBox, cioe' il
+			// flag grezzo del gioco, che si alza solo nello stallo assegnato con il servizio in
+			// corso: una sosta in corsia che non sia il proprio stallo — cedere una posizione,
+			// scontare uno stop&go — non lo faceva mai scattare. Conseguenze misurate sul replay
+			// Daytona del 2026-08-23: StatTime 0.0 s su soste durate 42 e 68 s reali, e soprattutto
+			// _fuelLevelAtStopStart mai reinizializzato, da cui un FuelAdded fantasma (15.8 L e
+			// 12.7 L "aggiunti" con zero secondi di sosta) letto dalla sosta precedente.
+			if (IsPlayerStationaryInPit(state))
 			{
 				_dtInvalidated = true;
 				if (_activeMode == CalibrationMode.DriveThrough)
