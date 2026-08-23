@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-23T12:40:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-23T14:50:00Z
+task:       Y-20/Y-21 — consenso sui dati calibrati (mediana) al posto di "l'ultimo che scrive vince"
+scope:      PitRadar.cs, CalibrationConsensus.cs (nuovo), User.PluginSdkDemo.Tests/**
+expires:    2026-08-23T20:00:00Z
 ```
 
 **Regole del lock**
