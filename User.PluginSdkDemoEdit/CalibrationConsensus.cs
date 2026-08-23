@@ -104,6 +104,29 @@ namespace SimRIG
         }
 
         /// <summary>
+        /// Ricostruisce un consenso gia' raggiunto in sessioni precedenti, ripetendo il valore
+        /// memorizzato <paramref name="count"/> volte.
+        ///
+        /// Serve perche' il consenso vive in memoria e non sopravvive alla chiusura del gioco:
+        /// senza questo, un circuito dove si fa **una sosta a gara** non raggiungerebbe mai le tre
+        /// osservazioni concordi, e ogni sessione ripartirebbe da un campione solo — cioe' di fatto
+        /// "l'ultimo che scrive vince", il difetto che si voleva chiudere. Misurato sui tre replay
+        /// Misano del 2026-08-23: <c>GeofenceConfidence</c> restava 2 (EstimatedPlayer) in tutti e
+        /// tre, mai 3.
+        ///
+        /// Il seme e' limitato a <see cref="MinimumForConsensus"/> campioni anche quando lo storico
+        /// ne dichiara di piu': un valore consolidato deve resistere a un campione divergente
+        /// isolato, non diventare inamovibile se la realta' cambia davvero.
+        /// </summary>
+        public void Seed(double value, int count)
+        {
+            if (count <= 0) return;
+
+            int seeded = Math.Min(count, MinimumForConsensus);
+            for (int i = 0; i < seeded; i++) Add(value);
+        }
+
+        /// <summary>
         /// Mediana. A parita' di campioni si restituisce l'elemento **centrale basso**, non la media
         /// dei due centrali: cosi' il risultato e' sempre un valore realmente osservato.
         ///

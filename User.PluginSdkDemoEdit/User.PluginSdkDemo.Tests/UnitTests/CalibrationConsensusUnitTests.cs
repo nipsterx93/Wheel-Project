@@ -42,6 +42,12 @@ namespace User.PluginSdkDemo.Tests
             Test_RollingWindowFollowsAGenuineChange();
             Test_EmptyAndResetBehaviour();
 
+            Test_Regression_SeedMakesSingleStopTracksConsolidate();
+            Test_SeededValueResistsOneDivergentSample();
+            Test_SeedIsCappedSoRealityCanStillWin();
+            Test_SeedIgnoresNonPositiveCount();
+            Test_LegacyRecordGetsSeedCountOnMigration();
+
             Console.WriteLine("[TEST SUCCESS] All Calibration Consensus Tests Passed!");
         }
 
@@ -163,6 +169,109 @@ namespace User.PluginSdkDemo.Tests
             consensus.Reset();
             Assert(!consensus.HasSamples, "reset svuota");
             Pass("Consenso vuoto e reset si comportano bene");
+        }
+
+        // ------------------------------------------------- persistenza fra sessioni
+
+        private static void Test_Regression_SeedMakesSingleStopTracksConsolidate()
+        {
+            // Caso reale, tre replay Misano del 2026-08-23: una sosta per gara, SimHub riavviato
+            // ogni volta. Senza seme il consenso ripartiva da zero e la confidenza restava
+            // EstimatedPlayer in tutti e tre i run — cioe' di fatto "l'ultimo che scrive vince",
+            // il difetto che il consenso doveva chiudere.
+            const double misanoExit = 0.0738605;
+
+            var withoutSeed = new CalibrationConsensus(PitRadar.GeofenceAgreementPct);
+            withoutSeed.Add(misanoExit);
+            Assert(!withoutSeed.HasConsensus,
+                   "senza seme, una sosta sola non consolida — e' il comportamento osservato");
+
+            // Con il seme, la terza gara con una sosta a testa consolida come tre soste in una.
+            var session3 = new CalibrationConsensus(PitRadar.GeofenceAgreementPct);
+            session3.Seed(misanoExit, 2);          // due gare precedenti
+            session3.Add(0.0737054);               // la terza sosta, dal run 3 reale
+            Assert(session3.HasConsensus,
+                   $"tre osservazioni concordi consolidano (agreeing={session3.AgreeingCount})");
+            Pass("Regressione Misano: il seme fa consolidare i circuiti con una sosta a gara");
+        }
+
+        private static void Test_SeededValueResistsOneDivergentSample()
+        {
+            // Il valore consolidato e' 0.0737. Arriva un campione a 0.1088 — i due valori storici
+            // di Misano, distanti ~148 m. Il consolidato deve reggere.
+            var consensus = new CalibrationConsensus(PitRadar.GeofenceAgreementPct);
+            consensus.Seed(0.0737054, CalibrationConsensus.MinimumForConsensus);
+            consensus.Add(0.1088);
+
+            AssertClose(consensus.Value, 0.0737054, "un campione divergente isolato non scalza il consolidato");
+            Assert(consensus.HasConsensus, "e il dato resta consolidato");
+            Pass("Un campione divergente isolato non sposta un valore consolidato");
+        }
+
+        private static void Test_SeedIsCappedSoRealityCanStillWin()
+        {
+            // Il seme non deve rendere il valore inamovibile: se la realta' cambia davvero e in
+            // modo duraturo, abbastanza campioni nuovi devono poter vincere.
+            var consensus = new CalibrationConsensus(PitRadar.GeofenceAgreementPct);
+            consensus.Seed(0.0737, 999);   // storico enorme
+            Assert(consensus.SampleCount == CalibrationConsensus.MinimumForConsensus,
+                   $"il seme e' limitato a {CalibrationConsensus.MinimumForConsensus}, ottenuto {consensus.SampleCount}");
+
+            for (int i = 0; i < 4; i++) consensus.Add(0.1500);
+            AssertClose(consensus.Value, 0.1500, "quattro campioni concordi nuovi ribaltano il consolidato");
+            Pass("Il seme e' limitato: una realta' cambiata puo' ancora vincere");
+        }
+
+        private static void Test_SeedIgnoresNonPositiveCount()
+        {
+            var consensus = new CalibrationConsensus(PitRadar.GeofenceAgreementPct);
+            consensus.Seed(0.95, 0);
+            Assert(!consensus.HasSamples, "contatore a zero non semina nulla");
+
+            consensus.Seed(0.95, -3);
+            Assert(!consensus.HasSamples, "ne' un contatore negativo");
+            Pass("Un contatore assente o negativo non semina");
+        }
+
+        private static void Test_LegacyRecordGetsSeedCountOnMigration()
+        {
+            // Un record scritto prima che il consenso esistesse ha il valore ma non il contatore.
+            // Degradarlo lo esporrebbe a essere sovrascritto da un campione singolo: e' l'opposto
+            // di quello che serve. La migrazione lo considera consolidato.
+            var db = new SimRigDatabase
+            {
+                Tracks = new List<TrackRecord>
+                {
+                    new TrackRecord
+                    {
+                        TrackClassID = "MISANO GP_GT3 2025",
+                        PitEntryPct = 0.9495,
+                        PitExitPct = 0.0737,
+                        GeofenceConfidence = CalibrationConfidence.Confirmed,
+                        GeofenceSampleCount = 0
+                    }
+                }
+            };
+
+            PitRadar.MigrateLegacyConfidence(db);
+
+            Assert(db.Tracks[0].GeofenceSampleCount == CalibrationConsensus.MinimumForConsensus,
+                   $"il record legacy va considerato consolidato, ottenuto {db.Tracks[0].GeofenceSampleCount}");
+
+            // Idempotente: rigirarla non gonfia il contatore.
+            PitRadar.MigrateLegacyConfidence(db);
+            Assert(db.Tracks[0].GeofenceSampleCount == CalibrationConsensus.MinimumForConsensus,
+                   "la migrazione resta idempotente");
+
+            // Un record senza geofence non deve ricevere nessun contatore.
+            var empty = new SimRigDatabase
+            {
+                Tracks = new List<TrackRecord> { new TrackRecord { TrackClassID = "NUOVA" } }
+            };
+            PitRadar.MigrateLegacyConfidence(empty);
+            Assert(empty.Tracks[0].GeofenceSampleCount == 0,
+                   "una pista mai calibrata resta a zero");
+            Pass("Migrazione: i record legacy nascono consolidati e la migrazione e' idempotente");
         }
     }
 }

@@ -103,6 +103,17 @@ namespace SimRIG
 		/// </summary>
 		public CalibrationConfidence GeofenceConfidence { get; set; } = CalibrationConfidence.Unknown;
 
+		/// <summary>
+		/// Quante osservazioni concordi stanno dietro alla coppia entry+exit memorizzata.
+		///
+		/// Persiste il consenso fra una sessione e l'altra. Senza, un circuito dove si fa **una
+		/// sosta a gara** non arriverebbe mai a tre osservazioni: il consenso vive in memoria e si
+		/// azzera alla chiusura del gioco, quindi ogni sessione ripartirebbe da un campione solo —
+		/// cioe' di fatto "l'ultimo che scrive vince". Verificato sui tre replay Misano del
+		/// 2026-08-23: la confidenza restava EstimatedPlayer in tutti e tre.
+		/// </summary>
+		public int GeofenceSampleCount { get; set; } = 0;
+
 		public double ExclusionMargin { get; set; } = 0.05;
 
 		// Nuove proprietà aggiunte per il calcolo dei giri netti rimanenti
@@ -817,6 +828,17 @@ namespace SimRIG
 				{
 					track.GeofenceConfidence = CalibrationConfidence.Confirmed;
 				}
+
+				// Un record gia' Confirmed ma senza contatore viene da prima che il consenso
+				// esistesse: il valore c'e' ed e' stato misurato dal Player, quindi si considera
+				// consolidato invece di degradarlo. Degradarlo lo esporrebbe a essere sovrascritto
+				// da un campione singolo — l'opposto di quello che il consenso serve a impedire.
+				if (track.GeofenceSampleCount <= 0
+					&& track.GeofenceConfidence == CalibrationConfidence.Confirmed
+					&& track.PitEntryPct != -1.0 && track.PitExitPct != -1.0)
+				{
+					track.GeofenceSampleCount = CalibrationConsensus.MinimumForConsensus;
+				}
 			}
 		}
 
@@ -952,6 +974,14 @@ namespace SimRIG
 			_exitConsensus.Reset();
 
 			_currentTrack = _database.Tracks.FirstOrDefault((TrackRecord t) => t.TrackClassID == lookupKey);
+
+			// Si riparte dal consenso gia' raggiunto in passato, invece che da zero: altrimenti un
+			// circuito con una sosta a gara non consoliderebbe mai il dato.
+			if (_currentTrack != null && _currentTrack.HasValidCleanSectorBounds())
+			{
+				_entryConsensus.Seed(_currentTrack.PitEntryPct, _currentTrack.GeofenceSampleCount);
+				_exitConsensus.Seed(_currentTrack.PitExitPct, _currentTrack.GeofenceSampleCount);
+			}
 			if (_currentTrack == null)
 			{
 				_currentTrack = new TrackRecord
@@ -1014,6 +1044,7 @@ namespace SimRIG
 					if (CanOverwrite(_currentTrack.GeofenceConfidence, entryLevel))
 					{
 						_currentTrack.PitEntryPct = _entryConsensus.Value;
+						_currentTrack.GeofenceSampleCount = _entryConsensus.AgreeingCount;
 						SaveDatabase();
 						log.Log(LogModule.RADAR, LogType.EVENT, "Pit Entry Pct Calibrated",
 							$"{_entryConsensus.Value:F3} | confidence={entryLevel} | sample={state.TrackPositionPercent:F3} | agreeing={_entryConsensus.AgreeingCount}/{_entryConsensus.SampleCount}");
@@ -1103,6 +1134,12 @@ namespace SimRIG
 				{
 					_currentTrack.PitExitPct = _exitConsensus.Value;
 					_currentTrack.GeofenceConfidence = pairLevel;
+
+					// Il contatore descrive la **coppia**, come la confidenza: si tiene il piu'
+					// debole dei due, altrimenti un lato consolidato coprirebbe l'altro.
+					_currentTrack.GeofenceSampleCount =
+						Math.Min(_entryConsensus.AgreeingCount, _exitConsensus.AgreeingCount);
+
 					SaveDatabase();
 					log.Log(LogModule.RADAR, LogType.EVENT, "Pit Exit Pct Calibrated",
 						$"{_exitConsensus.Value:F3} | confidence={pairLevel} | sample={state.TrackPositionPercent:F3} | agreeing={_exitConsensus.AgreeingCount}/{_exitConsensus.SampleCount} | entry={_currentTrack.PitEntryPct:F3}");
@@ -1362,6 +1399,15 @@ namespace SimRIG
 			}
 
 			consensus.Add(speedLimit);
+
+			// Si scrive quando il consenso c'e', **oppure** quando non c'e' ancora nessun valore:
+			// su una pista mai vista un dato debole vale piu' di nessun dato, e la soglia di
+			// rilevamento pit ha comunque un fallback sensato (PitLaneDetector.SpeedThresholdFor).
+			// Senza questa distinzione un primo campione anomalo verrebbe scritto e resterebbe in
+			// vigore finche' non arrivano gli altri: si auto-corregge, ma la finestra sbagliata
+			// esiste.
+			bool haveNothingYet = target.PitLaneSpeedLimit <= 0.0;
+			if (!consensus.HasConsensus && !haveNothingYet) return;
 
 			double consolidated = consensus.Value;
 			if (target.PitLaneSpeedLimit != consolidated)
