@@ -1,0 +1,142 @@
+{
+  "Tracks": [
+    {
+      "TrackClassID": "MISANO GP_GT3 2025",
+      "TrackID": "misano gp",
+      "CarClass": "GT3 2025",
+      "PitTransitTime": 35.932999999999993,
+      "PitDriveThroughTime": 0.0,
+      "PitDistanceMeters": 518.18688755482435,
+      "PitInOutAccDecTime": 9.58400000000006,
+      "PlayerRecordSet": true,
+      "PitEntryPct": 0.94957387447357178,
+      "PitExitPct": 0.073705360293388367,
+      "GeofenceConfidence": 2,
+      "GeofenceSampleCount": 0,
+      "ExclusionMargin": 0.05,
+      "AverageStintLaps": 20.500990572374668,
+      "AverageLapPace": 91.8233956375122,
+      "FuelPerLap": 2.5364628024399281,
+      "MaxTank": 52.0,
+      "PitLaneSpeedLimit": 60.0,
+      "ExtendedPitEntryPct": 0.89957387447357173,
+      "ExtendedPitExitPct": 0.12370536029338837
+    },
+    {
+      "TrackClassID": "DAYTONA 2011 ROAD_IMSA23",
+      "TrackID": "daytona 2011 road",
+      "CarClass": "IMSA23",
+      "PitTransitTime": 30.867999999999938,
+      "PitDriveThroughTime": 0.66599999999994,
+      "PitDistanceMeters": 795.42402211576689,
+      "PitInOutAccDecTime": 12.349999999999994,
+      "PlayerRecordSet": true,
+      "PitEntryPct": 0.9588201642036438,
+      "PitExitPct": 0.098679855465888977,
+      "GeofenceConfidence": 3,
+      "GeofenceSampleCount": 6,
+      "ExclusionMargin": 0.05,
+      "AverageStintLaps": 15.839544883467976,
+      "AverageLapPace": 104.22083331680297,
+      "FuelPerLap": 3.1550784111022949,
+      "MaxTank": 49.975006103515625,
+      "PitLaneSpeedLimit": 90.0,
+      "ExtendedPitEntryPct": 0.90882016420364375,
+      "ExtendedPitExitPct": 0.14867985546588897
+    }
+  ],
+  "Classes": [
+    {
+      "CarClass": "GT3 2025",
+      "FuelFillRate": 2.6155221651284926,
+      "TyreChangeTime": 27.0,
+      "FuelFillRateConfidence": 3,
+      "TyreChangeTimeConfidence": 3
+    },
+    {
+      "CarClass": "IMSA23",
+      "FuelFillRate": 0.0,
+      "TyreChangeTime": 0.0,
+      "FuelFillRateConfidence": 0,
+      "TyreChangeTimeConfidence": 0
+    }
+  ],
+  "Cars": [
+    {
+      "CarModel": "porsche992gt3r",
+      "BaseCapacity": 99.94
+    },
+    {
+      "CarModel": "astonmartinvantagegt3evo",
+      "BaseCapacity": 106.0
+    },
+    {
+      "CarModel": "ferrari296gt3",
+      "BaseCapacity": 104.0
+    },
+    {
+      "CarModel": "bmwm4gt3",
+      "BaseCapacity": 100.0
+    },
+    {
+      "CarModel": "audir8evogt3",
+      "BaseCapacity": 121.1
+    },
+    {
+      "CarModel": "audir8lms",
+      "BaseCapacity": 120.0
+    },
+    {
+      "CarModel": "lamborghinihuracangt3",
+      "BaseCapacity": 120.0
+    },
+    {
+      "CarModel": "mclaren720sgt3",
+      "BaseCapacity": 110.0
+    },
+    {
+      "CarModel": "mercedesamggt3",
+      "BaseCapacity": 106.0
+    },
+    {
+      "CarModel": "fordmustanggt3",
+      "BaseCapacity": 110.0
+    },
+    {
+      "CarModel": "corvettez06gt3",
+      "BaseCapacity": 104.0
+    },
+    {
+      "CarModel": "bmwmhybridv8",
+      "BaseCapacity": 89.0
+    },
+    {
+      "CarModel": "porsche963",
+      "BaseCapacity": 89.0
+    },
+    {
+      "CarModel": "cadillacvseriesr",
+      "BaseCapacity": 89.0
+    },
+    {
+      "CarModel": "acuraarx06",
+      "BaseCapacity": 89.0
+    },
+    {
+      "CarModel": "dallarap217",
+      "BaseCapacity": 96.9
+    },
+    {
+      "CarModel": "dallarair18",
+      "BaseCapacity": 70.0
+    },
+    {
+      "CarModel": "fiaf4",
+      "BaseCapacity": 40.0
+    },
+    {
+      "CarModel": "superlatemodel",
+      "BaseCapacity": 83.28
+    }
+  ]
+}
