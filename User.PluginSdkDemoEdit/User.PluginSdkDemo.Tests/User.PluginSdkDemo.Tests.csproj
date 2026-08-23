@@ -67,6 +67,7 @@
     <Compile Include="UnitTests\CalibrationConfidenceUnitTests.cs" />
     <Compile Include="UnitTests\GeofenceCalibrationGateUnitTests.cs" />
     <Compile Include="UnitTests\NaturalPitLearningUnitTests.cs" />
+    <Compile Include="UnitTests\RaceTimeProjectionUnitTests.cs" />
     <Compile Include="IntegrationTests\ReplayBacktestIntegrationTest.cs" />
     <Compile Include="IntegrationTests\MisanoHuracanGT3ReplayTest.cs" />
     <Compile Include="Replay\SimHubReplayRAMReader.cs" />

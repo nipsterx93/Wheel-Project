@@ -139,6 +139,8 @@
     <Compile Include="StrategyGateHysteresis.cs" />
     <Compile Include="PitLaneDetector.cs" />
     <Compile Include="TrackPositionValidator.cs" />
+    <Compile Include="RaceTimeProjection.cs" />
+    <Compile Include="LeaderPaceFilter.cs" />
     <Compile Include="GeofenceCalibrationGate.cs" />
     <Compile Include="SectorTracker.cs" />
     <Compile Include="LapSectorTimeContainer.cs" />

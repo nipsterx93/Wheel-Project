@@ -26,6 +26,7 @@ namespace User.PluginSdkDemo.Tests
                 CalibrationConfidenceUnitTests.RunAllTests();
                 GeofenceCalibrationGateUnitTests.RunAllTests();
                 NaturalPitLearningUnitTests.RunAllTests();
+                RaceTimeProjectionUnitTests.RunAllTests();
                 ReplayBacktestIntegrationTest.RunMisanoGt3Backtest();
                 MisanoHuracanGT3ReplayTest.RunFullReplayMergeGapValidation();
 

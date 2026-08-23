@@ -94,6 +94,12 @@ namespace SimRIG
 
         private double _smoothedLeaderPace = 0.0;
 
+        /// <summary>
+        /// Protegge la media del passo del leader dai campioni raccolti mentre l'identita' del P1
+        /// assoluto sfarfalla — in multiclasse succede di continuo.
+        /// </summary>
+        private readonly LeaderPaceFilter _leaderPaceFilter = new LeaderPaceFilter();
+
 
 
         public LapSectorTimeContainer RawTimes { get; } = new LapSectorTimeContainer();
@@ -490,6 +496,9 @@ namespace SimRIG
 
 
             double rawLeaderPace = 120.0;
+            // Identita' a cui appartiene il campione di passo: serve al filtro per accorgersi
+            // che il P1 assoluto sta sfarfallando fra piu' piloti (tipico del multiclasse).
+            string rawLeaderName = "PLAYER";
 
             if (state.Position == 1)
             {
@@ -505,6 +514,7 @@ namespace SimRIG
             else
             {
                 var overallLeader = state.Opponents.FirstOrDefault(o => o.Position == 1);
+                if (overallLeader != null) rawLeaderName = overallLeader.Name ?? "";
                 if (overallLeader != null && tracker.TrackedOpponents.TryGetValue(overallLeader.Name, out var leaderData))
                 {
                     if (leaderData.NormalizedTimes.LapMovingAverage > 0.0)
@@ -528,9 +538,11 @@ namespace SimRIG
 
 
 
-            if (_smoothedLeaderPace == 0.0) _smoothedLeaderPace = rawLeaderPace;
-
-            else _smoothedLeaderPace += (rawLeaderPace - _smoothedLeaderPace) * 0.10;
+            // La media mobile e' la stessa di prima (alpha 0.10): cambia quali campioni ci entrano.
+            // Vengono scartati quelli fisicamente impossibili e quelli raccolti mentre l'identita'
+            // del leader sta ancora sfarfallando. Vedi LeaderPaceFilter.
+            _smoothedLeaderPace = _leaderPaceFilter.Update(rawLeaderPace, rawLeaderName,
+                                                           state.SessionTimeLeftSec, state.TrackLengthMeters);
 
             Results.LeaderEstimatedPace = _smoothedLeaderPace;
 
@@ -723,7 +735,9 @@ namespace SimRIG
 
                     // 2. Calcolo dei giri netti rimanenti del Leader tramite formula analitica
                     double leaderL_left = timeUntilZero / leaderPace;
-                    double leaderRemainingPitTime = 0.0;
+                    // Le soste residue del leader restano un dato diagnostico (RemainingPitsLeader).
+                    // Non entrano piu' nel tempo alla bandiera: quello ora viene dal countdown, che
+                    // il tempo perso ai box lo contiene gia' per costruzione.
                     int leaderRemainingStops = 0;
 
                     bool leaderIsInPit = false;
@@ -750,7 +764,6 @@ namespace SimRIG
                             leaderL_left = (timeUntilZero - leaderPitLoss + effectiveLeaderTank * J_leader) / (leaderPace + J_leader);
                             
                             leaderRemainingStops = 1 + (int)Math.Max(0, Math.Ceiling((leaderL_left - effectiveLeaderTank) / leaderStintLaps) - 1);
-                            leaderRemainingPitTime = leaderRemainingStops * leaderPitLoss;
                         }
                     }
 
@@ -776,7 +789,18 @@ namespace SimRIG
                     }
 
                     leaderLapsRem = Math.Max(0, _latchedLeaderTotalLaps - leaderAbsolutePos);
-                    Results.RaceLifeTimeLeftSec = leaderLapsRem * leaderPace + leaderRemainingPitTime;
+
+                    // Il tempo che manca alla bandiera si legge dal cronometro di sessione, non si
+                    // ricostruisce dai giri del leader. Prima era
+                    //     leaderLapsRem * leaderPace + leaderRemainingPitTime
+                    // cioe' un conteggio *latchato* di giri rimoltiplicato per un passo che nel
+                    // frattempo poteva essere cambiato: quando il P1 assoluto cambiava classe, il
+                    // risultato divergeva senza limite (Daytona 2026-08-23, giri 12-15: 2368 s
+                    // stimati contro ~1400 s reali). Ancorando al countdown, il passo del leader
+                    // pesa solo sulla frazione di giro che gli manca per tagliare: errore limitato
+                    // a un giro, non piu' proporzionale alla durata della gara.
+                    Results.RaceLifeTimeLeftSec = RaceTimeProjection.TimeUntilLeaderCheckered(
+                        timeUntilZero, leaderAbsolutePos, leaderPace);
 
                     // Salviamo i risultati del leader nei campi di debug
                     Results.RemainingPitsLeader = leaderRemainingStops;
@@ -817,10 +841,18 @@ namespace SimRIG
                         {
                             projectedPlayerTotal = _latchedLeaderTotalLaps;
                         }
-                        else
+                        else if (!isMultiClass)
                         {
+                            // Monoclasse: "non puoi completare piu' giri del leader" e' un tetto
+                            // sensato, il leader gira nella stessa vettura.
                             projectedPlayerTotal = Math.Min(projectedPlayerTotal, _latchedLeaderTotalLaps);
                         }
+                        // Multiclasse: nessun tetto sul leader **assoluto**. Una GT3 e una GTP non
+                        // fanno lo stesso numero di giri, quindi il confronto non dice nulla — e se
+                        // il totale del leader e' sovrastimato il tetto non protegge comunque.
+                        // Il tetto giusto sarebbe il leader **di classe**: vedi Y-19, va tarato sui
+                        // log Daytona prima di cablarlo (serve la posizione assoluta degli avversari,
+                        // che ha convenzioni di conteggio giri tutte da verificare).
 
                         double targetPlayerTotal = UpdateLatchedLaps(projectedPlayerTotal, _latchedPlayerTotalReality, !state.IsInPitLane);
                         if (targetPlayerTotal < _latchedPlayerTotalReality)
@@ -1183,6 +1215,7 @@ namespace SimRIG
             _playerLapsDecreaseStartTime = DateTime.MinValue;
 
             _smoothedLeaderPace = 0.0;
+            _leaderPaceFilter.Reset();
 
             _lastEvaluatedLap = -1;
 
