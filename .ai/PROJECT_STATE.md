@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-23T17:00:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-23T23:00:00Z
+task:       Y-17 — baseline avversari dal primo giro osservato, che è parziale per costruzione
+scope:      OpponentTracker.cs, LapSectorTimeContainer.cs, User.PluginSdkDemo.Tests/**
+expires:    2026-08-24T06:00:00Z
 ```
 
 **Regole del lock**
