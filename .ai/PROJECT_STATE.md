@@ -8,11 +8,13 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-20T02:30:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-23T10:30:00Z
+task:       Y-16/Y-17/Y-18 — proiezioni gara ancorate al countdown reale, guard sul passo
+            del leader, condizione "fermo ai box" unificata
+scope:      RaceAnalyzer.cs, PitRadar.cs, RaceTimeProjection.cs (nuovo),
+            LeaderPaceFilter.cs (nuovo), User.PluginSdkDemo.Tests/**
+expires:    2026-08-23T18:00:00Z
 ```
 
 **Regole del lock**
