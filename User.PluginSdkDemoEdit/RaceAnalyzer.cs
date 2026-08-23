@@ -95,6 +95,13 @@ namespace SimRIG
         private double _smoothedLeaderPace = 0.0;
 
         /// <summary>
+        /// Ultima posizione assoluta credibile del leader (giri completati + frazione di giro).
+        /// Serve a non ricalcolare la proiezione su un campione vuoto: vedi
+        /// <see cref="IsLeaderSampleUsable"/>.
+        /// </summary>
+        private double _lastGoodLeaderAbsolutePos = -1.0;
+
+        /// <summary>
         /// Protegge la media del passo del leader dai campioni raccolti mentre l'identita' del P1
         /// assoluto sfarfalla — in multiclasse succede di continuo.
         /// </summary>
@@ -556,6 +563,7 @@ namespace SimRIG
             if (state.Position == 1)
             {
                 leaderAbsolutePos = Results.RaceLapsCompleted + effTrackPos;
+                _lastGoodLeaderAbsolutePos = leaderAbsolutePos;
             }
             else
             {
@@ -563,6 +571,26 @@ namespace SimRIG
                 if (overallLeader != null && overallLeader.TrackPositionPercent.HasValue)
                 {
                     leaderAbsolutePos = Results.LeaderRaceLapsCompleted + overallLeader.TrackPositionPercent.Value;
+                }
+
+                // Un record del leader momentaneamente vuoto (posizione e giri a zero) non e' il
+                // leader sul traguardo: e' un buco nella telemetria. Preso per buono azzerava
+                // leaderAbsolutePos, e LeaderRaceLapsRemaining diventava il totale latchato intero
+                // — 30.00 invece dei ~18 reali, ai giri 12-15 del replay Daytona del 2026-08-23.
+                // Si tiene l'ultima posizione credibile finche' il record non torna popolato.
+                if (!IsLeaderSampleUsable(Results.LeaderRaceLapsCompleted,
+                                          overallLeader != null && overallLeader.TrackPositionPercent.HasValue
+                                              ? overallLeader.TrackPositionPercent.Value
+                                              : 0.0))
+                {
+                    if (_lastGoodLeaderAbsolutePos >= 0.0)
+                    {
+                        leaderAbsolutePos = _lastGoodLeaderAbsolutePos;
+                    }
+                }
+                else
+                {
+                    _lastGoodLeaderAbsolutePos = leaderAbsolutePos;
                 }
             }
 
@@ -1186,6 +1214,29 @@ namespace SimRIG
 
 
 
+        /// <summary>
+        /// Il campione del leader è utilizzabile, o è un buco nella telemetria?
+        ///
+        /// Un avversario a <c>TrackPositionPercent == 0</c> e <c>CurrentLap</c> a zero non è sul
+        /// traguardo al primo giro: è un record momentaneamente vuoto. È la stessa convenzione
+        /// "posizione zero = stato azzerato" già usata da <see cref="TrackPositionValidator"/> e da
+        /// <c>PitRadar</c>, e <c>OpponentTracker</c> scarta quei tick già oggi
+        /// (<c>if (currentPos == 0.0) continue;</c>) — mancava solo qui.
+        ///
+        /// Misurato sul replay Daytona del 2026-08-23: ai giri 12-15 il leader risultava a
+        /// <c>LapsComp=0, PosPct=0.0000</c>, quindi <c>leaderAbsolutePos</c> valeva 0 e
+        /// <c>LeaderRaceLapsRemaining</c> diventava il totale latchato intero (30.00) invece dei
+        /// ~18 reali.
+        /// </summary>
+        public static bool IsLeaderSampleUsable(int leaderLapsCompleted, double leaderTrackPositionPct)
+        {
+            if (leaderTrackPositionPct > 0.0) return true;
+
+            // Posizione a zero è accettabile solo se il conteggio giri dice che la gara è
+            // davvero iniziata: altrimenti il record è vuoto.
+            return leaderLapsCompleted > 0;
+        }
+
         private double UpdateLatchedLaps(double rawProjectedPos, double currentLatchedLaps, bool allowDecrease = true)
         {
             if (currentLatchedLaps == 0.0) return Math.Ceiling(rawProjectedPos);
@@ -1216,6 +1267,7 @@ namespace SimRIG
 
             _smoothedLeaderPace = 0.0;
             _leaderPaceFilter.Reset();
+            _lastGoodLeaderAbsolutePos = -1.0;
 
             _lastEvaluatedLap = -1;
 
