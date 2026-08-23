@@ -1,4 +1,4 @@
-// -------------------------------------------------------------------------
+﻿// -------------------------------------------------------------------------
 // FILE: PitRadar.cs
 // VERSION: Fix errori 43 (Restored and Extended)
 // -------------------------------------------------------------------------
@@ -302,6 +302,20 @@ namespace SimRIG
 	/// PitExitPct (0.1088 e 0.0737, distanti 0.035 cioe' ~148 m).
 	/// </summary>
 	public const double GeofenceAgreementPct = 0.01;
+
+	/// <summary>
+	/// Percorso minimo, in frazione di giro, perché una permanenza in corsia box sia una
+	/// **traversata** e non un artefatto della telemetria.
+	///
+	/// Lo sfarfallio osservato a Daytona il 2026-08-23 entrava a 0.959 e usciva a 0.963: 0.004 di
+	/// giro, una ventina di metri, in 0.7 secondi. 0.01 di giro sono ~42 m a Misano e ~57 m a
+	/// Daytona — nessuna corsia box reale è così corta, quindi la soglia non può scartare un
+	/// transito vero, e prende comodamente lo 0.004 osservato.
+	/// </summary>
+	public const double MinimumPitTraversalPct = 0.01;
+
+	/// <summary>Posizione in pista all'ingresso in corsia box, per misurare quanto si è percorso.</summary>
+	private double _pitEntryPosition = -1.0;
 
 	// Consenso per sessione. Le geofence si osservano una volta per sosta, il limite di pit lane
 	// una volta per sosta di ogni avversario — da cui la separazione per classe.
@@ -659,6 +673,57 @@ namespace SimRIG
 	/// piu' sotto: e' un "fermo o quasi", non una misura di velocita'.
 	/// </summary>
 	public const double StationarySpeedKmh = 0.5;
+
+	/// <summary>
+	/// La permanenza in corsia box ha davvero percorso la corsia, o e' un artefatto?
+	///
+	/// Il criterio e' la **strada percorsa**, non il tempo: un tempo breve puo' essere un
+	/// drive-through veloce, uno spostamento quasi nullo no. Usa il delta con il wrap del traguardo
+	/// gia' presente in <see cref="TrackPositionValidator.WrappedDelta"/>, cosi' un ingresso a 0.99
+	/// e un'uscita a 0.05 contano come 0.06 di giro e non come -0.94.
+	///
+	/// Posizione d'ingresso non nota (negativa) = nessun giudizio possibile: si accetta, invece di
+	/// scartare una sosta vera per mancanza di dati. Stessa scelta del fallback di MaxSectorFraction.
+	/// </summary>
+	public static bool HasTraversedPitLane(double entryPosition, double exitPosition)
+	{
+		if (entryPosition < 0.0) return true;
+
+		double traversed = Math.Abs(TrackPositionValidator.WrappedDelta(exitPosition, entryPosition));
+		return traversed >= MinimumPitTraversalPct;
+	}
+
+	/// <summary>
+	/// Frazione del tempo teorico di percorrenza sotto la quale una misura di transito non e'
+	/// credibile. Meta': la geofence e' piu' larga della corsia vera e la vettura non e' al limite
+	/// per tutto il tratto, quindi il tempo reale puo' scostarsi parecchio da quello teorico —
+	/// ma non della meta'.
+	/// </summary>
+	public const double CredibleTransitFraction = 0.5;
+
+	/// <summary>
+	/// Tempo minimo perche' una misura di transito in corsia box sia credibile, in secondi.
+	///
+	/// Derivato dai dati del circuito invece che da una costante: quanto ci vorrebbe a percorrere
+	/// <c>PitDistanceMeters</c> al <c>PitLaneSpeedLimit</c> appreso, meno un margine generoso.
+	/// A Daytona (795 m, 90 km/h) sono ~16 s contro un transito reale di 30.9 s; i 0.666 s dello
+	/// sfarfallio restano fuori di un fattore 24.
+	///
+	/// Se distanza o limite non sono ancora noti si restituisce 0, cioe' nessun filtro: su una
+	/// pista mai vista un dato debole vale piu' di nessun dato, ed e' comunque protetto dal guard
+	/// sulla traversata. Stessa scelta del fallback di MaxSectorFraction.
+	/// </summary>
+	private double MinimumCredibleTransitSec()
+	{
+		if (_currentTrack == null) return 0.0;
+
+		double meters = _currentTrack.PitDistanceMeters;
+		double limitKmh = _currentTrack.PitLaneSpeedLimit;
+		if (meters <= 0.0 || limitKmh <= 0.0) return 0.0;
+
+		double theoretical = meters / (limitKmh / 3.6);
+		return theoretical * CredibleTransitFraction;
+	}
 
 	/// <summary>
 	/// Il Player e' fermo in corsia box?
@@ -1022,6 +1087,7 @@ namespace SimRIG
 			if (!_pitEntryTime.HasValue)
 			{
 				_pitEntryTime = sessionClock;
+				_pitEntryPosition = state.TrackPositionPercent;
 				_pitBoxTimeCache = 0.0;
 				_dtInvalidated = false;
 				_isFueling = false;
@@ -1114,6 +1180,35 @@ namespace SimRIG
 			}
 			LastStationaryTime = _pitBoxTimeCache + (_stopStartTime.HasValue ? Math.Abs(sessionClock - _stopStartTime.Value) : 0.0);
 		}
+		else if (_pitEntryTime.HasValue
+			&& !HasTraversedPitLane(_pitEntryPosition, state.TrackPositionPercent))
+		{
+			// Una permanenza che non ha percorso strada non e' una sosta. Il flag IsInPitLane della
+			// telemetria puo' sfarfallare (true->false->true in due decimi di secondo): a Daytona,
+			// il 2026-08-23, ha prodotto un ingresso a 0.959 e un'uscita a 0.963 mentre il Player
+			// era ancora sul rettilineo, e da li' un "Pit Complete" da 0.7 s che ha scritto
+			// PitDriveThroughTime = 0.666 nel database.
+			//
+			// Si scarta l'intera visita invece del singolo campo: lo stesso artefatto alimentava
+			// anche i consensi delle geofence e — su una pista vergine, dove PitTransitTime e'
+			// ancora a zero — avrebbe scritto un transito da 0.7 s, che entra nella matematica
+			// strategica. Il criterio e' la strada percorsa, non il tempo: un tempo breve puo'
+			// essere un drive-through veloce, uno spostamento nullo no.
+			log.Log(LogModule.RADAR, LogType.FLOW, "Pit Visit Discarded (No Traversal)",
+				$"entry={_pitEntryPosition:F4} | exit={state.TrackPositionPercent:F4} | " +
+				$"traversed={Math.Abs(TrackPositionValidator.WrappedDelta(state.TrackPositionPercent, _pitEntryPosition)):F4} | " +
+				$"minimo={MinimumPitTraversalPct:F4} | durata={Math.Abs(sessionClock - _pitEntryTime.Value):F2}s");
+
+			_pitEntryTime = null;
+			_pitEntryPosition = -1.0;
+			_stopStartTime = null;
+			_pitBoxTimeCache = 0.0;
+			_activeMode = CalibrationMode.None;
+			_isFueling = false;
+			_lastFuelIncreaseTime = 0.0;
+			_fuelStartTime = 0.0;
+			LastStationaryTime = 0.0;
+		}
 		else if (_pitEntryTime.HasValue)
 		{
 			// L'uscita si registra solo se il relativo ingresso era autorizzato: entry ed exit
@@ -1177,7 +1272,7 @@ namespace SimRIG
 						log.Log(LogModule.RADAR, LogType.EVENT, "Fuel Fill Rate Calibrated", $"{num4:F2} L/s | confidence=Confirmed");
 					}
 				}
-				if (_currentTrack.PitTransitTime == 0.0 && num2 > 0.5)
+				if (_currentTrack.PitTransitTime == 0.0 && num2 > MinimumCredibleTransitSec() && num2 > 0.5)
 				{
 					_currentTrack.PitTransitTime = num2;
 					flag = true;
@@ -1193,7 +1288,7 @@ namespace SimRIG
 					flag = true;
 					log.Log(LogModule.RADAR, LogType.EVENT, "Tyre Change Time Calibrated", $"{_pitBoxTimeCache:F1}s | confidence=Confirmed");
 				}
-				if (_currentTrack.PitTransitTime == 0.0 && num2 > 0.5)
+				if (_currentTrack.PitTransitTime == 0.0 && num2 > MinimumCredibleTransitSec() && num2 > 0.5)
 				{
 					_currentTrack.PitTransitTime = num2;
 					flag = true;
@@ -1201,14 +1296,23 @@ namespace SimRIG
 			}
 			else if (_activeMode == CalibrationMode.DriveThrough && !_dtInvalidated)
 			{
-				if (_currentTrack.PitDriveThroughTime == 0.0 && num > 0.5)
+				// Un drive-through vero dura decine di secondi: si percorre l'intera corsia al
+				// limite di velocita'. La soglia storica di 0.5 s non escludeva niente di utile —
+				// e' quella che ha lasciato passare i 0.666 s dello sfarfallio di Daytona.
+				// Il tempo minimo credibile si ricava dai dati del circuito invece che da una
+				// costante: quanto ci vorrebbe a percorrere la corsia al limite, con meta' del
+				// valore come margine per l'imprecisione della geofence.
+				if (_currentTrack.PitDriveThroughTime == 0.0 && num > MinimumCredibleTransitSec() && num > 0.5)
 				{
+					// Il test `== 0.0` resta: qui significa "la procedura guidata si esegue una
+					// volta", non "il primo valore vince per sempre". A rendere permanente un dato
+					// sbagliato era il fatto che uno spazzatura potesse entrarci; ora non puo' piu'.
 					_currentTrack.PitDriveThroughTime = num;
 					flag = true;
 					log.Log(LogModule.RADAR, LogType.EVENT, "Drive-Through Time Calibrated", num.ToString("F2"));
 				}
 			}
-			else if (_activeMode == CalibrationMode.StopAndGo && _currentTrack.PitTransitTime == 0.0 && num2 > 0.5)
+			else if (_activeMode == CalibrationMode.StopAndGo && _currentTrack.PitTransitTime == 0.0 && num2 > MinimumCredibleTransitSec() && num2 > 0.5)
 			{
 				_currentTrack.PitTransitTime = num2;
 				flag = true;

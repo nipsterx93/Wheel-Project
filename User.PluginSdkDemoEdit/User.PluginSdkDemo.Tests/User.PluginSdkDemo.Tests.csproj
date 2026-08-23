@@ -70,6 +70,7 @@
     <Compile Include="UnitTests\RaceTimeProjectionUnitTests.cs" />
     <Compile Include="UnitTests\CalibrationConsensusUnitTests.cs" />
     <Compile Include="UnitTests\OpponentLapAnchorUnitTests.cs" />
+    <Compile Include="UnitTests\PhantomPitVisitUnitTests.cs" />
     <Compile Include="IntegrationTests\ReplayBacktestIntegrationTest.cs" />
     <Compile Include="IntegrationTests\MisanoHuracanGT3ReplayTest.cs" />
     <Compile Include="Replay\SimHubReplayRAMReader.cs" />

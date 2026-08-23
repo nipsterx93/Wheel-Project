@@ -29,6 +29,7 @@ namespace User.PluginSdkDemo.Tests
                 RaceTimeProjectionUnitTests.RunAllTests();
                 CalibrationConsensusUnitTests.RunAllTests();
                 OpponentLapAnchorUnitTests.RunAllTests();
+                PhantomPitVisitUnitTests.RunAllTests();
                 ReplayBacktestIntegrationTest.RunMisanoGt3Backtest();
                 MisanoHuracanGT3ReplayTest.RunFullReplayMergeGapValidation();
 
