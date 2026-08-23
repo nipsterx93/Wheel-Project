@@ -42,6 +42,70 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-23 15:10] claude → Misano ×2-3 diagnostico (passo 2 del percorso)
+
+**Task:** Y-20/Y-21 — consenso sui dati calibrati. È il **passo 1** del percorso concordato.
+**Commit:** `5505015` (lock) · `e9caad6`
+
+### Perché questo passo per primo
+
+Non per urgenza astratta: finché la scrittura è "l'ultimo che scrive vince", **ogni replay che
+giriamo è anche un'occasione di corruzione del database**, e il dato corrotto inquina le verifiche
+successive. Chiudere la falla prima di continuare a raccogliere.
+
+### Il percorso concordato con l'utente
+
+| # | passo | stato |
+|---|---|---|
+| 1 | Consenso sui dati calibrati (Y-20 + Y-21) | ✅ questo turno |
+| 2 | **Misano ×2-3 di fila, diagnostico** | ⬅️ **prossimo** |
+| 3 | Daytona con tutto in piedi | ⬜ |
+| 4 | Y-19 — tetto sul leader di classe (*decidere se serve*) | ⬜ dipende da 3 |
+| 5 | Y-12 — sweep isteresi su Daytona | ⬜ dipende da 3 |
+| 6 | Y-15 — confronto automatico `FuelToAdd` | ⬜ |
+| 7 | Y-14 — tempo gomme per sottrazione | ⬜ serve una sosta pulita |
+| 8 | Fase 6 — geofence stimate dagli avversari | ⬜ |
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit code `0`, **133 `[PASS]`** (erano 125).
+
+### Stato
+- ✅ Compila — 0 errori · ✅ 133 test passano
+- ✅ **Regressione verificata** neutralizzando la mediana a "l'ultimo che scrive": il test riproduce
+  esattamente il fallimento reale (atteso 60, ottenuto 80)
+
+### Per chi entra — il passo 2 in concreto
+
+**Prima di ogni replay: copiare `E:\SimHub\SimRIG_Data.json` in `.ai/db-snapshots/`.** È l'unico
+stato persistente che i replay modificano; senza copia gli esperimenti non sono ripetibili.
+Lo snapshot post-Misano del 2026-08-23 è già lì.
+
+Rigirare Misano 2-3 volte **con i log accesi** e guardare i nuovi eventi RADAR:
+
+| evento | cosa dice |
+|---|---|
+| `Pit Entry/Exit Pct Calibrated` | ora riporta `median`, `sample`, `agreeing=N/M` e la confidenza |
+| `Pit Entry/Exit Pct Held` | il consenso ha **rifiutato** la scrittura: il payload dice perché |
+
+Domanda a cui il passo 2 risponde: **`PitExitPct` è ripetibile fra playback dello stesso replay?**
+Se esce 0.074 tre volte su tre la misura è stabile e il sospettato diventa il vecchio 0.1088; se
+balla, il problema è nella misura stessa. Non risponde invece a *quale sia il valore fisicamente
+vero* — per quello serve una sosta diversa (Y-22).
+
+**Attenzione:** il database ha `GeofenceConfidence: 3` (Confirmed) per Misano e Daytona. Con il
+consenso nuovo, una sosta sola vale `EstimatedPlayer` e **non** può sovrascriverlo: nei prossimi
+replay a sosta singola ci si aspetta `Pit Exit Pct Held`, non `Calibrated`. È il comportamento
+voluto, non un difetto.
+
+---
+
 ## [2026-08-23 12:40] claude → verifica sui replay (Misano prima, poi Daytona)
 
 **Task:** Y-16/Y-17/Y-18 — proiezioni gara ancorate al countdown reale, "fermo ai box" unificato
