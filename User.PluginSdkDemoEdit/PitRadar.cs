@@ -278,6 +278,27 @@ namespace SimRIG
 	/// </summary>
 	private readonly GeofenceCalibrationGate _geofenceGate = new GeofenceCalibrationGate();
 
+	/// <summary>
+	/// Scarto entro cui due osservazioni del limite di pit lane parlano dello stesso limite.
+	/// I valori accettati sono 50/60/80/90, cioe' distanti almeno 10: 5 km/h separa senza ambiguita'.
+	/// </summary>
+	public const double SpeedLimitAgreementKmh = 5.0;
+
+	/// <summary>
+	/// Scarto entro cui due osservazioni di una geofence parlano dello stesso punto, in frazione
+	/// di giro. 0.01 sono ~42 m a Misano: abbastanza largo da assorbire il jitter fra un tick e
+	/// l'altro, abbastanza stretto da non far passare per concordi i due valori storici di
+	/// PitExitPct (0.1088 e 0.0737, distanti 0.035 cioe' ~148 m).
+	/// </summary>
+	public const double GeofenceAgreementPct = 0.01;
+
+	// Consenso per sessione. Le geofence si osservano una volta per sosta, il limite di pit lane
+	// una volta per sosta di ogni avversario — da cui la separazione per classe.
+	private readonly CalibrationConsensus _entryConsensus = new CalibrationConsensus(GeofenceAgreementPct);
+	private readonly CalibrationConsensus _exitConsensus = new CalibrationConsensus(GeofenceAgreementPct);
+	private readonly Dictionary<string, CalibrationConsensus> _speedLimitConsensus =
+		new Dictionary<string, CalibrationConsensus>();
+
 	public GeofenceCalibrationGate GeofenceGate => _geofenceGate;
 
 	private bool _playerIsInsideStrictGeofence;
@@ -925,6 +946,11 @@ namespace SimRIG
 		string lookupKey = (state.TrackId + "_" + state.CarClassId).ToUpper();
 		if (_currentTrack == null || _currentTrack.TrackClassID != lookupKey)
 		{
+			// Cambio pista o classe: le osservazioni accumulate parlano di un'altra geofence.
+			// Il consenso invece sopravvive al cambio di *sessione* (vedi ResetSession).
+			_entryConsensus.Reset();
+			_exitConsensus.Reset();
+
 			_currentTrack = _database.Tracks.FirstOrDefault((TrackRecord t) => t.TrackClassID == lookupKey);
 			if (_currentTrack == null)
 			{
@@ -972,15 +998,31 @@ namespace SimRIG
 				_lastFuelIncreaseTime = 0.0;
 				_fuelStartTime = 0.0;
 
-				// Si registra solo arrivando da un tragitto genuino, e solo se il dato che
-				// andremmo a sostituire non è più forte di questo (Confirmed dal Player).
-				if (_geofenceGate.CanCalibrateEntry
-					&& CanOverwrite(_currentTrack.GeofenceConfidence, CalibrationConfidence.Confirmed))
+				// Si registra solo arrivando da un tragitto genuino. Il campione non finisce
+				// dritto nel database: entra in un consenso, e a scrivere e' la mediana. Una
+				// sosta sola vale EstimatedPlayer — utilizzabile subito su una pista mai vista,
+				// ma non abbastanza per scalzare un dato gia' consolidato; da tre soste concordi
+				// in poi diventa Confirmed e puo' sostituirlo.
+				if (_geofenceGate.CanCalibrateEntry)
 				{
-					_currentTrack.PitEntryPct = state.TrackPositionPercent;
-					SaveDatabase();
-					log.Log(LogModule.RADAR, LogType.EVENT, "Pit Entry Pct Calibrated",
-						$"{state.TrackPositionPercent:F3} | confidence=Confirmed");
+					_entryConsensus.Add(state.TrackPositionPercent);
+
+					CalibrationConfidence entryLevel = _entryConsensus.HasConsensus
+						? CalibrationConfidence.Confirmed
+						: CalibrationConfidence.EstimatedPlayer;
+
+					if (CanOverwrite(_currentTrack.GeofenceConfidence, entryLevel))
+					{
+						_currentTrack.PitEntryPct = _entryConsensus.Value;
+						SaveDatabase();
+						log.Log(LogModule.RADAR, LogType.EVENT, "Pit Entry Pct Calibrated",
+							$"{_entryConsensus.Value:F3} | confidence={entryLevel} | sample={state.TrackPositionPercent:F3} | agreeing={_entryConsensus.AgreeingCount}/{_entryConsensus.SampleCount}");
+					}
+					else
+					{
+						log.Log(LogModule.RADAR, LogType.FLOW, "Pit Entry Pct Held",
+							$"sample={state.TrackPositionPercent:F3} | median={_entryConsensus.Value:F3} | agreeing={_entryConsensus.AgreeingCount}/{_entryConsensus.SampleCount} | stored={_currentTrack.PitEntryPct:F3} ({_currentTrack.GeofenceConfidence})");
+					}
 				}
 				else if (_geofenceGate.PitLaneEntered && !_geofenceGate.CanCalibrateEntry)
 				{
@@ -1046,14 +1088,30 @@ namespace SimRIG
 			// L'uscita si registra solo se il relativo ingresso era autorizzato: entry ed exit
 			// devono venire dallo stesso transito, altrimenti la zona sarebbe composta da due
 			// osservazioni scollegate. Qui la coppia si chiude, quindi si dichiara la confidenza.
-			if (_geofenceGate.CanCalibrateExit
-				&& CanOverwrite(_currentTrack.GeofenceConfidence, CalibrationConfidence.Confirmed))
+			if (_geofenceGate.CanCalibrateExit)
 			{
-				_currentTrack.PitExitPct = state.TrackPositionPercent;
-				_currentTrack.GeofenceConfidence = CalibrationConfidence.Confirmed;
-				SaveDatabase();
-				log.Log(LogModule.RADAR, LogType.EVENT, "Pit Exit Pct Calibrated",
-					$"{state.TrackPositionPercent:F3} | confidence=Confirmed | entry={_currentTrack.PitEntryPct:F3}");
+				_exitConsensus.Add(state.TrackPositionPercent);
+
+				// Entry ed exit nascono dalla stessa osservazione, quindi la coppia si consolida
+				// insieme: il livello e' quello del piu' debole dei due consensi.
+				CalibrationConfidence pairLevel =
+					(_exitConsensus.HasConsensus && _entryConsensus.HasConsensus)
+						? CalibrationConfidence.Confirmed
+						: CalibrationConfidence.EstimatedPlayer;
+
+				if (CanOverwrite(_currentTrack.GeofenceConfidence, pairLevel))
+				{
+					_currentTrack.PitExitPct = _exitConsensus.Value;
+					_currentTrack.GeofenceConfidence = pairLevel;
+					SaveDatabase();
+					log.Log(LogModule.RADAR, LogType.EVENT, "Pit Exit Pct Calibrated",
+						$"{_exitConsensus.Value:F3} | confidence={pairLevel} | sample={state.TrackPositionPercent:F3} | agreeing={_exitConsensus.AgreeingCount}/{_exitConsensus.SampleCount} | entry={_currentTrack.PitEntryPct:F3}");
+				}
+				else
+				{
+					log.Log(LogModule.RADAR, LogType.FLOW, "Pit Exit Pct Held",
+						$"sample={state.TrackPositionPercent:F3} | median={_exitConsensus.Value:F3} | agreeing={_exitConsensus.AgreeingCount}/{_exitConsensus.SampleCount} | stored={_currentTrack.PitExitPct:F3} ({_currentTrack.GeofenceConfidence})");
+				}
 			}
 			if (_stopStartTime.HasValue)
 			{
@@ -1291,8 +1349,26 @@ namespace SimRIG
 
 		if (target != null)
 		{
-			target.PitLaneSpeedLimit = speedLimit;
-			SaveDatabase();
+			// Il campione non vince da solo: entra in un consenso per classe e a scrivere e' la
+			// mediana. Sul replay Misano del 2026-08-23 undici osservazioni a 60 km/h e una a 80
+			// (vettura ancora in decelerazione): con "l'ultimo che scrive vince" l'80 sovrascriveva
+			// il 60, e il dato tornava corretto solo perche' altri scrivevano dopo.
+			string consensusKey = target.TrackClassID ?? "";
+			CalibrationConsensus consensus;
+			if (!_speedLimitConsensus.TryGetValue(consensusKey, out consensus))
+			{
+				consensus = new CalibrationConsensus(SpeedLimitAgreementKmh);
+				_speedLimitConsensus[consensusKey] = consensus;
+			}
+
+			consensus.Add(speedLimit);
+
+			double consolidated = consensus.Value;
+			if (target.PitLaneSpeedLimit != consolidated)
+			{
+				target.PitLaneSpeedLimit = consolidated;
+				SaveDatabase();
+			}
 		}
 	}
 
@@ -1340,6 +1416,12 @@ namespace SimRIG
 		// L'autorizzazione a calibrare non sopravvive al cambio di sessione: quello che si è
 		// osservato in practice non dice nulla su come inizierà la gara.
 		_geofenceGate.Reset();
+
+		// Il **consenso** invece sì, di proposito: l'ingresso della corsia box è una proprietà
+		// fisica del circuito, non cambia fra practice e gara. Le geofence si osservano una volta
+		// per sosta, e ci sono gare con una sosta sola: azzerare a ogni cambio di sessione
+		// significherebbe non raggiungere mai le tre osservazioni concordi. Si azzera invece al
+		// cambio di pista o classe (vedi Update).
 		_pitEntryTime = null;
 		_stopStartTime = null;
 		_isFueling = false;
