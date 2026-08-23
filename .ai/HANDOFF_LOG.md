@@ -42,6 +42,78 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-24 00:10] claude → prossimo replay Daytona (passi 1-3 chiusi)
+
+**Task:** Y-17b (causa vera del passo del leader), più esiti dei passi 2 e 3 del percorso
+**Commit:** `0541bf1` (lock) · `e907b67` (Y-17b) · più i turni precedenti
+
+### Il percorso: dove siamo
+
+| # | passo | stato |
+|---|---|---|
+| 1 | Consenso sui dati calibrati (Y-20 + Y-21) | ✅ `e9caad6` + `1792bac` |
+| 2 | Misano ×3 diagnostico | ✅ geofence ripetibile **sotto il metro**, 26 giri 3/3 |
+| 3 | Daytona multiclasse | ✅ 26 stabile dal giro 5 alla bandiera |
+| 4 | Y-19 — tetto leader di classe | ⏹️ **chiuso senza intervento**, i dati dicono che non serve |
+| 5 | Y-12 — sweep isteresi | ⏸️ **sospeso**: il target latchato era diverso fra i replay, i numeri non sono confrontabili |
+| 6 | Y-15 — confronto automatico `FuelToAdd` | ⬜ |
+| 7 | Y-14 — tempo gomme per sottrazione | ⬜ serve una sosta pulita |
+| 8 | Fase 6 — geofence stimate dagli avversari | ⬜ |
+
+### Cosa hanno dimostrato i replay
+
+**Y-16 validato nel modo più forte possibile.** A Daytona il passo del leader era *ancora* rotto
+(56.410 s congelato per 9 giri) **e la proiezione era comunque giusta**: 26 dal giro 5 alla
+bandiera, contro il 20 → 39 → 28 → 34.5 di prima del fix. È esattamente l'obiettivo
+dell'ancoraggio al countdown: l'errore sul leader non scala più con la durata della gara.
+
+**Y-18 confermato con un A/B sullo stesso replay.** Le due soste finali: `StatTime` da `0.0s` a
+`41.7s` e `68.5s`, `FuelAdded` fantasma da `15.8L`/`12.7L` a `0.0L`, modalità da `DriveThrough` a
+`StopAndGo`. I due sistemi ora concordano (41.7 contro 41.67 dello spaziale).
+
+**Il consenso ha evitato una corruzione grave, su dati veri.** Al giro 16 un `IsInPitLane` che
+sfarfalla (true→false→true in 0.2 s sul rettilineo) ha prodotto `sample=0.963` per `PitExitPct`.
+La mediana ha tenuto `0.099`. Con il vecchio "l'ultimo che scrive vince" la zona box sarebbe
+passata da ~800 m a **23 m**, azzerando il rilevamento pit.
+
+**`FuelToAdd`:** da `#fuel 50l` (errore 18.4 L) a `#fuel 30l` contro 32 L realmente imbarcati.
+Il residuo di ~2 L è il **carburante del giro d'ingresso**: la raccomandazione è congelata quando
+parte la macro, ma il consumo continua fino alla sosta. Materiale per Y-15.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit code `0`, **142 `[PASS]`**.
+
+### Stato
+- ✅ Compila — 0 errori · ✅ 142 test passano
+- ✅ **Regressione verificata** neutralizzando il guard: il test accetta `56.4090000000001`, cioè
+  esattamente la baseline che Sam Kuitert aveva preso nel log reale
+
+### Per chi entra
+
+**Y-17b va verificato sul campo.** Il fix è testato in isolamento ma non ancora su un replay: al
+prossimo Daytona controllare che le GTP (classe 4029, entrano al giro 5-7) prendano baseline
+intorno ai **100 s** invece che 56-89. Comando:
+```bash
+grep "Baseline Established" <DebugLog> | sed -E 's/.*;([0-9]+);.*Established;([^:]+): ([0-9.]+).*/lap \1 | \2 | \3/'
+```
+Atteso anche: `L_Pace` senza il crollo a 56, e `L_Rem` senza l'oscillazione 21.24 → 6.09.
+
+**Attenzione a un debito emerso e non chiuso:** lo stesso sfarfallio di `IsInPitLane` del giro 16 ha
+scritto `"PitDriveThroughTime": 0.666` nel database — un drive-through da 0.67 s non esiste. Non è
+stato tracciato dove quel campo venga consumato.
+
+**NON toccare:** Y-13 resta congelato (confermato race condition: `GapJump` 2/0/0 su tre
+riproduzioni della stessa telemetria).
+
+---
+
 ## [2026-08-23 15:10] claude → Misano ×2-3 diagnostico (passo 2 del percorso)
 
 **Task:** Y-20/Y-21 — consenso sui dati calibrati. È il **passo 1** del percorso concordato.
