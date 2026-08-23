@@ -31,6 +31,23 @@ namespace SimRIG
 
         public double LastLapStartTimeSec { get; set; } = -1.0;
 
+        /// <summary>
+        /// <c>LastLapStartTimeSec</c> è ancorato a un attraversamento del traguardo che abbiamo
+        /// davvero visto, e non al primo istante in cui la vettura è comparsa nella lista.
+        ///
+        /// Serve perché il primo ancoraggio cade a metà giro: una vettura che entra a gara in corso
+        /// viene vista per la prima volta in un punto qualunque del tracciato, e il tempo fino al
+        /// traguardo successivo è una **frazione di giro**, non un giro. Misurato sul replay Daytona
+        /// del 2026-08-23: le GTP (classe 4029) sono entrate al giro 5-7 e hanno preso baseline di
+        /// 56.4, 62.3, 64.4, 67.0 s contro i ~100 s reali — mentre LMP2 e GT3, presenti dal via,
+        /// avevano baseline corrette di 97-107 s.
+        ///
+        /// Il danno è permanente perché la baseline si sostituisce **solo con un valore più basso**
+        /// (<c>OpponentTracker.cs</c>, ramo "Baseline Reset (Improvement)"): i giri veri, essendo
+        /// più lenti di una frazione di giro, non qualificano mai.
+        /// </summary>
+        public bool HasWitnessedLapStart { get; set; } = false;
+
 
 
         public double LastValidSpeedKmh { get; set; }
@@ -200,6 +217,36 @@ namespace SimRIG
 
 
         public IReadOnlyDictionary<string, OpponentTelemetryData> TrackedOpponents => _telemetry;
+
+        /// <summary>
+        /// Il tempo misurato fra l'ancoraggio e adesso e' un giro vero?
+        ///
+        /// Lo e' solo se **abbiamo visto anche l'inizio** di quel giro. L'ancoraggio piazzato alla
+        /// prima comparsa di una vettura cade in un punto qualunque del tracciato, quindi il tempo
+        /// fino al traguardo successivo e' una frazione di giro — piu' breve del vero, e per questo
+        /// capace di avvelenare in modo permanente una baseline che si sostituisce solo al ribasso.
+        ///
+        /// Stesso principio gia' adottato altrove nel progetto: una misura che il tempo trascorso
+        /// non giustifica e' un artefatto (<c>TrackPositionValidator</c>, <c>GapJump</c>), e gli
+        /// outlap non entrano nelle medie (Y-11).
+        /// </summary>
+        public static bool CanMeasureLap(int lastLap, double lapStartClock, bool hasWitnessedLapStart)
+        {
+            return lastLap != -1 && lapStartClock > 0.0 && hasWitnessedLapStart;
+        }
+
+        /// <summary>
+        /// Il cambio di giro appena osservato era un attraversamento vero, quindi l'istante attuale
+        /// e' un ancoraggio valido per misurare il giro successivo?
+        ///
+        /// Alla prima comparsa (<paramref name="lastLapBeforeChange"/> == -1) non lo e': il
+        /// contatore differisce dal sentinella non perche' la vettura abbia tagliato il traguardo,
+        /// ma perche' l'abbiamo appena incontrata.
+        /// </summary>
+        public static bool AnchorIsGenuine(int lastLapBeforeChange)
+        {
+            return lastLapBeforeChange != -1;
+        }
 
         public double[] PlayerMicrosectorTimestamps { get; } = new double[100];
         private int _playerLastMicrosector = -1;
@@ -1210,7 +1257,10 @@ namespace SimRIG
 
                 if (rawCurrentLap != tData.LastLap)
                 {
-                    if (tData.LastLap != -1 && tData.LastLapStartTimeSec > 0)
+                    // Il primo cambio di giro dopo la comparsa non e' un giro: l'ancoraggio da cui
+                    // si misura cadeva a meta' tracciato, nell'istante in cui abbiamo visto la
+                    // vettura per la prima volta. Vedi HasWitnessedLapStart.
+                    if (CanMeasureLap(tData.LastLap, tData.LastLapStartTimeSec, tData.HasWitnessedLapStart))
                     {
                         double rawLapTime = Math.Abs(currentSessionClock - tData.LastLapStartTimeSec);
 
@@ -1462,6 +1512,8 @@ namespace SimRIG
                     }
 
                     tData.LastLapStartTimeSec = currentSessionClock;
+
+                    tData.HasWitnessedLapStart = AnchorIsGenuine(tData.LastLap);
 
                     tData.LastLap = rawCurrentLap;
 
