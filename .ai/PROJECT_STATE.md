@@ -8,11 +8,12 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-24T00:10:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-24T00:30:00Z
+task:       Y-23 — una permanenza di 0.7 s in corsia box non è una sosta; disciplina di
+            sovrascrittura su PitDriveThroughTime e PitTransitTime
+scope:      PitRadar.cs, User.PluginSdkDemo.Tests/**
+expires:    2026-08-24T07:00:00Z
 ```
 
 **Regole del lock**
