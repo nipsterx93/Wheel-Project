@@ -42,6 +42,69 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-23 12:40] claude → verifica sui replay (Misano prima, poi Daytona)
+
+**Task:** Y-16/Y-17/Y-18 — proiezioni gara ancorate al countdown reale, "fermo ai box" unificato
+**Commit:** `cb14f72` (lock) · `cc35f97` (Y-16+Y-17) · `cedc2aa` (Y-18)
+
+### Da dove è venuta la diagnosi
+
+Il primo replay Daytona (`20260823_095158`) aveva il `DebugLog` **vuoto**: i toggle di
+`LogManager` sono `false` di default (`LogManager.cs:112-120`) e le checkbox della tab Debug
+erano spente. Con i log accesi, il secondo replay (`20260823_104939`, gara completa fino alla
+bandiera) ha reso visibile `Results.LeaderEstimatedPace` — ed era impazzito: `120 → 62.4 → 56.391`
+congelato identico per 9 giri.
+
+**Attenzione per chi legge i log**: ogni riavvio del plugin crea un **file nuovo** col proprio
+timestamp; quello vecchio resta congelato. Non è più un file per modulo, è uno solo con la colonna
+`Module`.
+
+### Cosa è stato corretto
+
+Dettaglio completo in `PROJECT_STATE.md`, Y-16/Y-17/Y-18. In breve: `RaceLifeTimeLeftSec` non si
+ricostruisce più dai giri del leader ma si legge dal countdown di sessione, con il leader che pesa
+solo sulla frazione di giro che gli manca per tagliare. L'errore sul passo del leader passa da
+"proporzionale alla durata della gara" a "limitato a un giro".
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit code `0`, **125 `[PASS]`** (erano 111).
+
+### Stato
+- ✅ Compila — 0 errori (resta il `CS0219` preesistente in `ReplayBacktestIntegrationTest.cs:19`)
+- ✅ 125 test passano
+- ✅ **Regressioni verificate** neutralizzando un meccanismo alla volta (supplemento giro extra,
+  dwell sull'identità, limite fisico): ognuno rende rosso un test diverso e specifico
+
+### Per chi entra
+
+**Prossimo passo: riprodurre prima Misano, non Daytona.** Il valore vero è noto (26 giri) ed è
+monoclasse, quindi isola il fix dal multiclasse. Solo se Misano concorda si passa a Daytona.
+
+Cosa guardare nel `DebugLog`, riga `Race Projections Update`:
+
+| campo | atteso dopo il fix |
+|---|---|
+| `L_Pace` | stabile e plausibile per il circuito, niente salti a 56 s |
+| `P_Rem` | decrescente e monotono, senza risalite a metà gara |
+| `L_Rem + Lap` | vicino al totale reale già da metà gara, non solo nel finale |
+
+**Y-19 lasciato aperto di proposito** (tetto sul leader di classe): serve la posizione assoluta
+degli avversari e le convenzioni di conteggio giri di `GameReaderCommon.Opponent` non sono
+verificate. Va tarato sui log Daytona già in `Logs/`, dove il totale vero è noto — cablarlo alla
+cieca rischia un off-by-one che si propagherebbe silenziosamente in `FuelToAdd`.
+
+**Attenzione a:** `PitRadar.cs` usa **TAB**. Un Edit con spazi fallisce il match — è costato un
+tentativo anche in questo turno.
+
+---
+
 ## [2026-08-20 03:15] claude → prossima chat (correzione + insight sulla sottrazione)
 
 **Task:** nessuno — solo analisi su due osservazioni dell'utente, nessun codice toccato.
