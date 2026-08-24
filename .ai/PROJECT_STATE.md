@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-24T21:20:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-24T22:00:00Z
+task:       Y-26/Y-27 — consenso sui campi pit lane e su BaseCapacity (trovati da Antigravity)
+scope:      PitRadar.cs, OpponentTracker.cs, User.PluginSdkDemo.Tests/**
+expires:    2026-08-25T04:00:00Z
 ```
 
 **Regole del lock**
