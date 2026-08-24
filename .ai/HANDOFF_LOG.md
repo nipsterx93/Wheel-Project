@@ -42,6 +42,73 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-24 21:00] claude → chiunque riveda il lavoro (allineamento documentazione)
+
+**Task:** allineare la documentazione al codice. Nessun file di codice toccato.
+**Commit:** `eca0268` (lock) · questo
+
+Emerso da una domanda dell'utente — *"se facessi rivedere il lavoro agli altri agenti, avrebbero gli
+strumenti?"*. Verificato invece di assunto, e la risposta era **no**. Tre buchi, tutti miei:
+
+1. **`ARCHITECTURE.md` fermo al commit di setup** (`f526cb3`, 18 agosto), 61 commit indietro. Nessuno
+   dei **sette** moduli nuovi era nella mappa — non solo quelli recenti, anche
+   `StrategyGateHysteresis`, `PitLaneDetector`, `TrackPositionValidator`, `GeofenceCalibrationGate`
+   delle sessioni precedenti.
+2. **Tre turni senza voce di consegna** (Y-23, Y-24, Y-25 e le verifiche sul campo): lock rilasciato
+   senza scrivere l'handoff, contro quanto prescrive `CLAUDE.md`.
+3. **`Y-22` duplicato** in `PROJECT_STATE.md`: la riga vecchia "aperto" era rimasta sotto quella
+   nuova "risolto", in contraddizione.
+
+### Fatto
+
+- `ARCHITECTURE.md` — sezione **"Moduli di decisione, senza dipendenze SimHub"** con i sette file,
+  cosa fanno e quale punto Y li ha generati; più l'elenco dei predicati statici estratti dentro i
+  file grandi.
+- `ARCHITECTURE.md` — **ADR-004** (un fix non è chiuso finché il suo test non fallisce senza di lui)
+  e **ADR-005** (un campione singolo non è una misura). Formalizzano a posteriori i due criteri che
+  hanno guidato tutte le correzioni: senza, la tabella dei punti Y si legge come un elenco di
+  difetti scollegati invece che come un unico schema ricorrente.
+- `PROJECT_STATE.md` — rimosso il duplicato, tabella riordinata per numero (era in ordine di
+  inserimento, cioè al contrario), e aggiunta in testa la sezione **"Da dove partire"** con
+  l'ordine di lettura e i comandi di verifica.
+
+### Un dettaglio che vale la pena non perdere
+
+ADR-004 nasce da un errore vero commesso su **Y-25**: il test scritto per quel fix riproduceva la
+regola al proprio interno invece di chiamarla, e restava **verde anche neutralizzando il guard nel
+codice di produzione**. Se ne è accorto solo il passo di neutralizzazione. È la ragione per cui quel
+passo non va saltato: senza, avremmo chiuso un punto con un test che sembrava coprirlo e non copriva
+nulla.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit code `0`, **152 `[PASS]`**. Invariato — questo turno non tocca codice.
+
+### Stato
+- ✅ Solo documentazione · ✅ 152 test passano (invariati)
+
+### Per chi entra
+
+**Se devi riprendere il lavoro:** i punti aperti (Y-13, Y-14, Y-15, Fase 6) aspettano **dati**, non
+sviluppo. Servono replay con caratteristiche precise, indicate in ciascuna voce di
+`PROJECT_STATE.md`. I più utili: uno senza soste anomale a fine gara (Y-15), uno con una sosta
+*pulita* — solo gomme o solo benzina (Y-14).
+
+**Se devi rivedere il lavoro:** parti dalla sezione "Da dove partire" in cima a `PROJECT_STATE.md`.
+
+**Attenzione a una cosa che non è nei file:** `Logs/` è in `.gitignore`, quindi i log dei replay su
+cui poggiano quasi tutte le conclusioni **non sono nel repository**. Esistono solo sul disco
+dell'utente (`Logs/3 Run Test/`, `Logs/Daytona Run/`). Chi rivede da un clone pulito non può
+riprodurre le analisi: deve chiedere i file.
+
+---
+
 ## [2026-08-24 00:10] claude → prossimo replay Daytona (passi 1-3 chiusi)
 
 **Task:** Y-17b (causa vera del passo del leader), più esiti dei passi 2 e 3 del percorso
