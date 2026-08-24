@@ -128,6 +128,10 @@ di chi implementa, non uno più leggero — cambia solo cosa succede quando trov
 
 ## Riferimenti
 
+- `.ai/NEW_SESSION_PROMPT.md` — **da incollare all'apertura di una chat nuova.** Ricostruisce il
+  contesto senza dipendere dalla memoria della sessione precedente.
+- `.ai/plans/2026-08-24-roadmap.md` — **cosa fare adesso e in che ordine.** Il progetto è uscito
+  dalla fase reattiva: non proporre lavoro fuori da qui senza discuterlo.
 - `.ai/STRATEGY_ENGINE_GUIDE.md` — **come funziona il motore strategico, in parole povere.**
   Da leggere per primo se non si ha il contesto delle sessioni precedenti.
 - `.ai/PROJECT_STATE.md` — stato, lock, milestone, debiti noti

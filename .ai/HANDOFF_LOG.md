@@ -42,6 +42,90 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-24 22:30] claude → prossima sessione (Y-26/Y-27 + apertura Y-28)
+
+**Task:** chiudere le segnalazioni di Antigravity, e rispondere alla domanda dell'utente sulla
+calibrazione in Practice.
+**Commit:** `73a0618` (lock) · `c646d7b`
+
+### Fatto
+
+Y-27 chiuso, Y-26 chiuso a metà — il dettaglio è nella tabella di `PROJECT_STATE.md`. La parte
+che **non** si chiude con un fix è diventata **Y-28**, ed è una decisione di prodotto.
+
+### La domanda dell'utente, e la risposta ragionata
+
+> *"Il valore di geofence ottenuto nelle calibrazioni in Practice deve essere letto 3 volte come in
+> pista oppure basta una sola volta?"*
+
+**Risposta breve: una volta basta, ma solo se il plugin sa che è una calibrazione guidata — e oggi
+non lo sa.** È esattamente il nodo di Y-28.
+
+Il ragionamento, perché la decisione resti tracciabile:
+
+Il consenso a tre campioni (Y-21) non è nato per **precisione**. La precisione della misura è già
+ottima: tre riproduzioni dello stesso replay a Misano hanno dato `PitExitPct` entro **0.65 metri**.
+Un campione solo è quindi già accurato.
+
+Il consenso è nato per **rigettare gli intrusi**: il campione `0.963` prodotto dallo sfarfallio di
+`IsInPitLane` a Daytona, e il valore storico `0.1088` distante 148 m. Cioè osservazioni che *non
+erano* misure della corsia box.
+
+Ma quella famiglia di intrusi è già bloccata a monte da Y-23 (il guard sulla traversata): una
+"visita" che non percorre almeno 0.01 di giro non arriva nemmeno al consenso. Quindi, in una
+calibrazione **deliberata** dove il pilota percorre la corsia apposta, il consenso a tre sta
+proteggendo da un rischio già coperto — e in cambio costringe a rifare la procedura tre volte.
+
+C'è anche un precedente coerente nel progetto: `FuelFillRate` e `TyreChangeTime` si scrivono
+`Confirmed` da **una sola** osservazione guidata (`PitRadar.cs`, rami SplashAndDash e TyreChange).
+Il principio già adottato è *una procedura guidata è isolata per costruzione, quindi vale come
+misura*. La geofence dovrebbe seguire la stessa regola.
+
+**La differenza che rende la cosa non banale**, e per cui non l'ho implementata di mia iniziativa:
+le procedure guidate esistenti si **autoverificano** (chiedi esattamente 20 L e controlli di averne
+ricevuti 20). Un passaggio in corsia box non ha un controllo interno equivalente. Quindi propongo:
+
+- una calibrazione guidata scrive **subito** `Confirmed`, senza attendere tre passaggi;
+- se un passaggio **successivo** dà un valore fuori tolleranza, il plugin non lo scarta in silenzio
+  ma lo **segnala**: è il sintomo che qualcosa non torna, e l'utente deve saperlo.
+
+Resta il prerequisito tecnico: **serve che il plugin sappia di essere in calibrazione.** Oggi
+`CalibrationMode` viene *dedotto* dalla firma della richiesta (20 L esatti → SplashAndDash, 0 L +
+4 gomme → TyreChange), non dichiarato. Finché è così, non c'è modo di distinguere un passaggio
+deliberato da uno incidentale — ed è la stessa ragione per cui la parte residua di Y-26 non si
+chiude. Una modalità di calibrazione **esplicita** risolve entrambi.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit code `0`, **154 `[PASS]`**.
+
+### Stato
+- ✅ Compila — 0 errori · ✅ 154 test passano
+- ✅ **Regressione verificata** neutralizzando la mediana
+
+### Per chi entra
+
+**Il progetto ha cambiato fase.** Fino a qui il lavoro è stato *reattivo*: trovare e chiudere difetti
+emersi dai replay. Da adesso serve un piano, ed è in
+**`.ai/plans/2026-08-24-roadmap.md`** — leggerlo prima di decidere cosa fare.
+
+**Il prossimo passo non è codice**: è la decisione Y-28 sulla calibrazione guidata, che sblocca sia
+la parte residua di Y-26 sia il flusso Practice che l'utente ha chiesto.
+
+**Nota sull'utente, importante per come comunicare:** non legge codice e non ha modo di validare la
+matematica. Ha detto esplicitamente di sentirsi disorientato. Le conclusioni vanno date in italiano
+comune, ancorate a **cosa vede lui** (un numero sulla dash, un annuncio vocale, un consiglio di
+rifornimento), non alla struttura interna. Il suo contributo reale — e va chiesto — è procurare i
+replay giusti e dire quando qualcosa nel gioco non torna con quello che il plugin mostra.
+
+---
+
 ## [2026-08-24 21:10] antigravity -> chiunque prosegua il lavoro
 
 **Task:** Esecuzione revisione indipendente (2026-08-24-cross-agent-review-brief.md)
