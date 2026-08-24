@@ -95,6 +95,37 @@ Nell'handoff, perché io sia efficace:
 
 ---
 
+## Sessioni di revisione (Codex, Gemini, o una nuova chat senza memoria)
+
+Chi apre questo progetto per **rivedere** un lavoro invece di continuarlo segue lo stesso protocollo
+di chi implementa, non uno più leggero — cambia solo cosa succede quando trovi qualcosa.
+
+1. **Ordine di lettura obbligatorio**: `PROJECT_STATE.md` (lock + sezione "Da dove partire"),
+   poi `ARCHITECTURE.md` (mappa moduli + ADR — in particolare ADR-004 e ADR-005, che spiegano *come*
+   si verifica un fix in questo repo e *perché* i dati calibrati hanno la forma che hanno), poi le
+   ultime voci di `HANDOFF_LOG.md`.
+2. **Una review che non tocca codice non ha bisogno del lock.** Ma non è mai silenziosa: quando finisci,
+   scrivi comunque una voce in `HANDOFF_LOG.md` — anche solo "rivisto X, nessun problema trovato" è
+   informazione utile per chi entra dopo. Un'analisi senza traccia scritta è tempo perso per tutti
+   gli agenti successivi.
+3. **Se trovi un difetto**: non correggerlo di nascosto durante la review. Registralo — un nuovo `Y-NN`
+   in `PROJECT_STATE.md` se è un punto nuovo, un'annotazione su un ID esistente se ne mette in dubbio
+   la chiusura — poi o lo implementi tu prendendo il lock come da protocollo normale, o lo lasci
+   descritto per chi entra dopo. Le due cose non si accavallano mai nello stesso turno senza lock.
+4. **Ogni claim verificabile, non impressionistico.** "Sembra corretto" non è una conclusione
+   accettabile in questo repo — nemmeno da chi implementa (vedi ADR-004: un fix qui non è chiuso
+   finché il suo test non fallisce senza di lui). Una review vale quanto i riferimenti che porta:
+   comando esatto eseguito, `file:riga`, numero misurato invece di stimato.
+5. **`Logs/` è in `.gitignore`.** I replay su cui si basano molte delle conclusioni registrate in
+   `PROJECT_STATE.md` non sono nel repository — esistono solo sulla macchina dell'utente. Se la tua
+   sessione non ha accesso a quel filesystem, dillo esplicitamente invece di dare per buono un numero
+   che non puoi verificare, e chiedi all'utente i file se ti servono per confermare un claim specifico.
+6. **Firma i tuoi ritrovamenti**: prefisso agente nel commit (`[codex]`, `[antigravity]`) e nella voce
+   di `HANDOFF_LOG.md`, come già previsto per chi implementa — serve a distinguere chi ha verificato
+   cosa quando le sessioni si alternano senza canale diretto tra loro.
+
+---
+
 ## Riferimenti
 
 - `.ai/STRATEGY_ENGINE_GUIDE.md` — **come funziona il motore strategico, in parole povere.**
