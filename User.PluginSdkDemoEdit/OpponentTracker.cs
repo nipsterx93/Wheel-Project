@@ -256,6 +256,19 @@ namespace SimRIG
         private HashSet<string> _loggedOpponentFuelDetails = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private bool _liveFuelAvgLogged = false;
 
+        /// <summary>
+        /// Scarto entro cui due deduzioni della capacita' base parlano dello stesso serbatoio.
+        /// Un litro: sotto, e' rumore di lettura; sopra, e' un'altra vettura o un BoP diverso.
+        /// </summary>
+        public const double BaseCapacityAgreementLitres = 1.0;
+
+        /// <summary>
+        /// Consenso sulla capacita' base dedotta dal Player. Il campione arriva a ogni tick, quindi
+        /// ce ne sono molti: la mediana e' il filtro naturale. Vedi Y-27.
+        /// </summary>
+        private readonly CalibrationConsensus _baseCapacityConsensus =
+            new CalibrationConsensus(BaseCapacityAgreementLitres);
+
 
 
         public double ClassRaceStartingFuel { get; private set; } = 0.0;
@@ -399,11 +412,23 @@ namespace SimRIG
                         radar.SaveDatabase();
                         log.Log(LogModule.SYSTEM, LogType.EVENT, "Car Added to Database", $"{state.CarModel} | BaseCapacity: {calculatedBase:F2}L (learned from Player)");
                     }
-                    else if (Math.Abs(carRec.BaseCapacity - calculatedBase) > 0.5)
+                    else
                     {
-                        carRec.BaseCapacity = calculatedBase;
-                        radar.SaveDatabase();
-                        log.Log(LogModule.SYSTEM, LogType.EVENT, "Car Updated in Database", $"{state.CarModel} | BaseCapacity: {calculatedBase:F2}L (learned from Player)");
+                        // Il campione arriva a **ogni tick**, ed e' un rapporto fra due letture di
+                        // telemetria (MaxFuelCapacity / BoP): una lettura transitoria sbagliata
+                        // riscriveva subito il database. Prima l'unica condizione era uno scarto
+                        // > 0.5 L, che non e' un filtro ma una soglia di attivazione — Y-27,
+                        // trovato da Antigravity in revisione.
+                        _baseCapacityConsensus.Add(calculatedBase);
+
+                        double consolidated = _baseCapacityConsensus.Value;
+                        if (_baseCapacityConsensus.HasConsensus
+                            && Math.Abs(carRec.BaseCapacity - consolidated) > BaseCapacityAgreementLitres)
+                        {
+                            carRec.BaseCapacity = consolidated;
+                            radar.SaveDatabase();
+                            log.Log(LogModule.SYSTEM, LogType.EVENT, "Car Updated in Database", $"{state.CarModel} | BaseCapacity: {consolidated:F2}L (mediana su {_baseCapacityConsensus.AgreeingCount}/{_baseCapacityConsensus.SampleCount} campioni concordi)");
+                        }
                     }
                 }
             }

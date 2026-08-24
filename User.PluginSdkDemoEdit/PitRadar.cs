@@ -319,6 +319,14 @@ namespace SimRIG
 
 	// Consenso per sessione. Le geofence si osservano una volta per sosta, il limite di pit lane
 	// una volta per sosta di ogni avversario — da cui la separazione per classe.
+	/// <summary>
+	/// Scarto entro cui due misure di tempo in corsia box parlano della stessa corsia, in secondi.
+	/// Misurato: il transito di Misano su tre riproduzioni ha dato 36.017 / 36.017 / 35.933, cioe'
+	/// 0.084 s di dispersione. Due secondi sono venti volte quel margine.
+	/// </summary>
+	public const double PitTimingAgreementSec = 2.0;
+
+	private readonly CalibrationConsensus _accDecConsensus = new CalibrationConsensus(PitTimingAgreementSec);
 	private readonly CalibrationConsensus _entryConsensus = new CalibrationConsensus(GeofenceAgreementPct);
 	private readonly CalibrationConsensus _exitConsensus = new CalibrationConsensus(GeofenceAgreementPct);
 	private readonly Dictionary<string, CalibrationConsensus> _speedLimitConsensus =
@@ -636,11 +644,30 @@ namespace SimRIG
 		}
 	}
 
+	/// <summary>
+	/// Registra il tempo di accelerazione/decelerazione in ingresso e uscita dai box, osservato
+	/// da un avversario.
+	///
+	/// Osservazione **incidentale**, non procedura guidata: arriva a ogni sosta di ogni avversario,
+	/// quindi i campioni sono molti e passa dal consenso. Prima si scriveva il primo valore e
+	/// bastava (`if (radar.PitInOutAccDecTime == 0.0)` in `OpponentTracker`), quindi un singolo
+	/// transito anomalo restava per sempre — Y-26, trovato da Antigravity in revisione.
+	/// </summary>
 	public void UpdatePitInOutAccDecTime(double val)
 	{
-		if (_currentTrack != null && val > 0.0)
+		if (_currentTrack == null || val <= 0.0) return;
+
+		_accDecConsensus.Add(val);
+
+		// Si scrive con il consenso, oppure quando non c'e' ancora nessun valore: su una pista mai
+		// vista un dato debole vale piu' di nessun dato. Stesso criterio di PitLaneSpeedLimit.
+		bool haveNothingYet = _currentTrack.PitInOutAccDecTime <= 0.0;
+		if (!_accDecConsensus.HasConsensus && !haveNothingYet) return;
+
+		double consolidated = _accDecConsensus.Value;
+		if (_currentTrack.PitInOutAccDecTime != consolidated)
 		{
-			_currentTrack.PitInOutAccDecTime = val;
+			_currentTrack.PitInOutAccDecTime = consolidated;
 			SaveDatabase();
 		}
 	}
@@ -1272,7 +1299,11 @@ namespace SimRIG
 						log.Log(LogModule.RADAR, LogType.EVENT, "Fuel Fill Rate Calibrated", $"{num4:F2} L/s | confidence=Confirmed");
 					}
 				}
-				if (_currentTrack.PitTransitTime == 0.0 && num2 > MinimumCredibleTransitSec() && num2 > 0.5)
+				// Procedura **guidata**: il pilota ha deliberatamente chiesto questa calibrazione,
+				// quindi rifarla deve poter migliorare una misura precedente. Prima c'era
+				// `PitTransitTime == 0.0`, che congelava per sempre anche una calibrazione riuscita
+				// male (Y-26). Il pavimento di plausibilita' protegge comunque dai valori assurdi.
+				if (num2 > MinimumCredibleTransitSec() && num2 > 0.5)
 				{
 					_currentTrack.PitTransitTime = num2;
 					flag = true;
@@ -1288,7 +1319,7 @@ namespace SimRIG
 					flag = true;
 					log.Log(LogModule.RADAR, LogType.EVENT, "Tyre Change Time Calibrated", $"{_pitBoxTimeCache:F1}s | confidence=Confirmed");
 				}
-				if (_currentTrack.PitTransitTime == 0.0 && num2 > MinimumCredibleTransitSec() && num2 > 0.5)
+				if (num2 > MinimumCredibleTransitSec() && num2 > 0.5)
 				{
 					_currentTrack.PitTransitTime = num2;
 					flag = true;
@@ -1304,9 +1335,13 @@ namespace SimRIG
 				// valore come margine per l'imprecisione della geofence.
 				if (_currentTrack.PitDriveThroughTime == 0.0 && num > MinimumCredibleTransitSec() && num > 0.5)
 				{
-					// Il test `== 0.0` resta: qui significa "la procedura guidata si esegue una
-					// volta", non "il primo valore vince per sempre". A rendere permanente un dato
-					// sbagliato era il fatto che uno spazzatura potesse entrarci; ora non puo' piu'.
+					// Il test `== 0.0` resta, ma per un motivo diverso dalle due procedure guidate
+					// qui sopra: DriveThrough e' la modalita' di **ripiego** — ci si finisce ogni
+					// volta che si entra ai box senza la firma di fuel/gomme, quindi anche in gara.
+					// Senza il lock, un transito qualunque riscriverebbe il dato di calibrazione.
+					// Y-26 resta quindi aperto per questo campo e per il ramo StopAndGo: chiuderlo
+					// richiede distinguere una calibrazione guidata da un transito incidentale, che
+					// oggi il codice non sa fare — e' una decisione di prodotto, non un fix.
 					_currentTrack.PitDriveThroughTime = num;
 					flag = true;
 					log.Log(LogModule.RADAR, LogType.EVENT, "Drive-Through Time Calibrated", num.ToString("F2"));

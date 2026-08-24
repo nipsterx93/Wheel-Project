@@ -48,6 +48,9 @@ namespace User.PluginSdkDemo.Tests
             Test_SeedIgnoresNonPositiveCount();
             Test_LegacyRecordGetsSeedCountOnMigration();
 
+            Test_PitTimingToleranceSeparatesRealFromOutlier();
+            Test_BaseCapacityToleranceSeparatesRealFromOutlier();
+
             Console.WriteLine("[TEST SUCCESS] All Calibration Consensus Tests Passed!");
         }
 
@@ -272,6 +275,47 @@ namespace User.PluginSdkDemo.Tests
             Assert(empty.Tracks[0].GeofenceSampleCount == 0,
                    "una pista mai calibrata resta a zero");
             Pass("Migrazione: i record legacy nascono consolidati e la migrazione e' idempotente");
+        }
+
+        // ------------------------------------------------- Y-26 / Y-27, tolleranze nuove
+
+        private static void Test_PitTimingToleranceSeparatesRealFromOutlier()
+        {
+            // Y-26. La tolleranza sui tempi in corsia box deve essere larga abbastanza da far
+            // concordare misure vere e stretta abbastanza da isolare un transito anomalo.
+            // Dispersione reale misurata a Misano su tre riproduzioni: 36.017 / 36.017 / 35.933.
+            var consensus = new CalibrationConsensus(PitRadar.PitTimingAgreementSec);
+            consensus.Add(36.017);
+            consensus.Add(36.017);
+            consensus.Add(35.933);
+
+            Assert(consensus.HasConsensus, "tre misure reali dello stesso transito devono concordare");
+            Assert(consensus.AgreeingCount == 3, "e concordare tutte e tre");
+
+            // Un transito rallentato da una coda ai box: fuori tolleranza, non sposta la mediana.
+            consensus.Add(52.400);
+            AssertClose(consensus.Value, 36.017, "un transito anomalo non scalza la mediana");
+            Assert(consensus.AgreeingCount == 3, "e resta isolato");
+            Pass("Y-26: la tolleranza sui tempi in corsia isola un transito anomalo");
+        }
+
+        private static void Test_BaseCapacityToleranceSeparatesRealFromOutlier()
+        {
+            // Y-27. Il campione arriva a ogni tick ed e' un rapporto fra due letture di telemetria:
+            // una lettura transitoria sbagliata riscriveva subito il database.
+            var consensus = new CalibrationConsensus(OpponentTracker.BaseCapacityAgreementLitres);
+
+            // Letture normali della Porsche 992 GT3 R, che il database ha a 99.94 L.
+            consensus.Add(99.94);
+            consensus.Add(99.94);
+            consensus.Add(100.10);
+            Assert(consensus.HasConsensus, "tre letture coerenti consolidano la capacita'");
+
+            // Un tick con MaxFuelCapacity ancora a zero o dimezzato: prima vinceva subito,
+            // perche' l'unica condizione era uno scarto > 0.5 L.
+            consensus.Add(49.97);
+            AssertClose(consensus.Value, 99.94, "una lettura transitoria non riscrive il serbatoio");
+            Pass("Y-27: una lettura transitoria del serbatoio non vince piu' da sola");
         }
     }
 }
