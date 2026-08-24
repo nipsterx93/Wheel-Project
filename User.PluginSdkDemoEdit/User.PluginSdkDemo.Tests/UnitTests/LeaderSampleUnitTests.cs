@@ -30,6 +30,7 @@ namespace User.PluginSdkDemo.Tests
             Test_LeaderOnTheLineIsAccepted();
             Test_NormalSamplesAreAccepted();
             Test_LapsRemainingWouldCollapseWithoutTheGuard();
+            Test_HeldLapCountSurvivesABlankRun();
 
             Console.WriteLine("[TEST SUCCESS] All Leader Sample Tests Passed!");
         }
@@ -81,6 +82,34 @@ namespace User.PluginSdkDemo.Tests
             Assert(withBlankSample - correct > 11.0,
                    "lo scarto e' di oltre undici giri: non e' un arrotondamento");
             Pass("Senza il guard, L_Rem passa da 18.65 a 30.00");
+        }
+
+        private static void Test_HeldLapCountSurvivesABlankRun()
+        {
+            // Y-25: la stessa regola applicata alla sorgente, non solo al calcolo derivato.
+            // Nel replay Daytona 231 tick su 534 (43%) avevano LapsComp=0: la proprieta'
+            // SimRIG.Session.LeaderRaceLapsCompleted, che finisce direttamente sulla dashboard,
+            // lampeggiava a zero quasi meta' del tempo.
+            //
+            // Riproduce la regola di tenuta: campione buono -> si aggiorna; campione vuoto -> si
+            // tiene l'ultimo buono.
+            int lastGood = -1;
+            int[] rawLapsCompleted = { 11, 0, 0, 0, 12, 0, 13 };
+            double[] rawPositions = { 0.34, 0.0, 0.0, 0.0, 0.51, 0.0, 0.09 };
+            int[] expected = { 11, 11, 11, 11, 12, 12, 13 };
+
+            for (int i = 0; i < rawLapsCompleted.Length; i++)
+            {
+                int shown = RaceAnalyzer.HoldLeaderLapsCompleted(
+                    rawLapsCompleted[i], rawPositions[i], ref lastGood);
+
+                Assert(shown == expected[i],
+                       $"tick {i}: atteso {expected[i]}, ottenuto {shown}");
+            }
+
+            // Il conteggio non deve mai tornare indietro durante la raffica di record vuoti.
+            Assert(expected[3] >= expected[0], "il conteggio tenuto non regredisce");
+            Pass("Il conteggio giri del leader non lampeggia a zero sui record vuoti");
         }
     }
 }

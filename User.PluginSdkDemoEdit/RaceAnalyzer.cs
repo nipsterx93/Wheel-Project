@@ -1,4 +1,4 @@
-// -------------------------------------------------------------------------
+﻿// -------------------------------------------------------------------------
 
 // FILE: RaceAnalyzer.cs
 
@@ -100,6 +100,13 @@ namespace SimRIG
         /// <see cref="IsLeaderSampleUsable"/>.
         /// </summary>
         private double _lastGoodLeaderAbsolutePos = -1.0;
+
+        /// <summary>
+        /// Ultimo conteggio giri credibile del leader. Come
+        /// <see cref="_lastGoodLeaderAbsolutePos"/>, ma alla sorgente: qui protegge la proprieta'
+        /// esposta alla dashboard, non solo il calcolo derivato.
+        /// </summary>
+        private int _lastGoodLeaderLapsCompleted = -1;
 
         /// <summary>
         /// Protegge la media del passo del leader dai campioni raccolti mentre l'identita' del P1
@@ -387,12 +394,15 @@ namespace SimRIG
             Results.RaceLapsCompleted = Math.Max(0, state.CurrentLap - 1);
 
             int leaderCurrentLap = state.CurrentLap;
+            // Se il Player e' lui stesso il leader, la posizione del leader e' la sua.
+            double leaderTrackPosPct = state.TrackPositionPercent;
             if (state.Position != 1)
             {
                 var overallLeader = state.Opponents.FirstOrDefault(o => o.Position == 1);
                 if (overallLeader != null)
                 {
                     leaderCurrentLap = overallLeader.CurrentLap ?? state.CurrentLap;
+                    leaderTrackPosPct = overallLeader.TrackPositionPercent ?? 0.0;
                 }
                 else
                 {
@@ -400,7 +410,15 @@ namespace SimRIG
                 }
             }
 
-            Results.LeaderRaceLapsCompleted = Math.Max(0, leaderCurrentLap - 1);
+            int resolvedLeaderLaps = Math.Max(0, leaderCurrentLap - 1);
+
+            // Stesso record vuoto che falsava leaderAbsolutePos (Y-24), qui alla sorgente: il
+            // conteggio giri del leader va a zero per circa il 43% dei tick nel replay Daytona.
+            // Il calcolo derivato era gia' protetto, ma questa proprieta' finisce **direttamente**
+            // sulla dashboard (SimRIG.Session.LeaderRaceLapsCompleted), dove lampeggiava a zero.
+            // Si tiene l'ultimo conteggio credibile finche' il record non torna popolato.
+            Results.LeaderRaceLapsCompleted = HoldLeaderLapsCompleted(
+                resolvedLeaderLaps, leaderTrackPosPct, ref _lastGoodLeaderLapsCompleted);
 
 
 
@@ -1237,6 +1255,25 @@ namespace SimRIG
             return leaderLapsCompleted > 0;
         }
 
+        /// <summary>
+        /// Restituisce il conteggio giri del leader da esporre, tenendo l'ultimo credibile quando
+        /// il campione e' vuoto. Statico e con lo stato passato per riferimento perche' i test
+        /// esercitino **questa** logica invece di riprodurla: la prima versione del test la
+        /// ricopiava, e restava verde anche neutralizzando il guard nel codice di produzione.
+        /// </summary>
+        public static int HoldLeaderLapsCompleted(int rawLapsCompleted, double leaderTrackPositionPct,
+                                                  ref int lastGoodLapsCompleted)
+        {
+            if (!IsLeaderSampleUsable(rawLapsCompleted, leaderTrackPositionPct)
+                && lastGoodLapsCompleted >= 0)
+            {
+                return lastGoodLapsCompleted;
+            }
+
+            lastGoodLapsCompleted = rawLapsCompleted;
+            return rawLapsCompleted;
+        }
+
         private double UpdateLatchedLaps(double rawProjectedPos, double currentLatchedLaps, bool allowDecrease = true)
         {
             if (currentLatchedLaps == 0.0) return Math.Ceiling(rawProjectedPos);
@@ -1268,6 +1305,7 @@ namespace SimRIG
             _smoothedLeaderPace = 0.0;
             _leaderPaceFilter.Reset();
             _lastGoodLeaderAbsolutePos = -1.0;
+            _lastGoodLeaderLapsCompleted = -1;
 
             _lastEvaluatedLap = -1;
 
