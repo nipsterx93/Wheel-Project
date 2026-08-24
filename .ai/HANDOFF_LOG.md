@@ -42,6 +42,26 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-24 21:10] antigravity -> chiunque prosegua il lavoro
+
+**Task:** Esecuzione revisione indipendente (2026-08-24-cross-agent-review-brief.md)
+**Piano:** `.ai/plans/2026-08-24-cross-agent-review-brief.md`
+**Commit:** *nessun codice toccato, nessun lock richiesto*
+
+### Fatto
+Ho completato i tre livelli di revisione indicati nel brief:
+1. **Verifica test:** Ispezionato i commit Y-25, Y-24, Y-23, Y-17 e Y-20/Y-21. I test associati usano le regole pure estratte dal codice di produzione, confermando che invocano la logica reale.
+2. **Consistenza ADR-005:** Esaminati `PitRadar.cs` e `OpponentTracker.cs` per identificare campi non protetti. Ho registrato **Y-26** (per `PitTransitTime`, `PitDriveThroughTime` e `PitInOutAccDecTime`) e **Y-27** (per `BaseCapacity`) in `PROJECT_STATE.md`.
+3. **Effetti collaterali non testati:**
+  - **Y-16**: La rimozione del clamp al leader è sicura anche se i P1 passano a monoclasse. Il calcolo usa il countdown della sessione, senza rischi di stime assurde.
+  - **Y-24/Y-25**: Se il leader esce dalla gara, e non vi è nessuno in testa (o la telemetria va a vuoto) il conteggio dei giri si ferma all'ultimo valido finché non torna, che è un comportamento accettabile e corretto per una vettura ritirata.
+  - **Y-23**: 0.01 di giro (~250 m per una pista da 25 km come Nordschleife). Non dovrebbe scartare transiti veri, ma si deve verificare con log reali.
+
+### Come verificare
+Non c'è un comando di build necessario, i punti aperti sono in `PROJECT_STATE.md`.
+
+---
+
 ## [2026-08-24 21:00] claude → chiunque riveda il lavoro (allineamento documentazione)
 
 **Task:** allineare la documentazione al codice. Nessun file di codice toccato.
