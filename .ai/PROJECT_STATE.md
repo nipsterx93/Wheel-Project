@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-24T20:30:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-24T21:00:00Z
+task:       Allineare la documentazione al codice: mappa moduli, consegne mancanti, riordino
+scope:      .ai/ARCHITECTURE.md, .ai/PROJECT_STATE.md, .ai/HANDOFF_LOG.md — nessun file di codice
+expires:    2026-08-25T03:00:00Z
 ```
 
 **Regole del lock**
