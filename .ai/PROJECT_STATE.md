@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-24T02:00:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-24T20:00:00Z
+task:       Y-25 — LeaderRaceLapsCompleted lampeggia a zero sui record vuoti del leader
+scope:      RaceAnalyzer.cs, User.PluginSdkDemo.Tests/**
+expires:    2026-08-25T02:00:00Z
 ```
 
 **Regole del lock**
