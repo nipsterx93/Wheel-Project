@@ -8,11 +8,12 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-25T12:00:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-25T14:00:00Z
+task:       Y-30 — frasi dell ingegnere: tono pit wall, varianti per le ripetizioni
+scope:      PitWallLanguage.cs, CalibrationCascade.cs, CalibrationCascadeRunner.cs,
+            DataPluginDemo.cs, Tests/**
+expires:    2026-08-25T22:00:00Z
 ```
 
 **Regole del lock**
