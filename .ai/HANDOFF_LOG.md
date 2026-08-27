@@ -42,6 +42,78 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-25 16:00] claude → nuova chat: analisi dei replay Daytona
+
+**Task:** Y-30 — riscrittura delle frasi dell'ingegnere; poi cambio chat
+**Commit:** `d409058` (lock) · `9c79ece` · `bb6a957` · `9b02f82`
+
+### Fatto
+
+Le frasi di calibrazione parlavano dal punto di vista del software ("ci servono dati per i calcoli",
+tre volte su sette) e usavano gergo da menu (ALL4, FuelToAdd, DriveThrough). Riscritte in tono pit
+wall: il gesto prima del motivo, e il motivo **operativo** ("cronometro i meccanici").
+
+Tre scelte che vale la pena non rifare da capo:
+
+- **Frasi neutre, apertura separata.** La cascata salta i passi già noti, quindi *qualunque* passo
+  può essere il primo: un "ora" o un "ultima" suonerebbe come se ci fosse stato qualcosa prima.
+  Le frasi sono scritte senza parole di continuità, e una sola apertura (`CALIB_INTRO`) le
+  contestualizza al primo annuncio — una chiave in più invece di due versioni di ognuna.
+- **Verbi variati** sul gesto che spetta all'utente (seleziona e conferma / chiedi / manda la
+  richiesta / passa la richiesta): ripetere "imposta e invia" a ogni passo ricadeva nello stesso
+  automatismo che si voleva evitare.
+- **Solleciti progressivamente più asciutti** (`_R1`, `_R2`) invece della stessa frase ripetuta.
+  Ripetizioni scese da 3 a 2, cioè tre annunci in tutto per passo.
+
+`CALIB_SG_REQ` rimosso: orfano dalla vecchia catena di `if`, la cascata non chiede più stop and go.
+
+### Il difetto che conta ricordare
+
+**Il progetto ha SETTE lingue** (EN, IT, DE, ES, FR, NL, PT), non tre. Le chiavi introdotte con la
+cascata il giorno prima erano finite solo in EN/IT/DE. `GetPhrase` restituisce `""` per una chiave
+assente e `TriggerRadioVoice` esce subito: un utente spagnolo, francese, olandese o portoghese non
+avrebbe sentito **nulla** su metà dei passi, senza nessun errore visibile.
+
+C'è ora un test che verifica ogni chiave in ogni lingua e nomina quale manca dove. Ne ha trovato
+subito un secondo mentre lo scrivevo: `CALIB_NEED_LAP` non seguiva la convenzione `_REQ` delle
+altre, quindi `VoiceKeyFor` ne componeva una inesistente — anche quella silenziosa.
+
+**Chi aggiunge una frase deve metterla in tutte e sette.** Non è ovvio guardando il file: i blocchi
+lingua sono lunghi e distanti fra loro.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit code `0`, **186 `[PASS]`**.
+
+### Stato
+- ✅ Compila — 0 errori · ✅ 186 test passano
+- ✅ Regressione verificata rimuovendo una traduzione portoghese: il test nomina chiave e lingua
+
+### Per chi entra — il lavoro proposto per la chat nuova
+
+**Analizzare i replay Daytona senza soste anomale**, già copiati dall'utente nella cartella Replay
+di SimHub. Servono a chiudere due punti fermi da giorni:
+
+| punto | cosa serve dal replay |
+|---|---|
+| **Y-15** | Una gara **senza** le due soste finali anomale, per confrontare `FuelToAdd` consigliato e litri realmente imbarcati a fine gara |
+| **Y-14** | Una sosta **pulita** — solo gomme, oppure solo benzina — per il tempo gomme |
+
+Sul carburante sappiamo già cosa cercare: la raccomandazione è congelata quando parte la macro, ma
+il consumo continua fino a che l'auto si ferma. Nel replay del 23/08 erano ~2 L su 32, ed è
+esattamente il carburante del giro d'ingresso.
+
+**La cascata di calibrazione (Y-28/Y-30) è completa ma mai girata in una Practice reale.** L'utente
+conta di provarla nel weekend. Non serve toccarla nel frattempo.
+
+---
+
 ## [2026-08-25 12:00] claude → prima sessione di Practice reale
 
 **Task:** Y-28, cascata di calibrazione guidata — tutte le fasi del piano

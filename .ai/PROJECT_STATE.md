@@ -32,7 +32,7 @@ expires:    —
 
 Se devi **rivedere il lavoro** invece di continuarlo, questo è il percorso più corto.
 
-**Cosa è cambiato dal setup (2026-08-18) a oggi:** 21 punti aperti, di cui 17 chiusi. Il filo
+**Cosa è cambiato dal setup (2026-08-18) a oggi:** 30 punti aperti, di cui 26 chiusi. Il filo
 conduttore è uno solo, ed è più interessante dei singoli difetti: quasi tutti erano **un campione
 singolo non verificato che si cristallizza in un dato persistente**. Cambia solo quale campione
 vince — il primo (`PitExitPct` congelato a 0.1088 per settimane), l'ultimo (`PitLaneSpeedLimit`
@@ -49,7 +49,7 @@ poteva più correggere). Il rimedio comune è in ADR-005.
    il ragionamento e i numeri, non solo il cosa.
 4. `.ai/HANDOFF_LOG.md` dall'alto — solo se serve la cronologia dei turni.
 
-**Come è stato verificato tutto:** build 0 errori, **152 test PASS** (erano 111 al setup), e per ogni
+**Come è stato verificato tutto:** build 0 errori, **186 test PASS** (erano 111 al setup), e per ogni
 correzione la **regressione neutralizzata** — si disattiva il fix e si controlla che il test diventi
 rosso. I casi di regressione usano i numeri veri presi dai log dei replay, non valori inventati.
 

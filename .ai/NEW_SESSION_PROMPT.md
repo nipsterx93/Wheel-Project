@@ -22,7 +22,7 @@ LEGGI IN QUESTO ORDINE, SENZA SALTARE:
 
 2. .ai/PROJECT_STATE.md
    Parti dal blocco LOCK (se owner non è NONE e non sei tu, NON tocchi codice), poi la sezione
-   "Da dove partire", poi la tabella dei punti Y-1…Y-28: è lo stato di ogni questione aperta e
+   "Da dove partire", poi la tabella dei punti Y-1…Y-30: è lo stato di ogni questione aperta e
    chiusa, con commit e numeri misurati.
 
 3. .ai/plans/2026-08-24-roadmap.md
