@@ -142,6 +142,7 @@
     <Compile Include="RaceTimeProjection.cs" />
     <Compile Include="CalibrationConsensus.cs" />
     <Compile Include="PlayerPitSpeedObserver.cs" />
+    <Compile Include="CalibrationCascade.cs" />
     <Compile Include="LeaderPaceFilter.cs" />
     <Compile Include="GeofenceCalibrationGate.cs" />
     <Compile Include="SectorTracker.cs" />

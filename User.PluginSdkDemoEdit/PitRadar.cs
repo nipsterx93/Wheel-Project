@@ -403,6 +403,38 @@ namespace SimRIG
 		}
 	}
 
+	/// <summary>
+	/// Cosa manca per la combinazione Track+Class corrente, nella forma che la cascata consuma.
+	///
+	/// Fotografia del database, non stato: si ricalcola a ogni richiesta, cosi' la cascata non puo'
+	/// mai disallinearsi da cio' che e' realmente memorizzato — e' il motivo per cui una cascata
+	/// interrotta a meta' riprende correttamente senza che nessuno debba ricordarsene.
+	/// </summary>
+	public CalibrationNeeds GetCalibrationNeeds()
+	{
+		var needs = default(CalibrationNeeds);
+		if (_currentTrack == null || _currentClass == null) return needs;
+
+		needs.NeedsGeofence = !IsGeofenceCalibrated || _currentTrack.PitDriveThroughTime <= 0.0;
+		needs.NeedsTransit = _currentTrack.PitTransitTime <= 0.0 || _currentTrack.PitInOutAccDecTime <= 0.0;
+		needs.NeedsFuelRate = _currentClass.FuelFillRate <= 0.0;
+		needs.NeedsTyreTime = _currentClass.TyreChangeTime <= 0.0;
+
+		// I moltiplicatori si possono chiedere solo dopo che All4 e' noto: senza denominatore non
+		// c'e' rapporto da calcolare.
+		bool all4Known = _currentClass.TyreChangeTime > 0.0;
+		needs.NeedsTyreHalfMultiplier = all4Known && _currentClass.TyreChangeMultiplierHalf <= 0.0;
+		needs.NeedsTyreSingleMultiplier = all4Known && _currentClass.TyreChangeMultiplierSingle <= 0.0;
+
+		return needs;
+	}
+
+	/// <summary>Il gate autorizza la calibrazione, cioe' c'e' stato un tragitto genuino in pista.</summary>
+	public bool HasGenuineTrackSample
+	{
+		get { return _geofenceGate.HasGenuineTrackSample; }
+	}
+
 	/// <summary>Moltiplicatore misurato per due gomme, 0 se mai calibrato. Vedi Y-28.</summary>
 	public double CalibratedTyreMultiplierHalf
 	{

@@ -49,6 +49,16 @@ namespace User.PluginSdkDemo.Tests
             Test_LimiterOffNeverObserves();
             Test_ImplausibleSpeedsAreIgnored();
 
+            // Fasi 1 e 2
+            Test_OnlyPracticeAndTestGuideCalibration();
+            Test_GenuineLapComesBeforeEverything();
+            Test_CascadeOrderIsDriveThroughFuelThenTyres();
+            Test_Regression_SpaCaseKnownClassNewTrack();
+            Test_KnownTrackNewClassSkipsStraightToTyres();
+            Test_MultipliersWaitForTheirDenominator();
+            Test_NothingMissingMeansSilence();
+            Test_CascadeToleratesDeviation();
+
             // Fase 5
             Test_Regression_MeasuredMultiplierReplacesTheAssumedHalf();
             Test_MultiplierRejectsUnusableMeasurements();
@@ -229,6 +239,175 @@ namespace User.PluginSdkDemo.Tests
                 Assert(!fast.Update(true, 200.0, t), "200 km/h non e' un limite di corsia box");
             }
             Pass("Le velocita' implausibili non producono osservazioni");
+        }
+
+        // ------------------------------------------------- Fasi 1 e 2
+
+        /// <summary>Tutto da calibrare: il caso di un circuito e una classe mai visti.</summary>
+        private static CalibrationNeeds Everything()
+        {
+            return new CalibrationNeeds
+            {
+                NeedsGeofence = true,
+                NeedsTransit = true,
+                NeedsFuelRate = true,
+                NeedsTyreTime = true,
+                NeedsTyreHalfMultiplier = true,
+                NeedsTyreSingleMultiplier = true
+            };
+        }
+
+        private static void Test_OnlyPracticeAndTestGuideCalibration()
+        {
+            // Non e' una domanda sulla validita' del dato — quella vale in qualunque sessione — ma
+            // sull'opportunita': a meta' gara l'ingegnere non deve chiedere un drive-through.
+            Assert(!CalibrationCascade.IsCalibrationSession(true, false), "in gara mai");
+            Assert(!CalibrationCascade.IsCalibrationSession(false, true), "in qualifica mai");
+            Assert(CalibrationCascade.IsCalibrationSession(false, false),
+                   "practice e test sono 'ne' gara ne' qualifica'");
+            Pass("La cascata parla solo fuori da gara e qualifica");
+        }
+
+        private static void Test_GenuineLapComesBeforeEverything()
+        {
+            // In Practice si parte fermi in piazzola: un ingresso ai box che non arrivi da un
+            // tragitto vero registrerebbe la posizione della piazzola invece dell'ingresso corsia.
+            Assert(CalibrationCascade.NextStep(Everything(), false) == CalibrationStep.NeedGenuineLap,
+                   "senza un giro vero non si chiede altro");
+
+            Assert(CalibrationCascade.NextStep(Everything(), true) == CalibrationStep.DriveThrough,
+                   "fatto il giro, si comincia");
+            Pass("Prima di ogni calibrazione serve un giro genuino");
+        }
+
+        private static void Test_CascadeOrderIsDriveThroughFuelThenTyres()
+        {
+            var needs = Everything();
+
+            Assert(CalibrationCascade.NextStep(needs, true) == CalibrationStep.DriveThrough,
+                   "prima il drive-through");
+
+            needs.NeedsGeofence = false;
+            Assert(CalibrationCascade.NextStep(needs, true) == CalibrationStep.FuelOnlyStop,
+                   "poi la sosta carburante");
+
+            needs.NeedsTransit = false;
+            needs.NeedsFuelRate = false;
+            Assert(CalibrationCascade.NextStep(needs, true) == CalibrationStep.TyreStopAll4,
+                   "poi le quattro gomme");
+
+            needs.NeedsTyreTime = false;
+            Assert(CalibrationCascade.NextStep(needs, true) == CalibrationStep.TyreStopHalf,
+                   "poi due gomme");
+
+            needs.NeedsTyreHalfMultiplier = false;
+            Assert(CalibrationCascade.NextStep(needs, true) == CalibrationStep.TyreStopSingle,
+                   "infine una gomma");
+
+            needs.NeedsTyreSingleMultiplier = false;
+            Assert(CalibrationCascade.NextStep(needs, true) == CalibrationStep.None,
+                   "finito, silenzio");
+            Pass("L'ordine della cascata e' drive-through, carburante, gomme");
+        }
+
+        private static void Test_Regression_SpaCaseKnownClassNewTrack()
+        {
+            // Il caso descritto dall'utente: GT3 gia' calibrate altrove, si arriva a Spa che e'
+            // nuova. Deve chiedere solo i dati del circuito, mai carburante o gomme.
+            var needs = new CalibrationNeeds
+            {
+                NeedsGeofence = true,
+                NeedsTransit = true,
+                NeedsFuelRate = false,          // dato di classe, gia' noto
+                NeedsTyreTime = false,          // dato di classe, gia' noto
+                NeedsTyreHalfMultiplier = false,
+                NeedsTyreSingleMultiplier = false
+            };
+
+            Assert(CalibrationCascade.NextStep(needs, true) == CalibrationStep.DriveThrough,
+                   "si parte dal drive-through");
+
+            needs.NeedsGeofence = false;
+            Assert(CalibrationCascade.NextStep(needs, true) == CalibrationStep.FuelOnlyStop,
+                   "il transito serve comunque: e' un dato del circuito, non della classe");
+
+            needs.NeedsTransit = false;
+            Assert(CalibrationCascade.NextStep(needs, true) == CalibrationStep.None,
+                   "e finisce li': gomme e portata sono gia' note per questa classe");
+            Pass("Caso Spa: classe nota, circuito nuovo -> solo i dati del circuito");
+        }
+
+        private static void Test_KnownTrackNewClassSkipsStraightToTyres()
+        {
+            // Il caso opposto: circuito gia' calibrato, si scende in pista con una classe nuova.
+            var needs = new CalibrationNeeds
+            {
+                NeedsGeofence = false,
+                NeedsTransit = false,
+                NeedsFuelRate = true,
+                NeedsTyreTime = true,
+                NeedsTyreHalfMultiplier = true,
+                NeedsTyreSingleMultiplier = true
+            };
+
+            Assert(CalibrationCascade.NextStep(needs, true) == CalibrationStep.FuelOnlyStop,
+                   "serve la portata, che e' un dato di classe");
+
+            needs.NeedsFuelRate = false;
+            Assert(CalibrationCascade.NextStep(needs, true) == CalibrationStep.TyreStopAll4,
+                   "poi le gomme, anch'esse dato di classe");
+            Pass("Circuito noto, classe nuova -> solo i dati della classe");
+        }
+
+        private static void Test_MultipliersWaitForTheirDenominator()
+        {
+            // Senza il tempo All4 non c'e' rapporto da calcolare: chiedere 2 gomme prima sarebbe
+            // far perdere tempo al pilota per un dato inutilizzabile.
+            var needs = new CalibrationNeeds
+            {
+                NeedsTyreTime = true,
+                NeedsTyreHalfMultiplier = true,
+                NeedsTyreSingleMultiplier = true
+            };
+
+            Assert(CalibrationCascade.NextStep(needs, true) == CalibrationStep.TyreStopAll4,
+                   "prima il denominatore");
+            Pass("I moltiplicatori aspettano il tempo delle quattro gomme");
+        }
+
+        private static void Test_NothingMissingMeansSilence()
+        {
+            var nothing = default(CalibrationNeeds);
+
+            Assert(!CalibrationCascade.NeedsAnything(nothing), "niente da chiedere");
+            Assert(CalibrationCascade.NextStep(nothing, true) == CalibrationStep.None,
+                   "nessun passo");
+
+            // E nemmeno il giro genuino va chiesto se non serve calibrare niente: altrimenti
+            // l'ingegnere parlerebbe a ogni sessione su un circuito gia' calibrato.
+            Assert(CalibrationCascade.NextStep(nothing, false) == CalibrationStep.None,
+                   "silenzio anche senza giro genuino, se non manca nulla");
+            Assert(CalibrationCascade.VoiceKeyFor(CalibrationStep.None) == "",
+                   "nessuna chiave vocale da annunciare");
+            Pass("Con tutto calibrato l'ingegnere tace");
+        }
+
+        private static void Test_CascadeToleratesDeviation()
+        {
+            // L'ingegnere chiede un drive-through, il pilota fa invece il pieno. Il passo del
+            // carburante risulta soddisfatto e la cascata prosegue da li': riconosce cio' che e'
+            // successo davvero invece di rifiutare e ripetere la richiesta.
+            var needs = Everything();
+            needs.NeedsTransit = false;
+            needs.NeedsFuelRate = false;
+
+            Assert(CalibrationCascade.IsStepSatisfied(CalibrationStep.FuelOnlyStop, needs),
+                   "il passo carburante risulta spuntato anche se non era quello chiesto");
+            Assert(!CalibrationCascade.IsStepSatisfied(CalibrationStep.DriveThrough, needs),
+                   "e il drive-through resta da fare");
+            Assert(CalibrationCascade.NextStep(needs, true) == CalibrationStep.DriveThrough,
+                   "quindi si torna a chiedere quello che manca ancora");
+            Pass("La cascata riconosce cio' che l'utente fa davvero, non lo rifiuta");
         }
 
         // ------------------------------------------------- Fase 5
