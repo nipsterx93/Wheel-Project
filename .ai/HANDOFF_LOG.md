@@ -42,6 +42,82 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-25 12:00] claude → prima sessione di Practice reale
+
+**Task:** Y-28, cascata di calibrazione guidata — tutte le fasi del piano
+**Piano:** `.ai/plans/2026-08-25-calibration-cascade-implementation.md`
+**Commit:** `e4a4ae8` (lock) · `490902a` · `449cf88` · `dd16814` · `d0a692f`
+
+Un commit per blocco di fasi, ognuno reversibile da solo.
+
+### Cosa c'è adesso che prima non c'era
+
+L'ingegnere **guida** invece di limitarsi a segnalare. Prima diceva "manca il dato X" una volta
+sola, da fermo in piazzola, e taceva. Adesso: giro genuino → drive-through → sosta solo benzina →
+gomme All4, poi 2, poi 1 — saltando quello che è già noto.
+
+Due moduli puri separati apposta, perché sono due decisioni diverse:
+`CalibrationCascade` decide **cosa** chiedere, `CalibrationCascadeRunner` decide **quando** dirlo.
+
+### Tre cose che vale la pena non riscoprire da capo
+
+**Il buco trovato ragionando sul flusso, non sul codice.** Il limite di velocità della corsia box
+si imparava **solo** osservando gli avversari. In una Practice da soli in pista — cioè esattamente
+la sessione in cui si calibra — restava a zero per sempre, e con lui il pavimento di plausibilità
+sui transiti e la soglia adattiva di rilevamento pit. Ora si **legge** dal limitatore del Player
+(`PitLimiterOn` era già letto per il colore del LED, ma mai esposto). Leggere batte dedurre: quando
+il limitatore è inserito, la velocità *è* il limite.
+
+**Il doppio guard sullo sfarfallio non è ridondante.** A 200 km/h un secondo vale 55 m, cioè 0.013
+di giro a Misano: **sopra** la soglia di distanza di Y-23, che da sola lo lascerebbe passare. Il
+criterio temporale lo prende. Il test di regressione verifica prima che il guard di Y-23 da solo
+accetterebbe quel caso, poi che i due insieme lo rifiutano.
+
+**L'ordine della cascata produce il consenso gratis.** Ogni passo attraversa comunque la corsia box,
+quindi a cascata finita la geofence ha ricevuto almeno cinque osservazioni — ben più delle tre che
+servono al consenso — senza chiedere al pilota un solo giro in più. Era il punto 9 della proposta
+dell'utente, e ha risolto da solo la domanda "una calibrazione guidata vale subito o servono tre
+passaggi?": non serve decidere, la cascata li produce.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit code `0`, **182 `[PASS]`** (erano 154).
+
+### Stato
+- ✅ Compila — 0 errori · ✅ 182 test passano
+- ✅ Regressioni verificate neutralizzando: la mediana del consenso, l'ordine dei passi gomme
+- ⚠️ **Mai girato in una Practice reale.** Tutto verificato in isolamento.
+
+### Per chi entra
+
+**Il prossimo passo è una sessione di Practice vera**, su un circuito o una classe mai calibrati.
+Cosa guardare nel log RADAR (serve `EnableLogRadar` acceso):
+
+| evento | significato |
+|---|---|
+| `Calibration Step Announced` | quale passo, quale chiave vocale, a che giro |
+| `Pit Speed Limit Observed (Player Limiter)` | il limite letto dal limitatore — **mai visto prima**, è nuovo |
+| `Tyre Multiplier Calibrated (2 tyres)` / `(1 tyre)` | i moltiplicatori misurati invece che assunti |
+| `Pit Visit Discarded (Implausible)` | il doppio guard ha scartato uno sfarfallio |
+
+Sulla dash c'è una proprietà nuova, `SimRIG.Pit.CalibrationStep`, con l'istruzione corrente in
+chiaro.
+
+**Attenzione a una cosa non verificata**: `SessionStateStatus` per una sessione di Practice non è
+noto — il codice sa che vale 4 in gara e 3 in qualifica, ma per la Practice nessuno l'ha mai
+misurato. Se la cascata non parte, è il primo posto dove guardare.
+
+**Resta aperto Y-29** (apprendimento passivo senza consenso), registrato ma non toccato: non
+interseca la cascata, che passa sempre dal ramo guidato.
+
+---
+
 ## [2026-08-24 22:30] claude → prossima sessione (Y-26/Y-27 + apertura Y-28)
 
 **Task:** chiudere le segnalazioni di Antigravity, e rispondere alla domanda dell'utente sulla

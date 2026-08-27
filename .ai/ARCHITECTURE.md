@@ -46,6 +46,9 @@ naturale dove aggiungere nuove regole invece di annidarle nei file grandi.
 | `RaceTimeProjection.cs` | Tempo alla bandiera ancorato al countdown di sessione, e giri proiettati. Il leader pesa solo sulla frazione di giro che gli manca | Y-16 |
 | `LeaderPaceFilter.cs` | Filtra il passo del leader: scarta i giri fisicamente impossibili e i campioni raccolti mentre l'identità del P1 sfarfalla | Y-17 |
 | `CalibrationConsensus.cs` | Mediana su finestra scorrevole per i dati calibrati, al posto di "il primo/l'ultimo che scrive vince" | Y-20, Y-21 |
+| `PlayerPitSpeedObserver.cs` | Legge il limite della corsia box dal limitatore del Player invece di dedurlo dagli avversari | Y-28 |
+| `CalibrationCascade.cs` | Decide **quale** calibrazione manca e in che ordine chiederla | Y-28 |
+| `CalibrationCascadeRunner.cs` | Decide **quando** l'ingegnere parla: insistenza legata al progresso, non al tempo | Y-28 |
 
 Ci sono anche predicati statici puri estratti **dentro** i file grandi, per lo stesso motivo:
 `OpponentTracker.CanMeasureLap` / `AnchorIsGenuine` (Y-17b), `PitRadar.HasTraversedPitLane` /
