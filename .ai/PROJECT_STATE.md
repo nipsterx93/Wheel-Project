@@ -8,11 +8,13 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-24T22:30:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-25T10:00:00Z
+task:       Y-28 — cascata di calibrazione guidata, fasi 0a-5
+scope:      PitRadar.cs, OpponentTracker.cs, SessionState.cs, TelemetryReader.cs,
+            DataPluginDemo.cs, TargetStrategyManager.cs, PitWallLanguage.cs,
+            CalibrationCascade.cs (nuovo), PlayerPitSpeedObserver.cs (nuovo), Tests/**
+expires:    2026-08-25T20:00:00Z
 ```
 
 **Regole del lock**
