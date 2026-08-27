@@ -8,12 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      claude        # NONE | antigravity | claude | codex | human
-since:      2026-08-25T14:00:00Z
-task:       Y-30 — frasi dell ingegnere: tono pit wall, varianti per le ripetizioni
-scope:      PitWallLanguage.cs, CalibrationCascade.cs, CalibrationCascadeRunner.cs,
-            DataPluginDemo.cs, Tests/**
-expires:    2026-08-25T22:00:00Z
+owner:      NONE          # NONE | antigravity | claude | codex | human
+since:      2026-08-25T15:00:00Z
+task:       —
+scope:      —
+expires:    —
 ```
 
 **Regole del lock**
@@ -102,6 +101,7 @@ implementazione. Chi decide, aggiorni questa tabella prima di far partire il lav
 | ~~Y-25~~ | ~~`LeaderRaceLapsCompleted` lampeggia a zero~~ | ✅ **Corretto** (`cd97b4e`). Coda di Y-24: quel fix proteggeva il calcolo derivato ma non il dato alla sorgente. Nel replay `20260824_193916` **231 tick su 534 (43%)** avevano ancora `LapsComp=0`, e il valore finisce direttamente sulla dashboard (`SimRIG.Session.LeaderRaceLapsCompleted`). Nessun impatto strategico, ma un numero visibile e falso. La logica di tenuta è in `HoldLeaderLapsCompleted`, statica: la **prima** versione del test la riproduceva invece di chiamarla e restava verde anche neutralizzando il guard — la stessa trappola evitata in Y-17b. |
 | Y-26 | Dati pit lane cristallizzati senza consenso | ⚠️ **Chiuso in parte** (`c646d7b`). Trovato da Antigravity in revisione. **Chiuso**: `PitInOutAccDecTime` (osservazione incidentale da ogni sosta avversaria, molti campioni) ora passa da `CalibrationConsensus` con tolleranza 2 s; `PitTransitTime` nelle due procedure **guidate** (SplashAndDash, TyreChange) ha perso il lock `== 0.0`, che non proteggeva da nulla e impediva solo di rifare una calibrazione riuscita male. **Resta aperto**: `PitDriveThroughTime` e il ramo `StopAndGo` mantengono `== 0.0`, perché `DriveThrough` è la modalità di ripiego in cui si finisce anche in gara — senza lock, un transito qualunque riscriverebbe la calibrazione, e nel ramo StopAndGo dirotterebbe le soste dall'apprendimento naturale della Fase 4. Chiuderlo richiede **distinguere una calibrazione guidata da un transito incidentale**, che il codice oggi non sa fare: è la stessa decisione di prodotto del punto Y-28. |
 | Y-29 | `FuelFillRate`/`TyreChangeTime` senza consenso nel percorso **non guidato** | Trovato preparando il piano d'implementazione di Y-28 (`.ai/plans/2026-08-25-calibration-cascade-implementation.md`). Il ramo "else" di `PitRadar.Update` (Fase 4 originale: apprendimento da una sosta di gara qualunque, non da una calibrazione deliberata) scrive `EstimatedPlayer` senza consenso fra osservazioni multiple — `CanOverwrite(EstimatedPlayer, EstimatedPlayer)` è vero, quindi l'ultima sosta naturale osservata sovrascrive la precedente. Stesso schema di Y-26/Y-27, su un percorso diverso: la cascata guidata (Y-28) non lo attraversa mai, quindi non blocca quel lavoro. Non ancora corretto. |
+| ~~Y-30~~ | ~~Voce dell ingegnere: tono e ripetizioni~~ | ✅ **Riscritte** (`9c79ece`). Le frasi parlavano dal punto di vista del software ("ci servono dati per i calcoli") e usavano gergo da menu (ALL4, FuelToAdd). Ora tono pit wall, gesto prima del motivo, verbi variati, e frasi **neutre** perché la cascata salta i passi noti e qualunque passo può essere il primo — il contesto lo dà una sola apertura (`CALIB_INTRO`). Solleciti progressivamente più asciutti invece della stessa frase ripetuta. `CALIB_SG_REQ` rimosso. **Trovato e corretto un difetto del turno precedente**: il progetto ha **7 lingue**, non 3, e le chiavi della cascata erano finite solo in EN/IT/DE — gli altri utenti avrebbero sentito silenzio, senza errori visibili. |
 | ~~Y-28~~ | ~~Calibrazione guidata in Practice~~ | ✅ **Implementato** (`490902a`, `449cf88`, `dd16814`, `d0a692f`). Disegno in `.ai/plans/2026-08-25-calibration-cascade-design.md`, piano in `...-implementation.md`. L'ingegnere guida passo passo: giro genuino → drive-through → sosta solo benzina → gomme All4/2/1, saltando ciò che è già noto (Track+Class e Class verificati separatamente). Riconosce ciò che il pilota fa davvero invece di rifiutare; ripete solo se un giro passa senza avanzamento, massimo tre volte. **Da verificare sul campo**: nessuna sessione di Practice reale è ancora stata girata. |
 | ~~Y-27~~ | ~~`BaseCapacity` sovrascritta senza consenso~~ | ✅ **Corretto** (`c646d7b`). Trovato da Antigravity. `OpponentTracker.cs:402` riscriveva a **ogni tick** con qualunque campione fuori da 0.5 L — che non è un filtro ma una soglia di attivazione. Il valore è un rapporto fra due letture di telemetria (`MaxFuelCapacity / BoP`), quindi una lettura transitoria entrava dritta nel database. Ora consenso con mediana, tolleranza 1 L. |
 
