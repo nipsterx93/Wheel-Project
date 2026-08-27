@@ -59,6 +59,13 @@ namespace User.PluginSdkDemo.Tests
             Test_NothingMissingMeansSilence();
             Test_CascadeToleratesDeviation();
 
+            // Fase 3
+            Test_Regression_SilentWhileThePlayerIsExecuting();
+            Test_RepeatsOnlyWhenALapPassesWithoutProgress();
+            Test_StopsNaggingAfterAFewRepeats();
+            Test_CompletionIsAnnouncedOnce();
+            Test_RaceSessionResetsTheRunner();
+
             // Fase 5
             Test_Regression_MeasuredMultiplierReplacesTheAssumedHalf();
             Test_MultiplierRejectsUnusableMeasurements();
@@ -408,6 +415,98 @@ namespace User.PluginSdkDemo.Tests
             Assert(CalibrationCascade.NextStep(needs, true) == CalibrationStep.DriveThrough,
                    "quindi si torna a chiedere quello che manca ancora");
             Pass("La cascata riconosce cio' che l'utente fa davvero, non lo rifiuta");
+        }
+
+        // ------------------------------------------------- Fase 3
+
+        private static void Test_Regression_SilentWhileThePlayerIsExecuting()
+        {
+            // Il difetto che questo evita: ripetere l'istruzione a tempo fisso significherebbe
+            // parlare sopra al pilota mentre sta gia' facendo quello che gli e' stato chiesto.
+            var runner = new CalibrationCascadeRunner();
+            var needs = Everything();
+
+            Assert(runner.Update(true, needs, true, 1), "il primo annuncio si fa subito");
+
+            // Molti tick dentro lo stesso giro: nessuna ripetizione.
+            for (int i = 0; i < 50; i++)
+            {
+                Assert(!runner.Update(true, needs, true, 1),
+                       "nello stesso giro non si ripete mai");
+            }
+            Pass("Regressione: l'ingegnere tace mentre il pilota sta eseguendo");
+        }
+
+        private static void Test_RepeatsOnlyWhenALapPassesWithoutProgress()
+        {
+            var runner = new CalibrationCascadeRunner();
+            var needs = Everything();
+
+            Assert(runner.Update(true, needs, true, 1), "primo annuncio");
+            Assert(runner.Update(true, needs, true, 2), "un giro senza avanzamento: si ripete");
+
+            // Ora il pilota esegue: la geofence non manca piu', quindi la cascata avanza.
+            needs.NeedsGeofence = false;
+            Assert(runner.Update(true, needs, true, 2),
+                   "passo nuovo: si annuncia subito, senza aspettare il giro dopo");
+            Assert(runner.CurrentStep == CalibrationStep.FuelOnlyStop, "ed e' il passo successivo");
+            Pass("Si ripete solo se un giro passa senza avanzamento");
+        }
+
+        private static void Test_StopsNaggingAfterAFewRepeats()
+        {
+            // Un pilota che ignora deliberatamente non deve sentirsi ripetere la stessa frase per
+            // venti giri.
+            var runner = new CalibrationCascadeRunner();
+            var needs = Everything();
+
+            runner.Update(true, needs, true, 1);
+
+            int announcements = 0;
+            for (int lap = 2; lap <= 20; lap++)
+            {
+                if (runner.Update(true, needs, true, lap)) announcements++;
+            }
+
+            Assert(announcements == CalibrationCascadeRunner.MaxRepeatsPerStep,
+                   $"atteso {CalibrationCascadeRunner.MaxRepeatsPerStep} ripetizioni, ottenute {announcements}");
+            Pass("Dopo alcune ripetizioni l'ingegnere rinuncia");
+        }
+
+        private static void Test_CompletionIsAnnouncedOnce()
+        {
+            var runner = new CalibrationCascadeRunner();
+            var needs = Everything();
+
+            runner.Update(true, needs, true, 1);
+
+            // Tutto calibrato di colpo.
+            var done = default(CalibrationNeeds);
+            Assert(runner.Update(true, done, true, 1), "il completamento si annuncia");
+            Assert(runner.JustCompleted, "ed e' proprio l'annuncio di fine");
+
+            // Ma una volta sola: nei tick successivi silenzio.
+            for (int i = 0; i < 10; i++)
+            {
+                Assert(!runner.Update(true, done, true, 2), "nessuna ripetizione del completamento");
+            }
+            Pass("Il completamento si annuncia una volta sola");
+        }
+
+        private static void Test_RaceSessionResetsTheRunner()
+        {
+            var runner = new CalibrationCascadeRunner();
+            var needs = Everything();
+
+            runner.Update(true, needs, true, 1);
+
+            // Si passa in gara: la cascata non esiste e non deve parlare.
+            Assert(!runner.Update(false, needs, true, 2), "in gara mai un annuncio");
+            Assert(runner.CurrentStep == CalibrationStep.None, "e nessun passo attivo");
+
+            // Rientrando in Practice si riparte pulito, con l'annuncio del primo passo.
+            Assert(runner.Update(true, needs, true, 1), "rientrando in Practice si riannuncia");
+            Pass("Gara e qualifica azzerano il runner");
         }
 
         // ------------------------------------------------- Fase 5

@@ -1,4 +1,4 @@
-// -------------------------------------------------------------------------
+﻿// -------------------------------------------------------------------------
 // FILE VERSION: V0.11.58
 // -------------------------------------------------------------------------
 using GameReaderCommon;
@@ -51,7 +51,8 @@ namespace SimRIG
         private int _bottomRightWidgetPage = 0;
 
         private bool _boxNowPlayed = false;
-        private bool _calibrationVoicePlayed = false;
+        private readonly CalibrationCascadeRunner _calibrationRunner = new CalibrationCascadeRunner();
+        private string _calibrationStepText = "";
         private bool _autoUndercutPlayed = false;
         private bool _pitWindowAlertPlayed = false;
         private bool _interactivePitDialogueActive = false;
@@ -529,6 +530,7 @@ namespace SimRIG
             pm.AddProperty("SimRIG.Pit.TransitDriveThrough", t, 0.0);
             pm.AddProperty("SimRIG.Pit.MeasuredFuelFillRate", t, 0.0);
             pm.AddProperty("SimRIG.Pit.CalibrationStatus", t, "ANALYZING");
+            pm.AddProperty("SimRIG.Pit.CalibrationStep", t, "");
             // Cosa manca ancora, in chiaro. "READY" da solo non dice al pilota cosa fare.
             pm.AddProperty("SimRIG.Pit.CalibrationMissing", t, "");
             pm.AddProperty("SimRIG.Pit.GeofenceCalibrated", t, false);
@@ -1287,7 +1289,7 @@ namespace SimRIG
                     PitRadar.ResetSession();
                     OpponentTracker.ResetSession();
                     TargetStrategyManager.ResetSession();
-                    _calibrationVoicePlayed = false;
+                    _calibrationRunner.Reset();
                     _autoUndercutPlayed = false;
                     _goodFuelLaps = 0;
                     _lastVoiceEvalLap = -1;
@@ -1298,37 +1300,69 @@ namespace SimRIG
             }
         }
 
+        /// <summary>
+        /// La cascata di calibrazione guidata (Y-28).
+        ///
+        /// Sostituisce la vecchia catena di `if` che annunciava una calibrazione alla volta, solo
+        /// da fermi in piazzola e una volta sola per sosta. Quella non guidava: diceva cosa mancava
+        /// e taceva. Adesso c'è una regia che sa quale passo si aspetta, riconosce quando è stato
+        /// eseguito, e prosegue — anche se il pilota fa le cose in un ordine diverso.
+        ///
+        /// Le due decisioni sono separate apposta e vivono in moduli puri, testabili senza SimHub:
+        /// <see cref="CalibrationCascade"/> decide **cosa** chiedere,
+        /// <see cref="CalibrationCascadeRunner"/> decide **quando** dirlo.
+        /// </summary>
         private void CheckCalibrationTriggers()
         {
-            if (Settings.EnableVoiceEngineer && !CurrentState.IsRaceSession && !CurrentState.IsQualySession && CurrentState.IsInPitBox)
+            if (!Settings.EnableVoiceEngineer)
             {
-                if (!_calibrationVoicePlayed)
-                {
-                    if (PitRadar.IsFuelFillRateMissing)
-                    {
-                        TriggerRadioVoice("CALIB_FUEL_REQ");
-                        _calibrationVoicePlayed = true;
-                    }
-                    else if (PitRadar.IsTyreChangeTimeMissing)
-                    {
-                        TriggerRadioVoice("CALIB_TYRE_REQ");
-                        _calibrationVoicePlayed = true;
-                    }
-                    else if (PitRadar.IsDriveThroughTimeMissing)
-                    {
-                        TriggerRadioVoice("CALIB_DT_REQ");
-                        _calibrationVoicePlayed = true;
-                    }
-                    else if (PitRadar.IsPitTransitTimeMissing)
-                    {
-                        TriggerRadioVoice("CALIB_SG_REQ");
-                        _calibrationVoicePlayed = true;
-                    }
-                }
+                _calibrationRunner.Reset();
+                return;
             }
-            else if (!CurrentState.IsInPitBox)
+
+            bool isCalibrationSession = CalibrationCascade.IsCalibrationSession(
+                CurrentState.IsRaceSession, CurrentState.IsQualySession);
+
+            bool shouldAnnounce = _calibrationRunner.Update(
+                isCalibrationSession,
+                PitRadar.GetCalibrationNeeds(),
+                PitRadar.HasGenuineTrackSample,
+                CurrentState.CurrentLap);
+
+            CalibrationStep step = _calibrationRunner.CurrentStep;
+
+            // La dash mostra sempre il passo corrente, anche fra un annuncio e l'altro: il pilota
+            // deve poter guardare cosa gli è stato chiesto senza riascoltare la radio.
+            _calibrationStepText = _calibrationRunner.JustCompleted
+                ? "CALIBRATION COMPLETE"
+                : CalibrationStepLabel(step);
+
+            if (!shouldAnnounce) return;
+
+            string voiceKey = _calibrationRunner.JustCompleted
+                ? "CALIB_COMPLETE"
+                : CalibrationCascade.VoiceKeyFor(step);
+
+            if (!string.IsNullOrEmpty(voiceKey))
             {
-                _calibrationVoicePlayed = false;
+                TriggerRadioVoice(voiceKey);
+                LogManager.Log(LogModule.RADAR, LogType.EVENT, "Calibration Step Announced",
+                    $"step={step} | key={voiceKey} | lap={CurrentState.CurrentLap}");
+            }
+        }
+
+        /// <summary>Etichetta breve del passo per la dash. Vuota se non c'è nulla in corso.</summary>
+        private static string CalibrationStepLabel(CalibrationStep step)
+        {
+            switch (step)
+            {
+                case CalibrationStep.NeedGenuineLap: return "CALIBRATION: COMPLETE A LAP";
+                case CalibrationStep.DriveThrough: return "CALIBRATION: DRIVE-THROUGH";
+                case CalibrationStep.FuelOnlyStop: return "CALIBRATION: FUEL ONLY STOP";
+                case CalibrationStep.TyreStopAll4: return "CALIBRATION: 4 TYRES, NO FUEL";
+                case CalibrationStep.TyreStopHalf: return "CALIBRATION: 2 TYRES, NO FUEL";
+                case CalibrationStep.TyreStopSingle: return "CALIBRATION: 1 TYRE, NO FUEL";
+                default: return "";
             }
         }
 
@@ -1898,6 +1932,7 @@ namespace SimRIG
             PluginManager.SetPropertyValue("SimRIG.Pit.TransitDriveThrough", t, Math.Round(PitRadar.PitDriveThroughTime, 2));
             PluginManager.SetPropertyValue("SimRIG.Pit.MeasuredFuelFillRate", t, Math.Round(PitRadar.MeasuredFuelFillRate, 2));
             PluginManager.SetPropertyValue("SimRIG.Pit.CalibrationStatus", t, PitRadar.CalibrationStatus);
+            PluginManager.SetPropertyValue("SimRIG.Pit.CalibrationStep", t, _calibrationStepText);
             PluginManager.SetPropertyValue("SimRIG.Pit.CalibrationMissing", t, PitRadar.CalibrationMissing);
             PluginManager.SetPropertyValue("SimRIG.Pit.GeofenceCalibrated", t, PitRadar.IsGeofenceCalibrated);
             PluginManager.SetPropertyValue("SimRIG.Pit.GeofenceConfidence", t, PitRadar.GeofenceConfidence.ToString());
