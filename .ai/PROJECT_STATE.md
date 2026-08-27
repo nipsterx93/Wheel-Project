@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      claude        # NONE | antigravity | claude | codex | human
-since:      2026-08-25T15:30:00Z
-task:       Y-30b — verbo mancante nella frase italiana del drive-through
-scope:      PitWallLanguage.cs
-expires:    2026-08-25T18:00:00Z
+owner:      NONE          # NONE | antigravity | claude | codex | human
+since:      2026-08-25T15:40:00Z
+task:       —
+scope:      —
+expires:    —
 ```
 
 **Regole del lock**

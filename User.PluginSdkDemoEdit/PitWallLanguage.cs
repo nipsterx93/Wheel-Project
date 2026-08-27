@@ -150,7 +150,7 @@ namespace SimRIG
                 { "CALIB_TYRE_HALF_R2", "Aspetto le due gomme." },
                 { "CALIB_TYRE_SINGLE_R1", "Resta da cronometrare una gomma sola, senza benzina." },
                 { "CALIB_TYRE_SINGLE_R2", "Aspetto la gomma singola." },
-                { "CALIB_DT_REQ", "Passaggio in corsia box senza fermarti. Cronometro ingresso e uscita." },
+                { "CALIB_DT_REQ", "Esegui un passaggio in corsia box senza fermarti. Cronometro ingresso e uscita." },
                 { "CALIB_NEED_LAP_REQ", "Fai un giro completo, poi cominciamo a prendere i riferimenti." },
                 { "CALIB_TYRE_HALF_REQ", "Due gomme sole, un asse o un lato. Manda la richiesta, sempre senza benzina." },
                 { "CALIB_TYRE_SINGLE_REQ", "Una gomma sola, niente benzina. Passa la richiesta quando sei pronto." },
