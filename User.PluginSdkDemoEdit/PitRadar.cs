@@ -342,6 +342,7 @@ namespace SimRIG
 	/// </summary>
 	public const double PitTimingAgreementSec = 2.0;
 
+	private readonly PlayerPitSpeedObserver _playerPitSpeed = new PlayerPitSpeedObserver();
 	private readonly CalibrationConsensus _accDecConsensus = new CalibrationConsensus(PitTimingAgreementSec);
 	private readonly CalibrationConsensus _entryConsensus = new CalibrationConsensus(GeofenceAgreementPct);
 	private readonly CalibrationConsensus _exitConsensus = new CalibrationConsensus(GeofenceAgreementPct);
@@ -746,6 +747,44 @@ namespace SimRIG
 	/// (<see cref="MinLitresForFuelRate"/>): un solo numero condiviso invece di due che potrebbero
 	/// divergere.
 	/// </summary>
+	/// <summary>
+	/// Durata minima di una permanenza in corsia box, quando non si sa ancora nulla del circuito.
+	///
+	/// Rete di sicurezza per il primo transito in assoluto, prima che geofence e limite di velocita'
+	/// esistano: li' <see cref="MinimumCredibleTransitSec"/> non puo' calcolare nulla e vale zero.
+	/// Un transito vero dura decine di secondi (30.9 s a Daytona, 36.0 s a Misano, misurati),
+	/// quindi due secondi non rischiano di scartare un dato buono.
+	/// </summary>
+	public const double MinimumPitVisitSeconds = 2.0;
+
+	/// <summary>
+	/// La permanenza in corsia box e' plausibile, o e' uno sfarfallio della telemetria?
+	///
+	/// **Due criteri complementari, non ridondanti.** Il flag `IsInPitLane` puo' oscillare
+	/// true->false->true; a Daytona, il 2026-08-23, l'ha fatto in 0.2 secondi sul rettilineo
+	/// principale, scrivendo un `PitDriveThroughTime` da 0.666 s nel database.
+	///
+	/// - **Strada percorsa** (Y-23): un guizzo brevissimo non copre distanza.
+	/// - **Durata**: un guizzo piu' lungo, ad alta velocita', puo' invece coprirne. A 200 km/h un
+	///   secondo vale 55 m, cioe' 0.013 di giro a Misano — sopra la soglia di distanza, che da sola
+	///   lo lascerebbe passare. Il criterio temporale lo prende comunque.
+	///
+	/// Ognuno dei due copre il caso che l'altro si farebbe sfuggire, da cui la scelta di tenerli
+	/// entrambi invece di sostituire il primo con il secondo.
+	///
+	/// <paramref name="derivedFloorSec"/> e' il pavimento calcolato dal circuito quando disponibile
+	/// (molto piu' selettivo: ~16 s a Daytona); quando vale zero si ricade su
+	/// <see cref="MinimumPitVisitSeconds"/>.
+	/// </summary>
+	public static bool IsPitVisitPlausible(double entryPosition, double exitPosition,
+										   double durationSec, double derivedFloorSec)
+	{
+		if (!HasTraversedPitLane(entryPosition, exitPosition)) return false;
+
+		double floor = derivedFloorSec > 0.0 ? derivedFloorSec : MinimumPitVisitSeconds;
+		return durationSec >= floor;
+	}
+
 	/// <summary>
 	/// Lo scope riguarda **due** gomme (un asse o un lato)? Le quattro combinazioni sono trattate
 	/// come una categoria sola, com'e' gia' oggi in <c>GetTireMultiplier</c>: si misura un
@@ -1200,6 +1239,21 @@ namespace SimRIG
 			SaveDatabase();
 		}
 		RefreshCalibrationStatus();
+
+		// Il limite di corsia box si legge dal limitatore del Player, non si deduce. Vale in
+		// qualunque sessione e non fa parte della cascata di calibrazione: e' un'osservazione
+		// ambientale continua. Vedi PlayerPitSpeedObserver e Y-28.
+		if (_playerPitSpeed.Update(state.IsPitLimiterOn, state.SpeedKmh, sessionClock))
+		{
+			// Arrotondato a 5 km/h: i limiti reali sono numeri tondi, e la lettura oscilla di
+			// qualche decimo. Nessuna lista di valori ammessi come nel percorso avversari — qui il
+			// dato e' letto, non dedotto, quindi un circuito con un limite inusuale non va scartato.
+			double rounded = Math.Round(_playerPitSpeed.ObservedLimitKmh / 5.0) * 5.0;
+			UpdatePitLaneSpeedLimit(rounded, state.CarClassId);
+			log.Log(LogModule.RADAR, LogType.EVENT, "Pit Speed Limit Observed (Player Limiter)",
+				$"{rounded:F0} km/h | misurato={_playerPitSpeed.ObservedLimitKmh:F1} | class={state.CarClassId}");
+		}
+
 		// Gate di autorizzazione: valutato a ogni tick, prima di qualunque scrittura di geofence.
 		_geofenceGate.Update(state.IsInPitLane, state.TrackPositionPercent, sessionClock, state.TrackLengthMeters);
 
@@ -1291,7 +1345,9 @@ namespace SimRIG
 			LastStationaryTime = _pitBoxTimeCache + (_stopStartTime.HasValue ? Math.Abs(sessionClock - _stopStartTime.Value) : 0.0);
 		}
 		else if (_pitEntryTime.HasValue
-			&& !HasTraversedPitLane(_pitEntryPosition, state.TrackPositionPercent))
+			&& !IsPitVisitPlausible(_pitEntryPosition, state.TrackPositionPercent,
+									Math.Abs(sessionClock - _pitEntryTime.Value),
+									MinimumCredibleTransitSec()))
 		{
 			// Una permanenza che non ha percorso strada non e' una sosta. Il flag IsInPitLane della
 			// telemetria puo' sfarfallare (true->false->true in due decimi di secondo): a Daytona,
@@ -1302,12 +1358,14 @@ namespace SimRIG
 			// Si scarta l'intera visita invece del singolo campo: lo stesso artefatto alimentava
 			// anche i consensi delle geofence e — su una pista vergine, dove PitTransitTime e'
 			// ancora a zero — avrebbe scritto un transito da 0.7 s, che entra nella matematica
-			// strategica. Il criterio e' la strada percorsa, non il tempo: un tempo breve puo'
-			// essere un drive-through veloce, uno spostamento nullo no.
-			log.Log(LogModule.RADAR, LogType.FLOW, "Pit Visit Discarded (No Traversal)",
+			// strategica. Vedi IsPitVisitPlausible per il perche' dei due criteri complementari
+			// (strada percorsa **e** durata).
+			double visitSeconds = Math.Abs(sessionClock - _pitEntryTime.Value);
+			double visitFloor = MinimumCredibleTransitSec() > 0.0 ? MinimumCredibleTransitSec() : MinimumPitVisitSeconds;
+			log.Log(LogModule.RADAR, LogType.FLOW, "Pit Visit Discarded (Implausible)",
 				$"entry={_pitEntryPosition:F4} | exit={state.TrackPositionPercent:F4} | " +
 				$"traversed={Math.Abs(TrackPositionValidator.WrappedDelta(state.TrackPositionPercent, _pitEntryPosition)):F4} | " +
-				$"minimo={MinimumPitTraversalPct:F4} | durata={Math.Abs(sessionClock - _pitEntryTime.Value):F2}s");
+				$"minTraversal={MinimumPitTraversalPct:F4} | durata={visitSeconds:F2}s | minDurata={visitFloor:F2}s");
 
 			_pitEntryTime = null;
 			_pitEntryPosition = -1.0;

@@ -38,6 +38,17 @@ namespace User.PluginSdkDemo.Tests
             Test_TinyFuelRequestIsNotACalibration();
             Test_TyreStopAcceptsAnyScope();
 
+            // Fase 0b
+            Test_Regression_LongFlickerCaughtOnlyByDuration();
+            Test_RealTransitsSurviveBothGuards();
+            Test_DerivedFloorIsStricterWhenAvailable();
+
+            // Fase 0c
+            Test_Regression_PlayerLearnsLimitFromItsOwnLimiter();
+            Test_DecelerationIsNotTheLimit();
+            Test_LimiterOffNeverObserves();
+            Test_ImplausibleSpeedsAreIgnored();
+
             // Fase 5
             Test_Regression_MeasuredMultiplierReplacesTheAssumedHalf();
             Test_MultiplierRejectsUnusableMeasurements();
@@ -98,6 +109,126 @@ namespace User.PluginSdkDemo.Tests
             Assert(PitRadar.ClassifyCalibrationMode(0.0, TyreSelectionScope.FL) == CalibrationMode.TyreChange,
                    "una gomma");
             Pass("La sosta gomme riconosce qualunque scope, non solo All4");
+        }
+
+        // ------------------------------------------------- Fase 0b
+
+        private static void Test_Regression_LongFlickerCaughtOnlyByDuration()
+        {
+            // Il caso che giustifica il secondo criterio. A 200 km/h un secondo vale 55 m: a Misano
+            // (4226 m) sono 0.013 di giro, **sopra** la soglia di distanza di 0.01 — quindi il
+            // guard di Y-23, da solo, lo lascerebbe passare.
+            const double entry = 0.9400;
+            const double exit = 0.9532;   // 0.0132 di giro piu' avanti
+
+            Assert(PitRadar.HasTraversedPitLane(entry, exit),
+                   "premessa del test: questo guizzo supera il guard sulla distanza");
+
+            Assert(!PitRadar.IsPitVisitPlausible(entry, exit, 1.0, 0.0),
+                   "ma un secondo di permanenza non e' un transito: va scartato");
+            Pass("Regressione: uno sfarfallio lungo, che supera la distanza, viene preso dalla durata");
+        }
+
+        private static void Test_RealTransitsSurviveBothGuards()
+        {
+            // I transiti veri misurati sui replay. Un guard che scarta anche questi sarebbe
+            // peggiore del difetto.
+            Assert(PitRadar.IsPitVisitPlausible(0.9588, 0.0987, 30.9, 0.0),
+                   "transito reale di Daytona, 30.9 s");
+            Assert(PitRadar.IsPitVisitPlausible(0.9495, 0.0737, 36.0, 0.0),
+                   "transito reale di Misano, 36.0 s");
+
+            // E lo sfarfallio originale di Daytona resta scartato da entrambi i criteri.
+            Assert(!PitRadar.IsPitVisitPlausible(0.9594, 0.9632, 0.67, 0.0),
+                   "lo sfarfallio originale non passa");
+            Pass("I transiti reali sopravvivono a entrambi i guard");
+        }
+
+        private static void Test_DerivedFloorIsStricterWhenAvailable()
+        {
+            // Quando il circuito e' noto, il pavimento calcolato (~16 s a Daytona) sostituisce
+            // quello fisso di sicurezza, ed e' molto piu' selettivo.
+            const double entry = 0.9588;
+            const double exit = 0.0987;
+
+            Assert(PitRadar.IsPitVisitPlausible(entry, exit, 10.0, 0.0),
+                   "senza pavimento derivato, 10 s passano il minimo fisso");
+            Assert(!PitRadar.IsPitVisitPlausible(entry, exit, 10.0, 16.0),
+                   "col pavimento derivato di Daytona, 10 s non bastano");
+            Assert(PitRadar.IsPitVisitPlausible(entry, exit, 30.9, 16.0),
+                   "il transito vero lo supera comunque");
+            Pass("Il pavimento derivato dal circuito e' piu' selettivo di quello fisso");
+        }
+
+        // ------------------------------------------------- Fase 0c
+
+        private static void Test_Regression_PlayerLearnsLimitFromItsOwnLimiter()
+        {
+            // Il buco: fino a Y-28 il limite si imparava SOLO dagli avversari, quindi in una
+            // Practice da soli in pista — la sessione in cui si calibra — restava a zero per
+            // sempre. Ora il Player lo legge dal proprio limitatore.
+            var observer = new PlayerPitSpeedObserver();
+
+            // Velocita' stabile a 60 km/h col limitatore inserito, oltre la persistenza richiesta.
+            bool observed = false;
+            for (double t = 0.0; t <= 2.0 && !observed; t += 0.25)
+            {
+                observed = observer.Update(true, 60.0, t);
+            }
+
+            Assert(observed, "una velocita' stabile col limitatore inserito deve produrre un'osservazione");
+            AssertClose(observer.ObservedLimitKmh, 60.0, 0.01, "il limite osservato");
+            Pass("Regressione: il Player impara il limite dal proprio limitatore");
+        }
+
+        private static void Test_DecelerationIsNotTheLimit()
+        {
+            // Subito dopo l'inserimento la vettura sta ancora rallentando: quei campioni sono piu'
+            // alti del limite vero e non devono essere presi per buoni.
+            var observer = new PlayerPitSpeedObserver();
+
+            Assert(!observer.Update(true, 110.0, 0.00), "primo campione, ancora in decelerazione");
+            Assert(!observer.Update(true, 95.0, 0.25), "sta scendendo");
+            Assert(!observer.Update(true, 80.0, 0.50), "scende ancora");
+            Assert(!observer.Update(true, 68.0, 0.75), "quasi");
+            Assert(!observer.Update(true, 60.0, 1.00), "arrivato al limite, ma va confermato nel tempo");
+
+            // Da qui in poi e' stabile: dopo la persistenza si accetta.
+            bool observed = observer.Update(true, 60.0, 2.60);
+            Assert(observed, "stabile abbastanza a lungo, ora vale");
+            AssertClose(observer.ObservedLimitKmh, 60.0, 0.01, "e il valore e' il limite, non la decelerazione");
+            Pass("La decelerazione iniziale non viene scambiata per il limite");
+        }
+
+        private static void Test_LimiterOffNeverObserves()
+        {
+            // Senza limitatore la velocita' non dice nulla sul limite: si sta guidando.
+            var observer = new PlayerPitSpeedObserver();
+            for (double t = 0.0; t <= 5.0; t += 0.25)
+            {
+                Assert(!observer.Update(false, 60.0, t),
+                       "col limitatore spento non si osserva nulla, nemmeno a velocita' da corsia box");
+            }
+            Pass("Col limitatore spento non si osserva mai");
+        }
+
+        private static void Test_ImplausibleSpeedsAreIgnored()
+        {
+            var observer = new PlayerPitSpeedObserver();
+
+            // Fermi ai box: il limitatore puo' essere inserito, ma zero non e' un limite.
+            for (double t = 0.0; t <= 5.0; t += 0.25)
+            {
+                Assert(!observer.Update(true, 0.0, t), "da fermo non si misura un limite");
+            }
+
+            // Velocita' da pista: non e' una corsia box.
+            var fast = new PlayerPitSpeedObserver();
+            for (double t = 0.0; t <= 5.0; t += 0.25)
+            {
+                Assert(!fast.Update(true, 200.0, t), "200 km/h non e' un limite di corsia box");
+            }
+            Pass("Le velocita' implausibili non producono osservazioni");
         }
 
         // ------------------------------------------------- Fase 5

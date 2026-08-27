@@ -71,6 +71,14 @@ namespace SimRIG
         public bool IsInPitLane { get; set; } = false;
         public bool IsInPitBox { get; set; } = false;
 
+        /// <summary>
+        /// Limitatore di velocità inserito. Il gioco taglia la velocità da solo, quindi mentre è
+        /// attivo la velocità della vettura **è** il limite della corsia box: non serve dedurlo.
+        ///
+        /// Era già letto dalla telemetria per il colore del LED, ma mai esposto qui — vedi Y-28.
+        /// </summary>
+        public bool IsPitLimiterOn { get; set; } = false;
+
         // -------------------------------------------------------------------------
         // BANDIERE (FLAGS)
         // -------------------------------------------------------------------------
@@ -134,6 +142,7 @@ namespace SimRIG
             TrackPositionPercent = 0.0;
             IsInPitLane = false;
             IsInPitBox = false;
+            IsPitLimiterOn = false;
             Opponents.Clear();
             GlobalBaselineTemp = 0.0;
             IsTrackWet = false;

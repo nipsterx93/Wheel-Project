@@ -62,6 +62,8 @@ namespace SimRIG
             if (pitBoxProp != null) isInPitBox = Convert.ToInt32(pitBoxProp);
             state.IsInPitBox = (isInPitBox == 1);
 
+            state.IsPitLimiterOn = data.NewData.PitLimiterOn > 0;
+
             state.IsRaceSession = data.NewData.SessionTypeName != null && data.NewData.SessionTypeName.IndexOf("Race", StringComparison.OrdinalIgnoreCase) >= 0;
             state.IsQualySession = data.NewData.SessionTypeName != null && (data.NewData.SessionTypeName.IndexOf("Qualify", StringComparison.OrdinalIgnoreCase) >= 0 || data.NewData.SessionTypeName.IndexOf("Qualifying", StringComparison.OrdinalIgnoreCase) >= 0);
 
