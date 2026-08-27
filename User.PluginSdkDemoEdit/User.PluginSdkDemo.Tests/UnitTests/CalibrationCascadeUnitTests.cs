@@ -66,6 +66,12 @@ namespace User.PluginSdkDemo.Tests
             Test_CompletionIsAnnouncedOnce();
             Test_RaceSessionResetsTheRunner();
 
+            // Y-30 — voce
+            Test_RemindersUseShorterVariants();
+            Test_FirstAnnouncementOfSessionCarriesTheIntro();
+            Test_Regression_EveryPhraseExistsInEveryLanguage();
+            Test_RetiredStopAndGoKeyIsGone();
+
             // Fase 5
             Test_Regression_MeasuredMultiplierReplacesTheAssumedHalf();
             Test_MultiplierRejectsUnusableMeasurements();
@@ -507,6 +513,113 @@ namespace User.PluginSdkDemo.Tests
             // Rientrando in Practice si riparte pulito, con l'annuncio del primo passo.
             Assert(runner.Update(true, needs, true, 1), "rientrando in Practice si riannuncia");
             Pass("Gara e qualifica azzerano il runner");
+        }
+
+        // ------------------------------------------------- Y-30, la voce
+
+        /// <summary>Tutti i passi che l'ingegnere può annunciare, escluso "niente da fare".</summary>
+        private static readonly CalibrationStep[] SpokenSteps = new[]
+        {
+            CalibrationStep.NeedGenuineLap,
+            CalibrationStep.DriveThrough,
+            CalibrationStep.FuelOnlyStop,
+            CalibrationStep.TyreStopAll4,
+            CalibrationStep.TyreStopHalf,
+            CalibrationStep.TyreStopSingle
+        };
+
+        private static void Test_RemindersUseShorterVariants()
+        {
+            // Ripetere la stessa frase parola per parola è ciò che fa suonare il tutto come un
+            // automa. Ogni sollecito deve avere una chiave diversa dalla richiesta piena.
+            foreach (var step in SpokenSteps)
+            {
+                string full = CalibrationCascade.VoiceKeyFor(step, 0);
+                string r1 = CalibrationCascade.VoiceKeyFor(step, 1);
+                string r2 = CalibrationCascade.VoiceKeyFor(step, 2);
+
+                Assert(full != r1 && r1 != r2 && full != r2,
+                       $"{step}: le tre varianti devono essere distinte ({full}, {r1}, {r2})");
+
+                // Oltre l'ultima variante si resta sulla più corta, non si torna alla frase lunga.
+                Assert(CalibrationCascade.VoiceKeyFor(step, 9) == r2,
+                       $"{step}: oltre le varianti si resta sulla più asciutta");
+            }
+            Pass("Ogni sollecito usa una formulazione più asciutta, non la stessa frase");
+        }
+
+        private static void Test_FirstAnnouncementOfSessionCarriesTheIntro()
+        {
+            // La cascata salta i passi già noti, quindi qualunque passo può essere il primo:
+            // senza apertura, arrivando su un circuito nuovo con la classe già calibrata,
+            // l'ingegnere attaccherebbe da metà elenco senza contesto.
+            var runner = new CalibrationCascadeRunner();
+
+            // Caso Spa: solo i dati del circuito mancano, quindi si parte dal drive-through.
+            var needs = new CalibrationNeeds { NeedsGeofence = true, NeedsTransit = true };
+
+            Assert(runner.Update(true, needs, true, 1), "primo annuncio");
+            Assert(runner.IsFirstOfSession, "e va preceduto dall'apertura");
+
+            // I successivi no: il contesto è già stato dato.
+            Assert(runner.Update(true, needs, true, 2), "sollecito");
+            Assert(!runner.IsFirstOfSession, "nessuna apertura sui solleciti");
+
+            needs.NeedsGeofence = false;
+            Assert(runner.Update(true, needs, true, 2), "passo successivo");
+            Assert(!runner.IsFirstOfSession, "né sui passi successivi");
+            Pass("L'apertura accompagna solo il primo annuncio della sessione");
+        }
+
+        private static void Test_Regression_EveryPhraseExistsInEveryLanguage()
+        {
+            // Il difetto che questo test avrebbe intercettato: le chiavi introdotte con la cascata
+            // erano finite in 3 lingue su 7. GetPhrase restituisce "" per una chiave assente e
+            // TriggerRadioVoice esce subito, quindi un utente spagnolo, francese, olandese o
+            // portoghese non avrebbe sentito nulla su quei passi — senza nessun errore visibile.
+            string[] languages = { "EN", "IT", "DE", "ES", "FR", "NL", "PT" };
+
+            foreach (var lang in languages)
+            {
+                foreach (var step in SpokenSteps)
+                {
+                    for (int repeat = 0; repeat <= CalibrationCascade.MaxVoiceVariants; repeat++)
+                    {
+                        string key = CalibrationCascade.VoiceKeyFor(step, repeat);
+                        string text = PitWallLanguage.GetPhrase(lang, key);
+                        Assert(!string.IsNullOrEmpty(text),
+                               $"manca la frase {key} in {lang} (passo {step}, sollecito {repeat})");
+                    }
+                }
+
+                Assert(!string.IsNullOrEmpty(PitWallLanguage.GetPhrase(lang, "CALIB_COMPLETE")),
+                       $"manca CALIB_COMPLETE in {lang}");
+
+                // L'apertura deve contenere il segnaposto: senza, la frase del passo verrebbe persa.
+                string intro = PitWallLanguage.GetPhrase(lang, "CALIB_INTRO", "TESTO");
+                Assert(!string.IsNullOrEmpty(intro), $"manca CALIB_INTRO in {lang}");
+                Assert(intro.Contains("TESTO"),
+                       $"CALIB_INTRO in {lang} non incastona la frase del passo");
+            }
+            Pass("Regressione: ogni frase esiste in tutte e sette le lingue");
+        }
+
+        private static void Test_RetiredStopAndGoKeyIsGone()
+        {
+            // La cascata non chiede più uno stop and go: la chiave era rimasta orfana dalla
+            // vecchia catena di if, e una chiave che nessuno usa è solo un futuro equivoco.
+            Assert(string.IsNullOrEmpty(PitWallLanguage.GetPhrase("IT", "CALIB_SG_REQ")),
+                   "CALIB_SG_REQ non deve più esistere");
+
+            foreach (var step in SpokenSteps)
+            {
+                for (int repeat = 0; repeat <= 3; repeat++)
+                {
+                    Assert(CalibrationCascade.VoiceKeyFor(step, repeat) != "CALIB_SG_REQ",
+                           "nessun passo deve puntare allo stop and go");
+                }
+            }
+            Pass("La chiave dello stop and go è stata rimossa ovunque");
         }
 
         // ------------------------------------------------- Fase 5

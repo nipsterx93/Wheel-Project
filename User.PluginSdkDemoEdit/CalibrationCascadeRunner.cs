@@ -1,4 +1,4 @@
-// -------------------------------------------------------------------------
+﻿// -------------------------------------------------------------------------
 // FILE: CalibrationCascadeRunner.cs
 // Y-28 fase 3: decide QUANDO l'ingegnere parla.
 // CalibrationCascade sa quale passo manca; questo sa se annunciarlo adesso.
@@ -26,10 +26,12 @@ namespace SimRIG
     public class CalibrationCascadeRunner
     {
         /// <summary>
-        /// Quante volte ripetere la stessa istruzione prima di rinunciare per questa sessione.
-        /// Tre: abbastanza da coprire una distrazione, poco da non diventare assillante.
+        /// Quanti solleciti dopo la richiesta piena, prima di rinunciare per questa sessione.
+        /// Due: con la richiesta iniziale fanno tre annunci in tutto, che e' il limite oltre il
+        /// quale l'ingegnere smette di aiutare e comincia ad assillare. Coincide con le varianti
+        /// di testo disponibili (CalibrationCascade.MaxVoiceVariants).
         /// </summary>
-        public const int MaxRepeatsPerStep = 3;
+        public const int MaxRepeatsPerStep = 2;
 
         private CalibrationStep _announcedStep = CalibrationStep.None;
         private int _announcedOnLap = -1;
@@ -41,7 +43,24 @@ namespace SimRIG
         /// <summary>La cascata si e' appena completata: va dato l'annuncio di fine, una volta sola.</summary>
         public bool JustCompleted { get; private set; }
 
+        /// <summary>
+        /// Quale annuncio e' questo per il passo corrente: 0 la richiesta piena, 1 e 2 i solleciti.
+        /// Serve a scegliere la variante del testo, cosi' l'ingegnere non ripete parola per parola.
+        /// </summary>
+        public int RepeatIndex { get { return _repeatsForStep; } }
+
+        /// <summary>
+        /// E' il primo annuncio di calibrazione di questa sessione: va preceduto dall'apertura.
+        ///
+        /// Serve perche' la cascata **salta** i passi gia' noti, quindi qualunque passo puo' essere
+        /// il primo — arrivando a un circuito nuovo con la classe gia' calibrata si comincerebbe da
+        /// meta' elenco. Le frasi dei passi sono scritte neutre apposta, e l'apertura le
+        /// contestualizza una volta sola invece di raddoppiarle tutte.
+        /// </summary>
+        public bool IsFirstOfSession { get; private set; }
+
         private bool _wasWorking;
+        private bool _hasSpokenThisSession;
 
         /// <summary>
         /// Un tick. Restituisce <c>true</c> **solo** nell'istante in cui va pronunciato un annuncio,
@@ -84,6 +103,8 @@ namespace SimRIG
                 _announcedStep = CurrentStep;
                 _announcedOnLap = currentLap;
                 _repeatsForStep = 0;
+                IsFirstOfSession = !_hasSpokenThisSession;
+                _hasSpokenThisSession = true;
                 return true;
             }
 
@@ -93,6 +114,7 @@ namespace SimRIG
             {
                 _announcedOnLap = currentLap;
                 _repeatsForStep++;
+                IsFirstOfSession = false;
                 return true;
             }
 
@@ -107,6 +129,8 @@ namespace SimRIG
             _repeatsForStep = 0;
             _wasWorking = false;
             JustCompleted = false;
+            IsFirstOfSession = false;
+            _hasSpokenThisSession = false;
         }
     }
 }

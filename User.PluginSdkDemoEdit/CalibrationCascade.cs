@@ -161,20 +161,36 @@ namespace SimRIG
 
         /// <summary>
         /// Chiave vocale per il passo, o stringa vuota se non c'e' niente da annunciare.
-        /// Le chiavi di carburante, gomme e drive-through esistono gia' da prima di Y-28.
+        ///
+        /// <paramref name="repeatIndex"/> distingue la **prima** richiesta dai solleciti: 0 e' la
+        /// richiesta piena, 1 e 2 sono richiami progressivamente piu' asciutti. Un ingegnere vero
+        /// non ripete la stessa frase parola per parola — la accorcia, perche' il contesto ormai
+        /// e' condiviso. Ripeterla identica e' cio' che fa suonare il tutto come un automa.
+        ///
+        /// Oltre l'ultima variante si continua a restituire la piu' corta, invece di tornare alla
+        /// frase lunga: se il chiamante decidesse di insistere ancora, deve farlo sottovoce.
         /// </summary>
-        public static string VoiceKeyFor(CalibrationStep step)
+        public static string VoiceKeyFor(CalibrationStep step, int repeatIndex = 0)
         {
+            string baseKey;
             switch (step)
             {
-                case CalibrationStep.NeedGenuineLap: return "CALIB_NEED_LAP";
-                case CalibrationStep.DriveThrough: return "CALIB_DT_REQ";
-                case CalibrationStep.FuelOnlyStop: return "CALIB_FUEL_REQ";
-                case CalibrationStep.TyreStopAll4: return "CALIB_TYRE_REQ";
-                case CalibrationStep.TyreStopHalf: return "CALIB_TYRE_HALF_REQ";
-                case CalibrationStep.TyreStopSingle: return "CALIB_TYRE_SINGLE_REQ";
+                case CalibrationStep.NeedGenuineLap: baseKey = "CALIB_NEED_LAP"; break;
+                case CalibrationStep.DriveThrough: baseKey = "CALIB_DT"; break;
+                case CalibrationStep.FuelOnlyStop: baseKey = "CALIB_FUEL"; break;
+                case CalibrationStep.TyreStopAll4: baseKey = "CALIB_TYRE"; break;
+                case CalibrationStep.TyreStopHalf: baseKey = "CALIB_TYRE_HALF"; break;
+                case CalibrationStep.TyreStopSingle: baseKey = "CALIB_TYRE_SINGLE"; break;
                 default: return "";
             }
+
+            if (repeatIndex <= 0) return baseKey + "_REQ";
+
+            int variant = repeatIndex < MaxVoiceVariants ? repeatIndex : MaxVoiceVariants;
+            return baseKey + "_R" + variant.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
+
+        /// <summary>Quante varianti di sollecito esistono per ogni passo, oltre alla richiesta piena.</summary>
+        public const int MaxVoiceVariants = 2;
     }
 }

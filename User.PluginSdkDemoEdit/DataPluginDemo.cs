@@ -1341,14 +1341,27 @@ namespace SimRIG
 
             string voiceKey = _calibrationRunner.JustCompleted
                 ? "CALIB_COMPLETE"
-                : CalibrationCascade.VoiceKeyFor(step);
+                : CalibrationCascade.VoiceKeyFor(step, _calibrationRunner.RepeatIndex);
 
-            if (!string.IsNullOrEmpty(voiceKey))
+            if (string.IsNullOrEmpty(voiceKey)) return;
+
+            // Al primo annuncio della sessione la frase del passo viene incastonata nell'apertura,
+            // in un'unica battuta radio. Serve perché la cascata salta i passi già noti: senza
+            // apertura, arrivando su un circuito nuovo con la classe già calibrata, l'ingegnere
+            // attaccherebbe da metà elenco senza contesto.
+            if (_calibrationRunner.IsFirstOfSession)
+            {
+                string stepText = PitWallLanguage.GetPhrase(Settings.VoiceLanguage, voiceKey);
+                TriggerRadioVoice("CALIB_INTRO", stepText);
+            }
+            else
             {
                 TriggerRadioVoice(voiceKey);
-                LogManager.Log(LogModule.RADAR, LogType.EVENT, "Calibration Step Announced",
-                    $"step={step} | key={voiceKey} | lap={CurrentState.CurrentLap}");
             }
+
+            LogManager.Log(LogModule.RADAR, LogType.EVENT, "Calibration Step Announced",
+                $"step={step} | key={voiceKey} | repeat={_calibrationRunner.RepeatIndex} | " +
+                $"intro={_calibrationRunner.IsFirstOfSession} | lap={CurrentState.CurrentLap}");
         }
 
         /// <summary>Etichetta breve del passo per la dash. Vuota se non c'è nulla in corso.</summary>
