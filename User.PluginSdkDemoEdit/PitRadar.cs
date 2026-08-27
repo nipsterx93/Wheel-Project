@@ -56,6 +56,22 @@ namespace SimRIG
 		public CalibrationConfidence FuelFillRateConfidence { get; set; } = CalibrationConfidence.Unknown;
 
 		public CalibrationConfidence TyreChangeTimeConfidence { get; set; } = CalibrationConfidence.Unknown;
+
+		/// <summary>
+		/// Quanto dura un cambio di **due** gomme rispetto a quello di quattro, misurato.
+		/// Zero = mai calibrato, e allora vale il valore cablato in <c>GetTireMultiplier</c> (0.5).
+		///
+		/// Il fallback resta apposta: si sovrascrive solo con una misura vera, mai il contrario.
+		/// Il valore assunto oggi (esattamente meta') e' ottimistico — il tempo dei martinetti e'
+		/// fisso, quindi dimezzare le gomme non dimezza la sosta.
+		/// </summary>
+		public double TyreChangeMultiplierHalf { get; set; } = 0.0;
+
+		/// <summary>
+		/// Come <see cref="TyreChangeMultiplierHalf"/>, per il cambio di **una** gomma sola.
+		/// Zero = mai calibrato, vale il cablato (0.25).
+		/// </summary>
+		public double TyreChangeMultiplierSingle { get; set; } = 0.0;
 	}
 
 	public class SimRigDatabase
@@ -386,6 +402,18 @@ namespace SimRIG
 		}
 	}
 
+	/// <summary>Moltiplicatore misurato per due gomme, 0 se mai calibrato. Vedi Y-28.</summary>
+	public double CalibratedTyreMultiplierHalf
+	{
+		get { return _currentClass != null ? _currentClass.TyreChangeMultiplierHalf : 0.0; }
+	}
+
+	/// <summary>Moltiplicatore misurato per una gomma, 0 se mai calibrato.</summary>
+	public double CalibratedTyreMultiplierSingle
+	{
+		get { return _currentClass != null ? _currentClass.TyreChangeMultiplierSingle : 0.0; }
+	}
+
 	public bool IsPitLayoutSequential
 	{
 		get
@@ -700,6 +728,72 @@ namespace SimRIG
 	/// piu' sotto: e' un "fermo o quasi", non una misura di velocita'.
 	/// </summary>
 	public const double StationarySpeedKmh = 0.5;
+
+	/// <summary>
+	/// Che tipo di sosta sta iniziando, in base a cosa e' stato richiesto.
+	///
+	/// **Perche' non piu' i 20 litri esatti.** La soglia storica era `fuelToAdd == 20.0`, un numero
+	/// preso dalla procedura guidata originale. Ma la velocita' di erogazione e' litri diviso
+	/// secondi: funziona con 15, con 22, con qualunque quantita' significativa. Pretendere il valore
+	/// esatto costringeva l'utente a indovinare un numero che non serve a niente, e faceva fallire
+	/// silenziosamente la calibrazione se ne impostava 18.
+	///
+	/// Cio' che conta davvero e' che la sosta sia **inequivocabile**: solo benzina, o solo gomme.
+	/// Su quello non si transige, perche' in una sosta mista il tempo fermo non si separa fra le due
+	/// senza conoscerne gia' una (vedi <see cref="ObserveNaturalPitStop"/>).
+	///
+	/// La soglia minima e' la stessa gia' usata per l'apprendimento passivo
+	/// (<see cref="MinLitresForFuelRate"/>): un solo numero condiviso invece di due che potrebbero
+	/// divergere.
+	/// </summary>
+	/// <summary>
+	/// Lo scope riguarda **due** gomme (un asse o un lato)? Le quattro combinazioni sono trattate
+	/// come una categoria sola, com'e' gia' oggi in <c>GetTireMultiplier</c>: si misura un
+	/// rappresentante, non tutte e quattro separatamente.
+	/// </summary>
+	public static bool IsHalfSetScope(TyreSelectionScope scope)
+	{
+		return scope == TyreSelectionScope.Fronts || scope == TyreSelectionScope.Rears
+			|| scope == TyreSelectionScope.Left || scope == TyreSelectionScope.Right;
+	}
+
+	/// <summary>
+	/// Moltiplicatore misurato: quanto dura un cambio parziale rispetto a quello completo.
+	///
+	/// Esempio dell'utente, che e' anche il test di regressione: 27 s per quattro gomme, 13 s per
+	/// due, quindi 13/27 = 0.481 — invece dello 0.5 assunto oggi. La differenza non e' cosmetica:
+	/// il tempo dei martinetti e' fisso, quindi dimezzare le gomme non dimezza la sosta, e quel
+	/// numero entra dritto nel calcolo del pit loss e quindi nei consigli di undercut.
+	///
+	/// Restituisce 0 se la misura non e' utilizzabile: senza un riferimento All4 non c'e' rapporto
+	/// da calcolare, e un parziale piu' lento dell'intero e' un dato sporco, non una misura.
+	/// </summary>
+	public static double TyreMultiplierFromMeasurement(double partialSeconds, double all4Seconds)
+	{
+		if (all4Seconds <= 0.0 || partialSeconds <= 0.0) return 0.0;
+		if (partialSeconds >= all4Seconds) return 0.0;
+
+		return partialSeconds / all4Seconds;
+	}
+
+	public static CalibrationMode ClassifyCalibrationMode(double fuelToAdd, TyreSelectionScope tyres)
+	{
+		bool tyresRequested = tyres != TyreSelectionScope.None;
+
+		if (!tyresRequested && fuelToAdd >= MinLitresForFuelRate)
+		{
+			return CalibrationMode.SplashAndDash;
+		}
+
+		// Solo gomme: nessun carburante richiesto. Qualunque scope, non solo All4 — i moltiplicatori
+		// per 2 e 1 gomma si misurano con lo stesso meccanismo (vedi Y-28, fase 5).
+		if (tyresRequested && fuelToAdd <= 0.0)
+		{
+			return CalibrationMode.TyreChange;
+		}
+
+		return CalibrationMode.DriveThrough;
+	}
 
 	/// <summary>
 	/// La permanenza in corsia box ha davvero percorso la corsia, o e' un artefatto?
@@ -1155,18 +1249,7 @@ namespace SimRIG
 					log.Log(LogModule.RADAR, LogType.EVENT, "Pit Entry Pct Calibration Skipped",
 						$"pos={state.TrackPositionPercent:F3} | genuineTrackSample={_geofenceGate.HasGenuineTrackSample} | continuity={_geofenceGate.LastContinuity}");
 				}
-				if (fuelToAdd == 20.0 && selectedTyres == TyreSelectionScope.None)
-				{
-					_activeMode = CalibrationMode.SplashAndDash;
-				}
-				else if (fuelToAdd == 0.0 && selectedTyres == TyreSelectionScope.All4)
-				{
-					_activeMode = CalibrationMode.TyreChange;
-				}
-				else
-				{
-					_activeMode = CalibrationMode.DriveThrough;
-				}
+				_activeMode = ClassifyCalibrationMode(fuelToAdd, selectedTyres);
 				log.Log(LogModule.RADAR, LogType.EVENT, "Player Pit Entry", $"Mode: {_activeMode}");
 			}
 			// "Fermo ai box" e' la stessa cosa qui e nel percorso spaziale piu' sotto (riga ~1178),
@@ -1311,13 +1394,44 @@ namespace SimRIG
 			}
 			else if (_activeMode == CalibrationMode.TyreChange)
 			{
-				if (_pitBoxTimeCache > 0.5
-					&& CanOverwrite(_currentClass.TyreChangeTimeConfidence, CalibrationConfidence.Confirmed))
+				// Il tempo di riferimento e' **sempre** quello delle quattro gomme: e' il
+				// denominatore da cui si ricavano i moltiplicatori parziali. Una sosta a 2 o 1
+				// gomma non lo puo' scrivere, altrimenti il riferimento diventerebbe piu' corto
+				// del vero e tutti i moltiplicatori sarebbero sbagliati verso l'alto.
+				if (selectedTyres == TyreSelectionScope.All4)
 				{
-					_currentClass.TyreChangeTime = _pitBoxTimeCache;
-					_currentClass.TyreChangeTimeConfidence = CalibrationConfidence.Confirmed;
-					flag = true;
-					log.Log(LogModule.RADAR, LogType.EVENT, "Tyre Change Time Calibrated", $"{_pitBoxTimeCache:F1}s | confidence=Confirmed");
+					if (_pitBoxTimeCache > 0.5
+						&& CanOverwrite(_currentClass.TyreChangeTimeConfidence, CalibrationConfidence.Confirmed))
+					{
+						_currentClass.TyreChangeTime = _pitBoxTimeCache;
+						_currentClass.TyreChangeTimeConfidence = CalibrationConfidence.Confirmed;
+						flag = true;
+						log.Log(LogModule.RADAR, LogType.EVENT, "Tyre Change Time Calibrated", $"{_pitBoxTimeCache:F1}s | confidence=Confirmed");
+					}
+				}
+				else if (_pitBoxTimeCache > 0.5 && _currentClass.TyreChangeTime > 0.0)
+				{
+					// Scope parziale: si misura il **rapporto** rispetto alle quattro gomme, non un
+					// tempo assoluto. Serve che All4 sia gia' noto, da cui l'ordine obbligato della
+					// cascata (prima All4, poi 2, poi 1).
+					double measured = TyreMultiplierFromMeasurement(_pitBoxTimeCache, _currentClass.TyreChangeTime);
+					if (measured > 0.0)
+					{
+						if (IsHalfSetScope(selectedTyres))
+						{
+							_currentClass.TyreChangeMultiplierHalf = measured;
+							flag = true;
+							log.Log(LogModule.RADAR, LogType.EVENT, "Tyre Multiplier Calibrated (2 tyres)",
+								$"{measured:F3} | {_pitBoxTimeCache:F1}s / {_currentClass.TyreChangeTime:F1}s | scope={selectedTyres}");
+						}
+						else
+						{
+							_currentClass.TyreChangeMultiplierSingle = measured;
+							flag = true;
+							log.Log(LogModule.RADAR, LogType.EVENT, "Tyre Multiplier Calibrated (1 tyre)",
+								$"{measured:F3} | {_pitBoxTimeCache:F1}s / {_currentClass.TyreChangeTime:F1}s | scope={selectedTyres}");
+						}
+					}
 				}
 				if (num2 > MinimumCredibleTransitSec() && num2 > 0.5)
 				{

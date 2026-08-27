@@ -665,7 +665,9 @@ namespace SimRIG
                     double refuelRate = radar.MeasuredFuelFillRate > 0 ? radar.MeasuredFuelFillRate : profileRefuelRate;
                     double fuelTime = refuelRate > 0 ? (fuel.FuelToAdd / refuelRate) : 0.0;
 
-                    double tireMult = GetTireMultiplier(tyres.CurrentScope);
+                    double tireMult = GetTireMultiplier(tyres.CurrentScope,
+                                                       radar.CalibratedTyreMultiplierHalf,
+                                                       radar.CalibratedTyreMultiplierSingle);
                     double tireTime = radar.DbTireChangeTime * tireMult;
 
                     double pitDistance = radar.PitDistanceMeters;
@@ -1343,36 +1345,45 @@ namespace SimRIG
 
 
 
-        private double GetTireMultiplier(TyreSelectionScope scope)
+        /// <summary>Valore assunto per due gomme, quando non è stato misurato. Vedi Y-28.</summary>
+        public const double FallbackHalfSetMultiplier = 0.5;
 
+        /// <summary>Valore assunto per una gomma sola, quando non è stato misurato.</summary>
+        public const double FallbackSingleTyreMultiplier = 0.25;
+
+        /// <summary>
+        /// Quanto pesa un cambio parziale rispetto a quello completo.
+        ///
+        /// I due valori cablati (metà e un quarto) restano come **fallback**: si usano finché la
+        /// calibrazione guidata non ha misurato il rapporto vero per quella classe. Sono
+        /// ottimistici — il tempo dei martinetti è fisso, quindi dimezzare le gomme non dimezza la
+        /// sosta — ma meglio un'assunzione dichiarata che nessun valore.
+        ///
+        /// Un moltiplicatore calibrato a zero significa "mai misurato", non "istantaneo": è la
+        /// stessa convenzione degli altri dati calibrati.
+        /// </summary>
+        public static double GetTireMultiplier(TyreSelectionScope scope,
+                                               double calibratedHalf = 0.0,
+                                               double calibratedSingle = 0.0)
         {
-
             switch (scope)
-
             {
-
                 case TyreSelectionScope.All4: return 1.0;
 
                 case TyreSelectionScope.Fronts:
-
                 case TyreSelectionScope.Rears:
-
                 case TyreSelectionScope.Left:
-
-                case TyreSelectionScope.Right: return 0.5;
+                case TyreSelectionScope.Right:
+                    return calibratedHalf > 0.0 ? calibratedHalf : FallbackHalfSetMultiplier;
 
                 case TyreSelectionScope.FL:
-
                 case TyreSelectionScope.FR:
-
                 case TyreSelectionScope.RL:
-
-                case TyreSelectionScope.RR: return 0.25;
+                case TyreSelectionScope.RR:
+                    return calibratedSingle > 0.0 ? calibratedSingle : FallbackSingleTyreMultiplier;
 
                 default: return 0.0;
-
             }
-
         }
 
 
