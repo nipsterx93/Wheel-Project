@@ -42,6 +42,91 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-28] claude → nuova chat sul portatile (nessun codice toccato)
+
+**Task:** nessun lavoro sul codice in questo turno — diagnosi di un problema di replay corrotti, e
+preparazione del trasferimento del progetto su un secondo PC ("portatile") per una sessione di test
+in programma la sera del 27-28/08 con la persona che fornisce i replay.
+
+**Nessun commit** (nessun file di codice toccato, quindi nessun lock preso).
+
+### Cosa è successo in questo turno
+
+**1. Tre replay Daytona nuovi sono risultati corrotti — diagnosticato, non risolto.** L'utente aveva
+3 replay nuovi (`20260813_144908`, `20260813_205545`, `20260816_145833`, cartella
+`Replay SimHub Pirpi\Non funziona\` sul suo PC, fuori dal repo) che bloccano il pulsante Replay di
+SimHub. Analisi byte a byte (non il contenuto logico, i byte grezzi):
+
+- Tutti e 3 hanno un buco di **~9.5-10 KB di zeri puri** vicino all'inizio del `.telemetry.json`
+  (offset diversi per coincidenza di allineamento, ma stessa dimensione del buco).
+- Il `.metadata` di tutti e 3 è illeggibile: invece del JSON atteso (`IsEmpty`, `StartDate`,
+  `EndDate`, `CarModel`, `TrackName`, `Description`, `ScreenCaptureFrameCount`, `GameAndReader`,
+  `Thumbnail` — schema confermato leggendo un file sano), contiene dati che sembrano un frammento
+  base64 di un'immagine. Due dei tre file hanno **lo stesso identico contenuto sbagliato**, spostato
+  di un byte — segno di un bug software (buffer riusato/non inizializzato), non di un guasto fisico
+  casuale.
+- **Confermato che la corruzione è già sulla chiavetta originale**, non introdotta dalle nostre
+  copie: l'utente ha ricopiato un replay direttamente dalla chiavetta e ha riprodotto lo stesso
+  blocco.
+- **Tentativo di riparazione fallito**: copiare il `.metadata` di un file sano su uno rotto non ha
+  sbloccato il Replay — atteso, perché il buco vero è nel `.telemetry.json`, non nel `.metadata`.
+- **Ipotesi più probabile**: SimHub non ha finalizzato correttamente la registrazione (crash o
+  chiusura brusca durante/dopo una sessione lunga), non un guasto della chiavetta. Cercato riscontro
+  su GitHub/forum SimHub: nessuna issue chiusa descrive esattamente questo sintomo, ma
+  [issue #883](https://github.com/SHWotever/SimHub/issues/883) conferma blocchi incostanti in
+  caricamento di replay grandi, e un thread del forum del 2023 conferma che il formato `.telemetry.json`
+  non è testo JSON e non è documentato nemmeno dalla community.
+- **Non recuperabile con i mezzi disponibili.** L'utente ha chiesto altri replay alla persona che li
+  ha registrati; test in programma stasera per procurarne di nuovi con attenzione a fermare la
+  registrazione col tasto Stop dedicato (non chiudendo SimHub a forza).
+
+**2. Chiarito lo stato dei punti aperti di Fase C — nessuno richiede multiclasse.** Y-14, Y-15 e la
+Fase B (verifica undercut/overcut) non dipendono dal multiclasse: quello serviva solo ai punti già
+chiusi (Y-16/17/19/24/25). Il replay Misano esistente (**uno solo**, catturato 3 volte per verifica
+di ripetibilità: `SimRIG_DebugLog_20260823_095158/104939/133904`) copre già bene **Y-15**: sosta
+unica al giro 19/20, `FuelAdded: 15.8L` (`Mode: StopAndGo`, nessun cambio gomme), finale con
+~0.16 L in serbatoio (raccontato dall'utente a memoria, non ancora incrociato col log). **Y-14** è
+coperto solo a metà (la sosta Misano è solo benzina, serve ancora una sosta con cambio gomme vero).
+**Fase B** non ha ancora nessun replay utile: serve un vero undercut/overcut eseguito, con l'esito
+reale raccontato dall'utente — atteso dai test di stasera.
+
+**3. Preparato il trasferimento del progetto su un secondo PC.** Verificato nel codice: **nessun
+percorso assoluto cablato** (cercato `C:\Users\...`, `Andreas`, `The Wheel Project` in tutto il
+sorgente — compaiono solo in cache `.vs/` e in un attributo `[PluginAuthor]`, niente che dipenda dal
+percorso). Il progetto può stare in qualunque cartella, con qualunque nome utente Windows. L'utente
+sposterà la cartella su un portatile via chiavetta, in `Desktop\Antigravity2.0` (senza la sottocartella
+`The Wheel Project`). Piano concordato per stasera:
+
+- **Portatile** (dove gira Claude Code): SimHub (installazione locale, serve solo per le reference di
+  build) + Visual Studio 2022 + variabile d'ambiente `SIMHUB_INSTALL_PATH` puntata lì + build della
+  DLL (`User.PluginSdkDemoEdit\bin\Debug\User.PluginSdkDemo.dll` dopo il comando MSBuild in
+  `CLAUDE.md`).
+- **PC dell'amico**: quella DLL copiata a mano nella cartella principale di SimHub (dove sta
+  `SimHubWPF.exe`, non in una sottocartella), replay `.json` per i test, e i Log generati durante la
+  sessione — questi ultimi si creano **da soli** in `{SimHub}\Logs\SimRig Logs\`, nessuna cartella da
+  preparare a mano.
+- I Log generati stasera tornano sul portatile via chiavetta, dentro `Logs/` del progetto (cartella
+  gitignored, va ricopiata a mano se il progetto viaggia via Git — qui viaggia via copia diretta,
+  quindi non è un problema).
+
+### Per chi entra (prossima chat, probabilmente sul portatile)
+
+**Prossimo passo:** se stasera sono arrivati replay nuovi puliti, seguire l'ordine della roadmap
+(prima Fase C — Y-14 sosta con cambio gomme, poi Fase B — undercut/overcut con esito raccontato
+dall'utente). Se invece si riparte senza novità, il lavoro pronto e già autorizzato dall'utente è
+**Y-15 sul replay Misano esistente**: confrontare `FuelToAdd` congelato all'ingresso corsia box coi
+15.8 L reali versati e col residuo finale ~0.16 L, seguendo ADR-004 (funzione pura, test coi numeri
+veri, verifica che il test fallisca senza il fix).
+
+**NON toccare:** i 3 replay corrotti (`Non funziona\`, fuori dal repo) — sono considerati persi, non
+c'è nulla da riparare lì dentro. Non serve nemmeno riprovare a copiarli.
+
+**Attenzione a:** `HANDOFF_LOG.md` ha **23 voci**, il doppio del limite di 10 dichiarato in testa al
+file — non tagliato in questo turno perché fuori scope, ma da fare in un turno dedicato prima che
+diventi ingestibile.
+
+---
+
 ## [2026-08-25 16:00] claude → nuova chat: analisi dei replay Daytona
 
 **Task:** Y-30 — riscrittura delle frasi dell'ingegnere; poi cambio chat
