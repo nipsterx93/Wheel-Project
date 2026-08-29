@@ -115,6 +115,16 @@ namespace SimRIG
         private double _lastGoodLeaderAbsolutePos = -1.0;
 
         /// <summary>
+        /// Countdown di sessione all'istante di <see cref="_lastGoodLeaderAbsolutePos"/>, per sapere
+        /// **quanto tempo fa** e' stata presa. Negativo = nessuna posizione credibile finora.
+        ///
+        /// Si usa il tempo di *sessione* e non l'orologio di sistema perche' i replay girano a
+        /// velocita' multipla: il passo del leader e' in secondi di sessione, e l'avanzamento va
+        /// misurato con lo stesso metro.
+        /// </summary>
+        private double _lastGoodLeaderPosSessionTimeLeft = -1.0;
+
+        /// <summary>
         /// Ultimo conteggio giri credibile del leader. Come
         /// <see cref="_lastGoodLeaderAbsolutePos"/>, ma alla sorgente: qui protegge la proprieta'
         /// esposta alla dashboard, non solo il calcolo derivato.
@@ -597,33 +607,36 @@ namespace SimRIG
             {
                 leaderAbsolutePos = Results.RaceLapsCompleted + effTrackPos;
                 _lastGoodLeaderAbsolutePos = leaderAbsolutePos;
+                _lastGoodLeaderPosSessionTimeLeft = effSessionTimeLeft;
             }
             else
             {
                 var overallLeader = state.Opponents.FirstOrDefault(o => o.Position == 1);
-                if (overallLeader != null && overallLeader.TrackPositionPercent.HasValue)
-                {
-                    leaderAbsolutePos = Results.LeaderRaceLapsCompleted + overallLeader.TrackPositionPercent.Value;
-                }
+                double rawLeaderTrackPos = overallLeader != null && overallLeader.TrackPositionPercent.HasValue
+                    ? overallLeader.TrackPositionPercent.Value
+                    : 0.0;
 
-                // Un record del leader momentaneamente vuoto (posizione e giri a zero) non e' il
-                // leader sul traguardo: e' un buco nella telemetria. Preso per buono azzerava
-                // leaderAbsolutePos, e LeaderRaceLapsRemaining diventava il totale latchato intero
-                // — 30.00 invece dei ~18 reali, ai giri 12-15 del replay Daytona del 2026-08-23.
-                // Si tiene l'ultima posizione credibile finche' il record non torna popolato.
-                if (!IsLeaderSampleUsable(Results.LeaderRaceLapsCompleted,
-                                          overallLeader != null && overallLeader.TrackPositionPercent.HasValue
-                                              ? overallLeader.TrackPositionPercent.Value
-                                              : 0.0))
-                {
-                    if (_lastGoodLeaderAbsolutePos >= 0.0)
-                    {
-                        leaderAbsolutePos = _lastGoodLeaderAbsolutePos;
-                    }
-                }
-                else
+                // Due buchi diversi nello stesso dato, entrambi gestiti da ResolveLeaderAbsolutePos:
+                //  - record del leader momentaneamente vuoto, posizione **e** giri a zero (Y-24);
+                //  - record popolato ma con la sola **posizione** mai arrivata (Y-35), che il guard
+                //    di Y-24 lascia passare perche' i giri ci sono. Li' non basta *tenere* l'ultima
+                //    posizione buona: una posizione tenuta e' ferma, e una posizione ferma congela
+                //    il tempo alla bandiera invece di sbagliarlo in modo visibile.
+                double elapsedSinceGoodSample = _lastGoodLeaderPosSessionTimeLeft >= 0.0
+                    ? _lastGoodLeaderPosSessionTimeLeft - effSessionTimeLeft
+                    : 0.0;
+
+                leaderAbsolutePos = ResolveLeaderAbsolutePos(Results.LeaderRaceLapsCompleted,
+                                                             rawLeaderTrackPos,
+                                                             _lastGoodLeaderAbsolutePos,
+                                                             elapsedSinceGoodSample,
+                                                             _smoothedLeaderPace);
+
+                if (IsLeaderSampleUsable(Results.LeaderRaceLapsCompleted, rawLeaderTrackPos)
+                    && !IsLeaderPositionMissing(Results.LeaderRaceLapsCompleted, rawLeaderTrackPos))
                 {
                     _lastGoodLeaderAbsolutePos = leaderAbsolutePos;
+                    _lastGoodLeaderPosSessionTimeLeft = effSessionTimeLeft;
                 }
             }
 
@@ -1270,6 +1283,106 @@ namespace SimRIG
         }
 
         /// <summary>
+        /// Il record del leader e' popolato ma **il campo posizione no** (Y-35).
+        ///
+        /// E' il caso che <see cref="IsLeaderSampleUsable"/> lascia deliberatamente passare: li' la
+        /// domanda era "questo record e' vuoto?", e con i giri popolati la risposta e' no. La
+        /// domanda diversa a cui risponde questa funzione e' "la **posizione** e' arrivata?".
+        ///
+        /// Uno zero esatto con la gara in corso non e' un leader fermo sulla linea: e' un campo mai
+        /// riempito. Una vettura in movimento attraversa il traguardo in una frazione di tick, e la
+        /// probabilita' di campionarla a <c>0.0000</c> esatto e' trascurabile — mentre nel replay
+        /// Road Atlanta del 2026-08-29 e' successo nel **26% dei tick**, per giri interi di fila
+        /// (giro 30: tutti e 13 i campioni a zero con <c>LapsComp=32</c>).
+        ///
+        /// **Perche' fa danno.** Con la posizione del leader ferma,
+        /// <see cref="RaceTimeProjection.TimeUntilLeaderCheckered"/> restituisce un valore
+        /// *esattamente* costante: il countdown che scende e la frazione di giro che manca al leader
+        /// crescono della stessa quantita' e si annullano. Il tempo alla bandiera si blocca, e con
+        /// lui i giri che il Player puo' ancora fare — mentre la sua posizione avanza. La proiezione
+        /// sale allora 1:1 col pilota per tutto il giro, poi crolla di un giro del leader quando
+        /// l'arrotondamento scatta. Non e' un errore appariscente: e' un numero *stabile e sbagliato*.
+        /// </summary>
+        public static bool IsLeaderPositionMissing(int leaderLapsCompleted, double leaderTrackPositionPct)
+        {
+            return leaderTrackPositionPct == 0.0 && leaderLapsCompleted > 0;
+        }
+
+        /// <summary>
+        /// Dove sara' il leader adesso, partendo dall'ultima posizione credibile e dal tempo passato
+        /// da allora. Serve quando la posizione live non e' arrivata
+        /// (<see cref="IsLeaderPositionMissing"/>).
+        ///
+        /// **Tenere l'ultima posizione buona non basta**, ed e' il punto meno ovvio di Y-35: una
+        /// posizione *tenuta* e' comunque una posizione ferma, e produce lo stesso tempo-alla-bandiera
+        /// congelato di una posizione a zero. L'unica cosa che spezza il meccanismo e' farla
+        /// **avanzare**: il leader non sta fermo, e di quanto si sia spostato lo sappiamo dal suo
+        /// passo e dal tempo trascorso.
+        ///
+        /// Senza un passo utilizzabile si restituisce la posizione tenuta: sbagliare per difetto e'
+        /// preferibile a moltiplicare per un numero a caso — stessa scelta di
+        /// <see cref="RaceTimeProjection.TimeUntilLeaderCheckered"/> quando il passo manca.
+        /// </summary>
+        /// Il risultato e' **vincolato al conteggio giri**, che continua ad arrivare anche quando la
+        /// posizione no: il leader ha completato <paramref name="knownLapsCompleted"/> giri, quindi
+        /// si trova per forza fra quel valore e il successivo. Cosi' l'errore della stima resta
+        /// sotto il giro qualunque cosa faccia il passo — la stessa garanzia su cui e' costruita
+        /// <see cref="RaceTimeProjection.TimeUntilLeaderCheckered"/>.
+        /// </summary>
+        /// <param name="lastGoodPos">Ultima posizione assoluta credibile. Negativa = mai avuta.</param>
+        /// <param name="elapsedSec">Secondi di **sessione** trascorsi da allora. Negativi = ignorati.</param>
+        /// <param name="leaderPaceSec">Passo del leader. Zero o negativo = nessun avanzamento.</param>
+        /// <param name="knownLapsCompleted">Giri completati dal leader, dato che continua ad arrivare.</param>
+        public static double DeadReckonLeaderPos(double lastGoodPos, double elapsedSec,
+                                                 double leaderPaceSec, int knownLapsCompleted)
+        {
+            double advanced = lastGoodPos;
+
+            if (lastGoodPos >= 0.0 && leaderPaceSec > 0.0 && elapsedSec > 0.0)
+            {
+                advanced = lastGoodPos + elapsedSec / leaderPaceSec;
+            }
+
+            if (knownLapsCompleted < 0) return advanced;
+
+            // Il giro in corso e' noto: la posizione ci sta dentro per costruzione.
+            double floor = knownLapsCompleted;
+            double ceiling = knownLapsCompleted + 1.0;
+
+            if (advanced < floor) return floor;
+            if (advanced >= ceiling) return ceiling - 0.001;
+            return advanced;
+        }
+
+        /// <summary>
+        /// La posizione assoluta del leader da usare nelle proiezioni: quella live se e' arrivata,
+        /// altrimenti la stima per avanzamento.
+        ///
+        /// Sta qui come funzione pura perche' e' **questa scelta** — non l'aritmetica delle due
+        /// funzioni che chiama — il punto in cui il difetto puo' tornare. La lezione di Y-31: il
+        /// filtro era corretto, sbagliava il chiamante, e un test sul solo filtro restava verde.
+        /// </summary>
+        /// <param name="leaderLapsCompleted">Giri completati dal leader.</param>
+        /// <param name="rawTrackPos">Posizione live dalla telemetria, <c>0.0</c> se non arrivata.</param>
+        /// <param name="lastGoodPos">Ultima posizione assoluta credibile. Negativa = mai avuta.</param>
+        /// <param name="elapsedSec">Secondi di sessione da quel campione.</param>
+        /// <param name="leaderPaceSec">Passo del leader.</param>
+        public static double ResolveLeaderAbsolutePos(int leaderLapsCompleted, double rawTrackPos,
+                                                      double lastGoodPos, double elapsedSec,
+                                                      double leaderPaceSec)
+        {
+            bool recordBlank = !IsLeaderSampleUsable(leaderLapsCompleted, rawTrackPos);
+            bool positionMissing = IsLeaderPositionMissing(leaderLapsCompleted, rawTrackPos);
+
+            if (recordBlank || positionMissing)
+            {
+                return DeadReckonLeaderPos(lastGoodPos, elapsedSec, leaderPaceSec, leaderLapsCompleted);
+            }
+
+            return leaderLapsCompleted + rawTrackPos;
+        }
+
+        /// <summary>
         /// Restituisce il conteggio giri del leader da esporre, tenendo l'ultimo credibile quando
         /// il campione e' vuoto. Statico e con lo stato passato per riferimento perche' i test
         /// esercitino **questa** logica invece di riprodurla: la prima versione del test la
@@ -1370,6 +1483,7 @@ namespace SimRIG
             _smoothedLeaderPace = 0.0;
             _leaderPaceFilter.Reset();
             _lastGoodLeaderAbsolutePos = -1.0;
+            _lastGoodLeaderPosSessionTimeLeft = -1.0;
             _lastGoodLeaderLapsCompleted = -1;
 
             _lastEvaluatedLap = -1;
