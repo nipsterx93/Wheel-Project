@@ -42,6 +42,90 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-29 17:00] claude → prossimo turno: rigirare il replay e misurare
+
+**Task:** Y-35 (posizione del leader assente) e Y-32 (passo del leader)
+**Commit:** `e05456d` (lock) · `66678e0` · questo
+**Log analizzato:** `Logs/Road Atlanta/SimRIG_DebugLog_20260829_140004.csv` — primo replay girato con
+la correzione Y-31 a bordo.
+
+### Y-31 verificato sul campo, prima di tutto
+
+Il replay serviva a misurare `ProjectedPosAtCheckered`, e la risposta è netta. **Il totale ora
+torna indietro**: `36 → 35` al giro 17 e `37 → 35` al giro 25, cosa che prima era matematicamente
+impossibile. Alla bandiera: proiezione **35**, giri realmente completati **35**, `PosAtFlag=34.828`.
+
+Ma la misura ha mostrato che la stima grezza oscillava, e da lì è uscito Y-35.
+
+### Y-35, corretto — il difetto più insidioso trovato finora
+
+Su 797 campioni: p05 `33.797`, mediana `34.435`, p95 `34.833`. Una fascia di ~1.03 giri. Guardando
+**dentro** un giro invece che al confine, non era rumore ma un **dente di sega**.
+
+Il meccanismo, e vale la pena non riscoprirlo: la posizione del leader arriva a `0.0000` esatto per
+giri interi (26% dei tick). Con la posizione ferma, dentro `TimeUntilLeaderCheckered` il countdown
+**si semplifica algebricamente**:
+
+```
+tempo = timeLeft + (Ceiling(pos + timeLeft/pace) - pos - timeLeft/pace) * pace
+      = pace * (Ceiling(posAtExpiry) - pos)        <- timeLeft sparisce
+```
+
+Il cronometro esce dalla formula e il tempo alla bandiera diventa una **scala a gradini di giri
+interi del leader**. Nel giro 30 vale `429.352` per tre tick — 12.2 s di gara senza muoversi di un
+millesimo — poi crolla a `368.016`. Congelato quello, si congela `playerL_left` mentre il Player
+avanza: la proiezione sale 1:1 col pilota e cade al gradino.
+
+**Tenere l'ultima posizione buona non sarebbe bastato** ed è il punto meno ovvio: una posizione
+tenuta è comunque ferma e produce lo stesso congelamento. Va **fatta avanzare**.
+
+### Y-32, riprodotto ma NON corretto — leggere prima di riprovarci
+
+`Kalyann Mey4`: passo reale **68.5-70.5 s** (nove passaggi consecutivi), baseline **60.550**.
+La logica di Y-17b letta in isolamento è corretta e non ho capito come venga aggirata. Dettaglio
+completo e indizi in `PROJECT_STATE.md`, riga Y-32 — incluso il sospetto non verificato
+(`Opponent BoP Loaded` che ricompare a gara in corso). **Non ho toccato niente**: senza meccanismo
+dimostrato sarebbe stata una supposizione.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit code `0`, **202 `[PASS]`** (erano 193).
+
+### Stato
+- ✅ Compila — 0 errori · ✅ 202 test passano
+- ✅ Regressione ADR-004: azzerando il riconoscimento della posizione mancante dentro
+  `ResolveLeaderAbsolutePos` il test diventa rosso con `ottenuto 32,0000` — il valore del log
+
+### Per chi entra
+
+**Prossimo passo, ed è una misura non un'implementazione:** rigirare il replay Road Atlanta con la
+DLL nuova e confrontare la dispersione di `PosAtFlag` con quella di oggi (p05 `33.797`,
+mediana `34.435`, p95 `34.833`, 10 tick su 797 sopra `35.05`).
+
+```bash
+grep "Race Projections Update" <DebugLog>.csv
+```
+
+Se la fascia si stringe molto, Y-35 era la causa dominante e Y-32 scende di priorità. Se resta
+larga, il residuo è il passo del leader e Y-32 va affrontato **prima** di esporre qualunque
+proprietà sui giri del leader.
+
+**NON toccare:** la banda del filtro (`+0.05` / `-1.05`) e `IsLeaderSampleUsable`, che conserva
+apposta la semantica di Y-24.
+
+**Attenzione a:** il vincolo di `DeadReckonLeaderPos` al giro noto è ciò che tiene l'errore sotto il
+giro **finché il passo del leader è sbagliato**. Quando Y-32 sarà chiuso quel vincolo resta utile ma
+smette di essere l'unica rete. Restano aperte le due incoerenze già segnalate nel turno precedente
+(`RaceAnalyzer.cs:935` clamp sul leader anche in multiclasse, e il ramo `_leaderHasFinished`).
+
+---
+
 ## [2026-08-29 11:00] claude → prossimo turno: misurare la proiezione su un replay
 
 **Task:** analisi della serata di test del 28/08 (Road Atlanta) e correzione Y-31
