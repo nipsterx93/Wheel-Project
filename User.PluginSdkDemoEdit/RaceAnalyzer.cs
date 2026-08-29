@@ -36,6 +36,19 @@ namespace SimRIG
 
         public double RaceLapsRemaining { get; set; } = 99.0;
 
+        /// <summary>
+        /// Dove si trovera' il Player **nell'istante in cui esce la bandiera**, in giri completati
+        /// piu' frazione di giro (es. <c>34.80</c>). E' il numero da cui <see cref="RaceTotalLaps"/>
+        /// deriva per arrotondamento all'intero superiore: la parte decimale dice quanto manca a
+        /// essere costretti a un giro in piu'.
+        ///
+        /// Esposto perche' finora non era osservabile da nessuna parte: la proiezione veniva
+        /// arrotondata un'istruzione dopo essere stata calcolata, quindi nei log si vedeva solo il
+        /// risultato gia' quantizzato e gia' filtrato. Senza questo valore non si puo' distinguere
+        /// una proiezione a 34.10 da una a 34.95 — entrambe mostrano 35.
+        /// </summary>
+        public double ProjectedPosAtCheckered { get; set; } = 0.0;
+
 
 
         public bool IsLapped { get; set; } = false;
@@ -442,7 +455,7 @@ namespace SimRIG
 
                     log.Log(LogModule.STRATEGY, LogType.EVENT, "Race Projections Update",
 
-                        $"L_Rem: {Results.LeaderRaceLapsRemaining:F2} | P_Rem: {Results.RaceLapsRemaining:F2} | L_Pace: {Results.LeaderEstimatedPace:F3}");
+                        $"L_Rem: {Results.LeaderRaceLapsRemaining:F2} | P_Rem: {Results.RaceLapsRemaining:F2} | L_Pace: {Results.LeaderEstimatedPace:F3} | P_PosAtFlag: {Results.ProjectedPosAtCheckered:F3} | P_Total: {Results.RaceTotalLaps:F2}");
 
                 }
 
@@ -505,6 +518,8 @@ namespace SimRIG
                 Results.RaceLapsRemaining = 0.0;
 
                 Results.RaceTotalLaps = 0.0;
+
+                Results.ProjectedPosAtCheckered = 0.0;
 
                 Results.LeaderRaceLapsRemaining = 0.0;
 
@@ -881,26 +896,25 @@ namespace SimRIG
                         Results.RemainingPitsPlayer = playerRemainingStops;
 
                         double playerPosWhenLeaderFinishes = playerAbsolutePos + playerL_left;
-                        double projectedPlayerTotal = Math.Ceiling(playerPosWhenLeaderFinishes);
+                        Results.ProjectedPosAtCheckered = playerPosWhenLeaderFinishes;
 
-                        if (state.Position == 1)
-                        {
-                            projectedPlayerTotal = _latchedLeaderTotalLaps;
-                        }
-                        else if (!isMultiClass)
-                        {
-                            // Monoclasse: "non puoi completare piu' giri del leader" e' un tetto
-                            // sensato, il leader gira nella stessa vettura.
-                            projectedPlayerTotal = Math.Min(projectedPlayerTotal, _latchedLeaderTotalLaps);
-                        }
                         // Multiclasse: nessun tetto sul leader **assoluto**. Una GT3 e una GTP non
                         // fanno lo stesso numero di giri, quindi il confronto non dice nulla — e se
                         // il totale del leader e' sovrastimato il tetto non protegge comunque.
                         // Il tetto giusto sarebbe il leader **di classe**: vedi Y-19, va tarato sui
                         // log Daytona prima di cablarlo (serve la posizione assoluta degli avversari,
                         // che ha convenzioni di conteggio giri tutte da verificare).
+                        // Monoclasse: "non puoi completare piu' giri del leader" e' un tetto sensato,
+                        // il leader gira nella stessa vettura.
+                        double leaderTotalCap = isMultiClass ? 0.0 : _latchedLeaderTotalLaps;
 
-                        double targetPlayerTotal = UpdateLatchedLaps(projectedPlayerTotal, _latchedPlayerTotalReality, !state.IsInPitLane);
+                        // Y-31: la posizione passa **continua**. Arrotondarla qui la quantizzava a
+                        // intero, e un calo di un giro non superava piu' la soglia di 1.05 del filtro.
+                        double targetPlayerTotal = ProjectPlayerTotalLaps(playerPosWhenLeaderFinishes,
+                                                                          _latchedPlayerTotalReality,
+                                                                          !state.IsInPitLane,
+                                                                          state.Position == 1 ? _latchedLeaderTotalLaps : leaderTotalCap,
+                                                                          state.Position == 1);
                         if (targetPlayerTotal < _latchedPlayerTotalReality)
                         {
                             if (_pendingPlayerTotalReality != targetPlayerTotal)
@@ -990,7 +1004,7 @@ namespace SimRIG
 
                 log.Log(LogModule.STRATEGY, LogType.FLOW, "RaceProjectionsDiagnostics",
                     $"TimeLeft: {state.SessionTimeLeftSec:F1}s | " +
-                    $"Player: Lap={state.CurrentLap}, PosPct={state.TrackPositionPercent:F4}, LapsComp={Results.RaceLapsCompleted}, LapsRem={Results.RaceLapsRemaining:F2}, FuelToAdd={fuel.FuelToAdd:F2}L, IsInPit={state.IsInPitLane}, Latched={_isLatchedForPit}, LatchedVal={_latchedRaceLapsRemaining:F2}, LatchedReality={_latchedPlayerTotalReality:F2} | " +
+                    $"Player: Lap={state.CurrentLap}, PosPct={state.TrackPositionPercent:F4}, LapsComp={Results.RaceLapsCompleted}, LapsRem={Results.RaceLapsRemaining:F2}, PosAtFlag={Results.ProjectedPosAtCheckered:F3}, FuelToAdd={fuel.FuelToAdd:F2}L, IsInPit={state.IsInPitLane}, Latched={_isLatchedForPit}, LatchedVal={_latchedRaceLapsRemaining:F2}, LatchedReality={_latchedPlayerTotalReality:F2} | " +
                     $"Leader ({leaderName}): PosPct={leaderTrackPos:F4}, LapsComp={leaderLapsCompleted}, LapsRem={Results.LeaderRaceLapsRemaining:F2}, FuelToAdd={leaderFuelToAdd:F2}L, IsInPit={leaderIsInPit}, LatchedTotal={_latchedLeaderTotalLaps:F2}");
             }
         }
@@ -1274,12 +1288,62 @@ namespace SimRIG
             return rawLapsCompleted;
         }
 
-        private double UpdateLatchedLaps(double rawProjectedPos, double currentLatchedLaps, bool allowDecrease = true)
+        /// <summary>
+        /// Filtro di stabilita' sul totale giri: sale facile, scende solo se la proiezione crolla.
+        ///
+        /// **La banda e' asimmetrica di proposito** (+0.05 in salita, -1.05 in discesa): il totale
+        /// deve seguire subito un allungamento della gara, ma non deve sfarfallare a ogni tick su
+        /// una stima che oscilla. La soglia di 1.05 significa "scendo solo se ho sbagliato di piu'
+        /// di un giro intero".
+        ///
+        /// **Vincolo su <paramref name="rawProjectedPos"/>: deve essere la posizione _continua_
+        /// (giri + frazione), mai un valore gia' arrotondato all'intero.** Con un intero in
+        /// ingresso, un calo di un giro vale esattamente 1.00 e non supera mai la soglia di 1.05:
+        /// il filtro diventa un dente d'arresto che sale di un giro e non torna piu' indietro.
+        /// E' il difetto Y-31, misurato a Road Atlanta il 2026-08-28: il totale e' salito a 36 per
+        /// un singolo tick al giro 4 e ci e' rimasto fino alla bandiera, con la gara che di giri
+        /// ne e' durati 35.
+        /// </summary>
+        public static double UpdateLatchedLaps(double rawProjectedPos, double currentLatchedLaps, bool allowDecrease = true)
         {
             if (currentLatchedLaps == 0.0) return Math.Ceiling(rawProjectedPos);
             if (rawProjectedPos > currentLatchedLaps + 0.05) return Math.Ceiling(rawProjectedPos - 0.05);
             if (allowDecrease && rawProjectedPos < currentLatchedLaps - 1.05) return Math.Ceiling(rawProjectedPos + 0.05);
             return currentLatchedLaps;
+        }
+
+        /// <summary>
+        /// Il totale giri del Player dopo il filtro di stabilita', a partire da **dove si trovera'
+        /// quando esce la bandiera** (<paramref name="posAtCheckered"/>, continuo).
+        ///
+        /// Esiste come funzione pura per una ragione precisa: il difetto Y-31 non era dentro
+        /// <see cref="UpdateLatchedLaps"/> — quello funzionava — ma nel *chiamante*, che arrotondava
+        /// la posizione all'intero prima di passarla. Un test sul solo filtro resterebbe verde con
+        /// il difetto rimesso al suo posto; questo lo intercetta.
+        ///
+        /// I due tetti sul leader restano applicati alla posizione **continua**, cosi' il
+        /// troncamento avviene una volta sola, dentro il filtro.
+        /// </summary>
+        /// <param name="posAtCheckered">Posizione del Player alla bandiera: giri completati + frazione.</param>
+        /// <param name="currentLatched">Totale attualmente memorizzato.</param>
+        /// <param name="allowDecrease">Falso in corsia box: li' la proiezione non e' confrontabile.</param>
+        /// <param name="leaderTotalCap">
+        /// Tetto sul totale del leader. <c>0</c> = nessun tetto (leader non ancora stimato, oppure
+        /// multiclasse: una GT3 e una GTP non fanno lo stesso numero di giri — vedi Y-19).
+        /// </param>
+        /// <param name="playerIsLeader">Se il Player e' P1 il suo totale **e'** quello del leader.</param>
+        public static double ProjectPlayerTotalLaps(double posAtCheckered,
+                                                    double currentLatched,
+                                                    bool allowDecrease,
+                                                    double leaderTotalCap,
+                                                    bool playerIsLeader)
+        {
+            double projected = posAtCheckered;
+
+            if (playerIsLeader) projected = leaderTotalCap;
+            else if (leaderTotalCap > 0.0) projected = Math.Min(projected, leaderTotalCap);
+
+            return UpdateLatchedLaps(projected, currentLatched, allowDecrease);
         }
 
 
@@ -1297,6 +1361,7 @@ namespace SimRIG
             _latchedLeaderTotalLaps = 0.0;
 
             _latchedPlayerTotalReality = 0.0;
+            Results.ProjectedPosAtCheckered = 0.0;
             _pendingLeaderTotalLaps = 0.0;
             _leaderLapsDecreaseStartTime = DateTime.MinValue;
             _pendingPlayerTotalReality = 0.0;

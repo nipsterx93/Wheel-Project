@@ -307,6 +307,9 @@ namespace SimRIG
             pm.AddProperty("SimRIG.Session.LeaderRaceLapsCompleted", t, 0);
             pm.AddProperty("SimRIG.Session.LeaderRaceLapsRemaining", t, 0.0);
             pm.AddProperty("SimRIG.Session.RaceTotalLaps", t, 0.0);
+            // Dove sara' il Player quando esce la bandiera, col decimale (es. 34.80). La parte
+            // decimale dice quanto manca a essere costretti a un giro in piu'.
+            pm.AddProperty("SimRIG.Session.ProjectedPosAtCheckered", t, 0.0);
             pm.AddProperty("SimRIG.Session.RaceLapsCompleted", t, 0);
             pm.AddProperty("SimRIG.Session.RaceLapsRemaining", t, 0.0);
             pm.AddProperty("SimRIG.Session.IsLapped", t, false);
@@ -1675,6 +1678,7 @@ namespace SimRIG
             PluginManager.SetPropertyValue("SimRIG.Session.LeaderRaceLapsCompleted", t, RaceAnalyzer.Results.LeaderRaceLapsCompleted);
             PluginManager.SetPropertyValue("SimRIG.Session.LeaderRaceLapsRemaining", t, RaceAnalyzer.Results.LeaderRaceLapsRemaining);
             PluginManager.SetPropertyValue("SimRIG.Session.RaceTotalLaps", t, RaceAnalyzer.Results.RaceTotalLaps);
+            PluginManager.SetPropertyValue("SimRIG.Session.ProjectedPosAtCheckered", t, Math.Round(RaceAnalyzer.Results.ProjectedPosAtCheckered, 2));
             PluginManager.SetPropertyValue("SimRIG.Session.RaceLapsCompleted", t, RaceAnalyzer.Results.RaceLapsCompleted);
             PluginManager.SetPropertyValue("SimRIG.Session.RaceLapsRemaining", t, RaceAnalyzer.Results.RaceLapsRemaining);
             PluginManager.SetPropertyValue("SimRIG.Session.IsLapped", t, RaceAnalyzer.Results.IsLapped);
