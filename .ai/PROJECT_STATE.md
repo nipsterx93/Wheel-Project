@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-25T15:40:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-29T09:40:00Z
+task:       Y-31 — esporre la proiezione giri con i decimali e togliere il doppio arrotondamento che la congela
+scope:      RaceAnalyzer.cs, DataPluginDemo.cs (sole proprietà nuove), User.PluginSdkDemo.Tests/
+expires:    2026-08-29T20:00:00Z
 ```
 
 **Regole del lock**
