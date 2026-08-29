@@ -42,6 +42,98 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-29 11:00] claude → prossimo turno: misurare la proiezione su un replay
+
+**Task:** analisi della serata di test del 28/08 (Road Atlanta) e correzione Y-31
+**Commit:** `1d75ad7` (lock) · `dbcb168` · questo
+**Osservazioni dell'utente:** `Correzioni Post Test Pirpi/Test.txt` (fuori dal repo, non versionato)
+**Log analizzati:** `Logs/Serata Test Pirpi/SimRIG_DebugLog_20260828_205434.csv` — contiene **due
+sessioni**: la gara (20:59→21:47) e la practice di calibrazione (22:05→23:33, con cambio pista a
+Hockenheim alle 23:17).
+
+### Corretto in questo turno
+
+**Y-31, il dente d'arresto sul totale giri.** Dettaglio completo in `PROJECT_STATE.md` e nel messaggio
+di `dbcb168`. In sintesi: il filtro di stabilità è giusto, il chiamante gli passava un numero già
+arrotondato e così la soglia di discesa (−1.05) diventava irraggiungibile per un calo di un giro
+(che vale 1.00 esatto). Il totale saliva di uno e non tornava più indietro.
+
+Tre cose che vale la pena non riscoprire da capo:
+
+- **Il momento in cui il numero era giusto era il momento in cui due errori si annullavano.** Al
+  giro 21 il totale mostrato è sceso a 35 (corretto). Ma il ramo di discesa restituisce
+  `Math.Ceiling(raw + 0.05)`: per arrivare a 35 la stima grezza doveva essere a **34**. Cioè: un
+  giro *in meno*, riportato sul valore giusto dal +1 del filtro.
+- **La stima grezza balla di ±1 giro.** Ricostruita dalle transizioni del latch: 36 al giro 4,
+  ≤34 al giro 21, ≥36 al giro 27. Togliere l'arrotondamento sblocca la discesa ma non toglie
+  l'oscillazione. **Serve misurarla**, ed è il motivo per cui la proprietà nuova viene prima.
+- **La stabilità osservata nei log vecchi era un artefatto.** Daytona `24→25→26`, Misano `22→25→26`,
+  sempre e solo in salita. La nota su Y-19 è già aggiornata.
+
+### Da dove ripartire — questo è il passo concreto
+
+L'utente ha **un replay di Road Atlanta di una gara precedente** (non la stessa dei log analizzati).
+Va rigirato con la DLL nuova per **misurare** `ProjectedPosAtCheckered` giro per giro. Cosa cercare
+nei log risultanti:
+
+```
+grep "Race Projections Update" <DebugLog>.csv     # una riga per giro: P_PosAtFlag, P_Total
+```
+
+Domande a cui il replay deve rispondere, in ordine:
+1. `P_PosAtFlag` converge verso un valore stabile o continua a oscillare di ±1 giro?
+2. `P_Total` scende quando deve, adesso, o resta ancora appiccicato?
+3. Nei giri centrali (passo stabile, niente soste) quanto vale lo scarto fra `P_PosAtFlag` e il
+   totale reale della gara?
+
+Se `P_PosAtFlag` oscilla ancora di un giro intero, il lavoro **non è finito**: significa che a
+monte c'è un ingresso instabile, e il primo sospetto è Y-32 (il passo del leader entra nel calcolo
+tramite `TimeUntilLeaderCheckered`, non è solo un numero da dashboard).
+
+### Punti nuovi registrati, non affrontati
+
+- **Y-32** — passo del leader sbagliato di 15 s, riapre la famiglia Y-17b. Bloccante per la
+  proprietà "giri del leader" che l'utente ha chiesto, e ingresso del calcolo di Y-31.
+- **Y-33** — `Player Spatial Pit Entry` scatta a ogni giro in pista (13 volte in gara con **una**
+  sosta). Radice della geofence corrotta e dei drive-through mai confermati. L'utente vuole una
+  revisione alla radice + un log dedicato alle calibrazioni.
+- **Y-34** — arrotondamento di `FuelToAdd` all'intero. **Schema già approvato dall'utente**, pronto
+  da implementare: AGGR per difetto, NORM al più vicino, SAFE per eccesso, con rete di sicurezza
+  sul risparmio realizzabile.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit code `0`, **193 `[PASS]`** (erano 186).
+
+### Stato
+- ✅ Compila — 0 errori · ✅ 193 test passano
+- ✅ Regressione ADR-004 verificata: rimettendo `Math.Ceiling` dentro `ProjectPlayerTotalLaps` il
+  test diventa rosso con `ottenuto 36` — il numero osservato in pista
+
+### Per chi entra
+
+**Prossimo passo:** far girare il replay Road Atlanta dell'utente e misurare `P_PosAtFlag`. Poi, in
+base a cosa si vede, o Y-34 (indipendente, approvato, veloce) o Y-32 (se la stima balla ancora).
+
+**NON toccare:** la banda del filtro (`+0.05` / `−1.05`) — è tarata e adesso riceve finalmente
+l'ingresso giusto. Cambiarla prima di aver misurato significa inseguire un sintomo.
+
+**Attenzione a:** `RaceAnalyzer.cs:935` applica ancora `Math.Min(playerTotal, leaderTotal)` **anche
+in multiclasse**, in contraddizione con quanto documentato dieci righe sopra (Y-19). Non ha morso in
+questo log (in multiclasse il leader di classe più veloce ha un totale più alto) e l'ho lasciato
+com'era per non allargare la modifica, ma è un'incoerenza vera. Idem il ramo `_leaderHasFinished`
+(`RaceAnalyzer.cs:657`), dove la posizione è integrale per costruzione e quindi il filtro resta
+bloccato anche dopo questa correzione: a fine gara conta poco, ma il numero mostrato è ancora
+appiccicato.
+
+---
+
 ## [2026-08-28] claude → nuova chat sul portatile (nessun codice toccato)
 
 **Task:** nessun lavoro sul codice in questo turno — diagnosi di un problema di replay corrotti, e
