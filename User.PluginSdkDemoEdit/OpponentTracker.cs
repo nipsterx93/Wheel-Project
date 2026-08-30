@@ -1353,9 +1353,15 @@ namespace SimRIG
                         // Y-32: il tempo sul giro si **legge dal gioco**, come si e' sempre fatto per
                         // il Player. Il cronometraggio interno resta solo come ripiego.
                         double selfTimedLap = Math.Abs(currentSessionClock - tData.LastLapStartTimeSec);
-                        double rawLapTime = ResolveOpponentLapTime(opp.LastLapTime.TotalSeconds,
+                        double gameLapTime = opp.LastLapTime.TotalSeconds;
+                        double rawLapTime = ResolveOpponentLapTime(gameLapTime,
                                                                    selfTimedLap,
                                                                    state.TrackLengthMeters);
+
+                        // Y-39: quale delle due fonti ha vinto. Serve a diagnosticare una baseline
+                        // sbagliata: "il gioco ci ha dato un numero strano" e "abbiamo ripiegato sul
+                        // cronometro" sono due difetti diversi, indistinguibili dal solo risultato.
+                        bool usedGameLapTime = IsCredibleOpponentLap(gameLapTime, state.TrackLengthMeters);
 
                         if (rawLapTime > 0.0)
                         {
@@ -1456,7 +1462,14 @@ namespace SimRIG
 
                                            tData.NormalizedTimes.LapBaseline = normalizedOppLap;
 
-                                           log.Log(LogModule.OPPONENTS, LogType.EVENT, "Baseline Established", $"{tData.Name}: {tData.NormalizedTimes.LapBaseline:F3}");
+                                           // Y-39: da dove arriva il numero. Una baseline sbagliata
+                                           // e' diagnosticabile solo sapendo se il tempo l'ha dato
+                                           // il gioco o se abbiamo ripiegato sul cronometro interno:
+                                           // sono due difetti diversi con due rimedi diversi, e
+                                           // dal solo valore finale non si distinguono.
+                                           string lapSource = usedGameLapTime ? "GAME" : "SELF";
+                                           log.Log(LogModule.OPPONENTS, LogType.EVENT, "Baseline Established",
+                                                   $"{tData.Name}: {tData.NormalizedTimes.LapBaseline:F3} | src={lapSource} | raw={rawLapTime:F3} | game={gameLapTime:F3} | self={selfTimedLap:F3} | lap={rawCurrentLap}");
 
                                        }
 
