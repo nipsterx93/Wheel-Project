@@ -42,6 +42,103 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-30 21:30] claude → revisione esterna (Gemini) prima di continuare
+
+**Task:** Fasi 0 e 1 del piano `2026-08-30-proiezioni-su-tempi-misurati.md`, poi **stop deciso
+dall'utente**: l'impianto va rivisto da fuori invece di continuare a correggere sintomi.
+**Commit:** `50518a0` (lock) · `0cb0e93` · `bfc2aed` · questo
+**Log analizzato:** `Logs/Road Atlanta/SimRIG_DebugLog_20260830_140721.csv`
+
+### Perché ci si ferma qui
+
+In cinque giorni: Y-31, Y-32, Y-35, Y-39, Y-41. Ogni correzione era giusta e verificata, e ognuna
+ne ha scoperta un'altra sotto. La proiezione del Player e' accurata **dopo la sosta** (34.81-34.85
+contro un vero 34.83); quella del leader parte corretta (`38.831` contro i `38.8` del software di
+riferimento) e deriva a 39.5-40. L'utente ha chiesto — a ragione — di far rivedere l'impianto da un
+altro modello invece di proseguire a tentoni.
+
+**Il prompt per la revisione esterna e' in `.ai/plans/2026-08-30-prompt-per-revisione-esterna.md`.**
+E' autoconsistente: descrive il problema fisico, non il nostro codice, e non richiede accesso al
+repository.
+
+### Fatto in questo turno
+
+**Fase 1 — `MaxTank` per vettura** (`0cb0e93`). Corretto: il record traccia+classe non sovrascrive
+piu' il valore per modello. **Ma vedi la correzione qui sotto sull'impatto reale.**
+
+**Fase 0 — strumentazione** (stesso commit, nessun cambio di comportamento): `Opponent Pace Sources`
+(media grezza e normalizzata affiancate per vettura), `P_Pace` / `P_LeftPre` / `P_LeftPost` /
+`RaceLife` in `Race Projections Update`, e `usato=` / `recClasse=` / `inDb=` in `Opponent BoP Loaded`.
+
+### Tre misure, e un mio errore da non ripetere
+
+**1. Il bias della normalizzazione, misurato per classe** (era una stima su due campioni):
+
+| classe | media grezza | media normalizzata | delta | bias |
+|---|---|---|---|---|
+| Dallara P217 (LMP2) | 73.65 s | 71.53 s | 2.11 s | **2.9%** |
+| GTP | 74.60 s | 73.00 s | 1.61 s | **2.2%** |
+| IMSA23 (GT3) | 77.98 s | 77.40 s | 0.57 s | **0.7%** |
+
+Il 2.2% del leader su 38.8 giri fa **+0.85 giri**, coerente con la deriva osservata. La GT3 — la
+classe del Player — ha il bias piu' basso di tutti: ecco perche' il Player sembrava a posto.
+
+**2. La correzione per la sosta toglie 1.25 giri prima della sosta e 0 dopo.** La mia ipotesi (che
+annullasse il bias di normalizzazione) era **sbagliata**: sono grandezze diverse e non si
+compensano. Ma la misura ha mostrato altro: `PosAtFlag` del Player vale 33.75-34.37 **prima** della
+sosta e 34.67-34.85 **dopo**, contro un vero 34.83. **Dopo e' accurato, prima sottostima di circa un
+giro.** La sosta reale e' costata 41.1 s = 0.53 giri, la correzione ne toglie 1.25. Ipotesi non
+verificata: `playerPitLoss` somma il transito *intero* in corsia box, mentre la perdita vera e' il
+transito **meno** il tempo che ci avresti messo passando in pista. Registrato, non corretto.
+
+**3. ⚠️ Ho sovrastimato l'impatto di Y-41 due volte, e la lezione conta piu' del punto.** Avevo detto
+"fino a 10 L", poi "fino a 60 L", leggendo dal log capienze di 100/104/110 L contro un record di
+classe da 50. **Non avevo controllato a quale sessione appartenessero quelle righe.** I valori a
+`BoP 1.000` sono tutti fra le 14:07:39 e le 14:08:09 — la **sessione pre-gara**. Alle 14:09:26.727,
+un istante prima del via, il BoP si risolve a `0.500` e le capienze diventano BMW `50.0`, Ferrari
+`52.0`, Mustang `55.0`, McLaren `55.0`. **In gara l'errore evitato e' 2-5 L, non 60.** La correzione
+resta giusta nel principio; l'annuncio era sbagliato di un ordine di grandezza.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit code `0`, **212 `[PASS]`** (erano 208).
+
+### Stato
+- ✅ Compila — 0 errori · ✅ 212 test passano
+- ✅ Regressione ADR-004 su Y-41: facendo vincere sempre il record di classe il test diventa rosso
+  con `Ferrari deve restare a 104 L, ottenuto 100,0`
+
+### Per chi entra
+
+**Prossimo passo: aspettare la risposta della revisione esterna.** La Fase 2 del piano (proiezioni
+sui tempi grezzi) e' **pronta ma sospesa**: la direzione e' probabilmente giusta, ma prima di
+toccare ancora le proiezioni vale la pena sapere se l'impianto complessivo e' quello corretto.
+
+**Se si riprende la Fase 2**, una cosa emersa oggi e da non perdere: **il numero del Player dipende
+dal passo del leader** attraverso `RaceLifeTimeLeftSec` (= countdown + frazione di giro del leader ×
+passo del leader). Correggere il passo del leader lo rende piu' lento, il supplemento si allunga e la
+proiezione del Player **sale**; correggere il passo del Player la fa **scendere**. Le due modifiche
+si oppongono: vanno fatte insieme e misurate insieme, altrimenti si conclude il falso su entrambe.
+
+**NON toccare:** il filtro di validita' dei giri e l'isteresi del totale, finche' non arriva la
+revisione. Ricevono ingressi sani da poco e non sappiamo ancora se il problema si ripresenta.
+
+**Attenzione a:** il totale del leader **converge sempre al valore giusto a fine gara**, perche' la
+parte proiettata si riduce a zero. "Il numero finale e' corretto" non e' mai una prova che il
+calcolo sia giusto — e' l'errore in cui e' facile cadere guardando la dashboard alla bandiera.
+
+Restano aperti: **Y-33** (corsia box e calibrazione, il piu' grosso, indipendente da tutto questo),
+**Y-34** (arrotondamento carburante, schema gia' approvato), **Y-36**, **Y-38**, **Y-40**, e il
+difetto nuovo sulla correzione per la sosta descritto sopra.
+
+---
+
 ## [2026-08-30 13:00] claude → prossimo turno: rigirare il replay, meglio se a 1x
 
 **Task:** Y-32 — passo del leader sbagliato
