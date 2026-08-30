@@ -286,16 +286,35 @@ namespace SimRIG
         /// una media di passo, e comunque preferibile a un errore di quantizzazione che a 3x vale
         /// il 4% del giro.
         /// </summary>
+        /// **Il ripiego sul cronometro interno e' stato rimosso** (Y-39), e la misura lo impone.
+        /// Sul replay Road Atlanta `20260830_121813`, 46 baseline: 42 lette dal gioco, di cui solo
+        /// due fuori scala — e sono due giri lenti **veri** (139.5 s, 191.8 s: out-lap). Le altre 4
+        /// venivano dal ripiego, ed erano **sbagliate tutte e quattro**:
+        ///
+        /// <code>
+        ///   Sven Neiss           gioco 0.000   ripiego  63.350   (passo vero 69.15-71.38)
+        ///   Ethan Carlton Wong   gioco 0.000   ripiego  65.150
+        ///   Fatih Kaya           gioco 0.270   ripiego  75.600
+        ///   Alessandro Barbagallo gioco 1.998  ripiego 237.616
+        /// </code>
+        ///
+        /// Il motivo per cui falliscono tutte insieme e' strutturale, non sfortuna: il ripiego si
+        /// attiva **esattamente quando il gioco non ha ancora un tempo** per quella vettura, cioe'
+        /// quando l'abbiamo appena presa in carico — che e' anche il momento in cui il nostro
+        /// ancoraggio e' meno affidabile. Le due condizioni non sono indipendenti: il ripiego entra
+        /// in gioco solo nei casi in cui e' peggiore.
+        ///
+        /// Un dato mancante deve restare mancante. Sostituirlo con una stima produce un passo
+        /// plausibile e falso, e quel passo diventa la baseline della vettura — con tutto quello che
+        /// ne segue (vedi la finestra di validita' in Y-32). Meglio nessuna baseline che una finta:
+        /// a valle i consumatori del passo hanno gia' i loro ripieghi.
+        /// </summary>
         /// <param name="gameReportedSec">Tempo dichiarato dal gioco per quella vettura.</param>
-        /// <param name="selfTimedSec">Tempo cronometrato internamente, usato solo se il primo manca.</param>
         /// <param name="trackLengthMeters">Serve al limite fisico. Zero = nessun limite applicabile.</param>
-        /// <returns>Il tempo da usare, oppure <c>0.0</c> se nessuna delle due fonti e' credibile.</returns>
-        public static double ResolveOpponentLapTime(double gameReportedSec, double selfTimedSec,
-                                                    double trackLengthMeters)
+        /// <returns>Il tempo da usare, oppure <c>0.0</c> se il gioco non ne ha uno credibile.</returns>
+        public static double ResolveOpponentLapTime(double gameReportedSec, double trackLengthMeters)
         {
-            if (IsCredibleOpponentLap(gameReportedSec, trackLengthMeters)) return gameReportedSec;
-            if (IsCredibleOpponentLap(selfTimedSec, trackLengthMeters)) return selfTimedSec;
-            return 0.0;
+            return IsCredibleOpponentLap(gameReportedSec, trackLengthMeters) ? gameReportedSec : 0.0;
         }
 
         /// <summary>
@@ -1354,14 +1373,7 @@ namespace SimRIG
                         // il Player. Il cronometraggio interno resta solo come ripiego.
                         double selfTimedLap = Math.Abs(currentSessionClock - tData.LastLapStartTimeSec);
                         double gameLapTime = opp.LastLapTime.TotalSeconds;
-                        double rawLapTime = ResolveOpponentLapTime(gameLapTime,
-                                                                   selfTimedLap,
-                                                                   state.TrackLengthMeters);
-
-                        // Y-39: quale delle due fonti ha vinto. Serve a diagnosticare una baseline
-                        // sbagliata: "il gioco ci ha dato un numero strano" e "abbiamo ripiegato sul
-                        // cronometro" sono due difetti diversi, indistinguibili dal solo risultato.
-                        bool usedGameLapTime = IsCredibleOpponentLap(gameLapTime, state.TrackLengthMeters);
+                        double rawLapTime = ResolveOpponentLapTime(gameLapTime, state.TrackLengthMeters);
 
                         if (rawLapTime > 0.0)
                         {
@@ -1467,9 +1479,8 @@ namespace SimRIG
                                            // il gioco o se abbiamo ripiegato sul cronometro interno:
                                            // sono due difetti diversi con due rimedi diversi, e
                                            // dal solo valore finale non si distinguono.
-                                           string lapSource = usedGameLapTime ? "GAME" : "SELF";
                                            log.Log(LogModule.OPPONENTS, LogType.EVENT, "Baseline Established",
-                                                   $"{tData.Name}: {tData.NormalizedTimes.LapBaseline:F3} | src={lapSource} | raw={rawLapTime:F3} | game={gameLapTime:F3} | self={selfTimedLap:F3} | lap={rawCurrentLap}");
+                                                   $"{tData.Name}: {tData.NormalizedTimes.LapBaseline:F3} | game={gameLapTime:F3} | self={selfTimedLap:F3} | lap={rawCurrentLap}");
 
                                        }
 

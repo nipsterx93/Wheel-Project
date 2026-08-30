@@ -1,4 +1,4 @@
-// -------------------------------------------------------------------------
+﻿// -------------------------------------------------------------------------
 // FILE: OpponentLapTimeSourceUnitTests.cs
 // Y-32: il tempo sul giro degli avversari veniva cronometrato per
 // campionamento invece che letto dal gioco.
@@ -46,7 +46,7 @@ namespace User.PluginSdkDemo.Tests
 
             Test_Regression_GameTimeWinsOverTheSampledOne();
             Test_Regression_TheSampledErrorLockedTheValidityWindow();
-            Test_SelfTimedIsUsedOnlyWhenTheGameGivesNothing();
+            Test_Regression_NoGameTimeMeansNoLap();
             Test_NeitherSourceCredibleReturnsZero();
             Test_PhysicallyImpossibleGameValueIsRefused();
             Test_PitLapIsNotMistakenForAFlyingLap();
@@ -62,12 +62,11 @@ namespace User.PluginSdkDemo.Tests
         /// </summary>
         private static void Test_Regression_GameTimeWinsOverTheSampledOne()
         {
-            double resolved = OpponentTracker.ResolveOpponentLapTime(
-                LeaderRealLapSec, LeaderSelfTimedSec, RoadAtlantaMeters);
+            double resolved = OpponentTracker.ResolveOpponentLapTime(LeaderRealLapSec, RoadAtlantaMeters);
 
             Assert(Math.Abs(resolved - LeaderRealLapSec) < 0.0001,
                    $"deve vincere il tempo del gioco (69.40), ottenuto {resolved:F2}");
-            Pass("Regressione: col tempo del gioco disponibile il cronometro interno non si usa");
+            Pass("Regressione: si usa il tempo del gioco");
         }
 
         /// <summary>
@@ -97,37 +96,46 @@ namespace User.PluginSdkDemo.Tests
         }
 
         /// <summary>
-        /// Il ripiego resta: se il gioco non espone nulla per quella vettura, meglio una misura
-        /// grossolana che nessuna misura.
+        /// Un dato mancante resta mancante. Il ripiego sul cronometro interno e' stato rimosso
+        /// (Y-39): si attivava esattamente quando il gioco non aveva ancora un tempo, cioe' quando
+        /// il nostro ancoraggio era a sua volta meno affidabile — e nel replay ha sbagliato 4 volte
+        /// su 4. Meglio nessuna baseline che una finta.
         /// </summary>
-        private static void Test_SelfTimedIsUsedOnlyWhenTheGameGivesNothing()
+        private static void Test_Regression_NoGameTimeMeansNoLap()
         {
-            double resolved = OpponentTracker.ResolveOpponentLapTime(0.0, LeaderSelfTimedSec, RoadAtlantaMeters);
-            Assert(Math.Abs(resolved - LeaderSelfTimedSec) < 0.0001,
-                   $"senza tempo dal gioco si usa il cronometro interno, ottenuto {resolved:F2}");
-            Pass("Il cronometro interno resta come ripiego");
+            // I quattro casi veri del replay 20260830_121813: il gioco non aveva un tempo, il
+            // ripiego cronometrato produceva un passo plausibile e falso. Adesso non si registra
+            // nulla, e la vettura semplicemente non ha ancora una baseline.
+            double[] gameSaidNothing = { 0.000, 0.000, 0.270, 1.998 };
+            foreach (double g in gameSaidNothing)
+            {
+                double resolved = OpponentTracker.ResolveOpponentLapTime(g, RoadAtlantaMeters);
+                Assert(resolved == 0.0,
+                       $"col gioco a {g:F3} non si deve inventare un giro, ottenuto {resolved:F2}");
+            }
+            Pass("Regressione: senza tempo dal gioco non si registra nessun giro");
         }
 
         /// <summary>Nessuna fonte credibile: si restituisce zero e il giro non viene contato.</summary>
         private static void Test_NeitherSourceCredibleReturnsZero()
         {
-            double resolved = OpponentTracker.ResolveOpponentLapTime(0.0, 0.0, RoadAtlantaMeters);
+            double resolved = OpponentTracker.ResolveOpponentLapTime(0.0, RoadAtlantaMeters);
             Assert(resolved == 0.0, $"senza fonti utilizzabili si restituisce 0, ottenuto {resolved:F2}");
 
             // Contatore saltato di due giri: 8 secondi non sono un giro di Road Atlanta.
-            double jumped = OpponentTracker.ResolveOpponentLapTime(8.0, 0.0, RoadAtlantaMeters);
+            double jumped = OpponentTracker.ResolveOpponentLapTime(8.0, RoadAtlantaMeters);
             Assert(jumped == 0.0, $"8 s non e' un giro, ottenuto {jumped:F2}");
             Pass("Senza fonti credibili non si inventa un giro");
         }
 
         /// <summary>
         /// Il limite fisico del tracciato vale anche sul dato del gioco: 30 s a Road Atlanta
-        /// sarebbero 490 km/h di media. Si ripiega sul cronometro interno.
+        /// sarebbero 490 km/h di media: il giro non si registra.
         /// </summary>
         private static void Test_PhysicallyImpossibleGameValueIsRefused()
         {
-            double resolved = OpponentTracker.ResolveOpponentLapTime(30.0, LeaderRealLapSec, RoadAtlantaMeters);
-            Assert(Math.Abs(resolved - LeaderRealLapSec) < 0.0001,
+            double resolved = OpponentTracker.ResolveOpponentLapTime(30.0, RoadAtlantaMeters);
+            Assert(resolved == 0.0,
                    $"un tempo fisicamente impossibile va rifiutato anche se viene dal gioco, ottenuto {resolved:F2}");
             Pass("Il limite fisico del tracciato si applica anche alla fonte del gioco");
         }
@@ -135,7 +143,7 @@ namespace User.PluginSdkDemo.Tests
         /// <summary>Un "giro" con dentro una sosta non e' un giro di riferimento.</summary>
         private static void Test_PitLapIsNotMistakenForAFlyingLap()
         {
-            double resolved = OpponentTracker.ResolveOpponentLapTime(720.0, 0.0, RoadAtlantaMeters);
+            double resolved = OpponentTracker.ResolveOpponentLapTime(720.0, RoadAtlantaMeters);
             Assert(resolved == 0.0, $"720 s contengono una sosta, non un giro, ottenuto {resolved:F2}");
             Pass("Un giro con una sosta dentro non entra nel passo");
         }
