@@ -24,6 +24,19 @@ namespace SimRIG
 
         public double LeaderRaceTotalLaps { get; set; } = 0.0;
 
+        /// <summary>
+        /// Dove si trovera' il **leader assoluto** quando scade il cronometro, in giri completati
+        /// piu' frazione di giro (es. <c>38.85</c>). E' il gemello di
+        /// <see cref="ProjectedPosAtCheckered"/> per il leader, ed e' il numero da cui
+        /// <see cref="LeaderRaceTotalLaps"/> deriva per arrotondamento all'intero superiore.
+        ///
+        /// Esposto per lo stesso motivo del suo gemello: senza il decimale non si distingue una
+        /// proiezione a 39.05 da una a 39.95 — entrambe mostrano 40 — e quindi non si puo' dire se
+        /// un totale sbagliato di un giro venga da un errore piccolo appena sopra la soglia o da uno
+        /// grande. Il software di riferimento dell'utente mostra proprio questo valore.
+        /// </summary>
+        public double LeaderProjectedPosAtCheckered { get; set; } = 0.0;
+
         public int LeaderRaceLapsCompleted { get; set; } = 0;
 
         public double LeaderRaceLapsRemaining { get; set; } = 99.0;
@@ -465,7 +478,7 @@ namespace SimRIG
 
                     log.Log(LogModule.STRATEGY, LogType.EVENT, "Race Projections Update",
 
-                        $"L_Rem: {Results.LeaderRaceLapsRemaining:F2} | P_Rem: {Results.RaceLapsRemaining:F2} | L_Pace: {Results.LeaderEstimatedPace:F3} | P_PosAtFlag: {Results.ProjectedPosAtCheckered:F3} | P_Total: {Results.RaceTotalLaps:F2}");
+                        $"L_Rem: {Results.LeaderRaceLapsRemaining:F2} | P_Rem: {Results.RaceLapsRemaining:F2} | L_Pace: {Results.LeaderEstimatedPace:F3} | P_PosAtFlag: {Results.ProjectedPosAtCheckered:F3} | P_Total: {Results.RaceTotalLaps:F2} | L_PosAtFlag: {Results.LeaderProjectedPosAtCheckered:F3} | L_Total: {Results.LeaderRaceTotalLaps:F2}");
 
                 }
 
@@ -530,6 +543,7 @@ namespace SimRIG
                 Results.RaceTotalLaps = 0.0;
 
                 Results.ProjectedPosAtCheckered = 0.0;
+                Results.LeaderProjectedPosAtCheckered = 0.0;
 
                 Results.LeaderRaceLapsRemaining = 0.0;
 
@@ -842,6 +856,8 @@ namespace SimRIG
                     }
 
                     double leaderPosAtZero = leaderAbsolutePos + leaderL_left;
+                    Results.LeaderProjectedPosAtCheckered = leaderPosAtZero;
+
                     double targetLeaderTotal = UpdateLatchedLaps(leaderPosAtZero, _latchedLeaderTotalLaps, !leaderIsInPit);
                     if (targetLeaderTotal < _latchedLeaderTotalLaps)
                     {
@@ -1018,7 +1034,7 @@ namespace SimRIG
                 log.Log(LogModule.STRATEGY, LogType.FLOW, "RaceProjectionsDiagnostics",
                     $"TimeLeft: {state.SessionTimeLeftSec:F1}s | " +
                     $"Player: Lap={state.CurrentLap}, PosPct={state.TrackPositionPercent:F4}, LapsComp={Results.RaceLapsCompleted}, LapsRem={Results.RaceLapsRemaining:F2}, PosAtFlag={Results.ProjectedPosAtCheckered:F3}, FuelToAdd={fuel.FuelToAdd:F2}L, IsInPit={state.IsInPitLane}, Latched={_isLatchedForPit}, LatchedVal={_latchedRaceLapsRemaining:F2}, LatchedReality={_latchedPlayerTotalReality:F2} | " +
-                    $"Leader ({leaderName}): PosPct={leaderTrackPos:F4}, LapsComp={leaderLapsCompleted}, LapsRem={Results.LeaderRaceLapsRemaining:F2}, FuelToAdd={leaderFuelToAdd:F2}L, IsInPit={leaderIsInPit}, LatchedTotal={_latchedLeaderTotalLaps:F2}");
+                    $"Leader ({leaderName}): PosPct={leaderTrackPos:F4}, LapsComp={leaderLapsCompleted}, LapsRem={Results.LeaderRaceLapsRemaining:F2}, PosAtFlag={Results.LeaderProjectedPosAtCheckered:F3}, FuelToAdd={leaderFuelToAdd:F2}L, IsInPit={leaderIsInPit}, LatchedTotal={_latchedLeaderTotalLaps:F2}");
             }
         }
 
@@ -1475,6 +1491,7 @@ namespace SimRIG
 
             _latchedPlayerTotalReality = 0.0;
             Results.ProjectedPosAtCheckered = 0.0;
+            Results.LeaderProjectedPosAtCheckered = 0.0;
             _pendingLeaderTotalLaps = 0.0;
             _leaderLapsDecreaseStartTime = DateTime.MinValue;
             _pendingPlayerTotalReality = 0.0;
