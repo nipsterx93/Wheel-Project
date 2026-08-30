@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-29T17:00:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-30T11:00:00Z
+task:       Y-32 — leggere il tempo sul giro degli avversari dal gioco invece di cronometrarlo a campionamento
+scope:      OpponentTracker.cs, User.PluginSdkDemo.Tests/
+expires:    2026-08-30T22:00:00Z
 ```
 
 **Regole del lock**
