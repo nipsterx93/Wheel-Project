@@ -42,6 +42,92 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-08-30 13:00] claude → prossimo turno: rigirare il replay, meglio se a 1x
+
+**Task:** Y-32 — passo del leader sbagliato
+**Commit:** `2afb7cf` (lock) · `9cbc01c` · questo
+**Log analizzato:** `Logs/Road Atlanta/SimRIG_DebugLog_20260830_102220.csv`
+
+### La cosa che vale la pena non riscoprire
+
+Y-32 **non era la famiglia Y-17b**, come avevo scritto ieri. La misura non era sporca all'origine:
+era *presa male*, sempre, per tutti gli avversari.
+
+Il tempo sul giro degli avversari veniva cronometrato per campionamento — `clock adesso − clock
+all'ultimo cambio di giro`. Il traguardo si vede al primo tick **dopo** che e' avvenuto, quindi
+l'errore vale fino a un tick per estremo. E un tick non e' un istante: e' quanto tempo di **gara**
+scorre fra due letture. Misurato su 888 intervalli in questo replay: **3.0 secondi** (min 2.8, max
+3.4), perche' girava a 3x.
+
+L'incoerenza e' logica prima che numerica, ed e' la frase da ricordare:
+
+> Fissiamo un riferimento con uno strumento **meno preciso** della tolleranza che poi pretendiamo
+> con quel riferimento.
+
+Un tick a 3x vale il 4.3% di un giro; la finestra di validita' dei giri e' −2%/+3.5%. A 1x un tick
+vale l'1.4% e il sistema sarebbe coerente con se stesso.
+
+Cascata completa sul leader `Kalyann Mey4`: giro reale 69.4 s → prima misura 62.95 (~2 tick corta)
+→ baseline normalizzata 60.550 → finestra `[59.34, 62.67]` → giri veri (~66.6 normalizzati)
+**tutti rifiutati per il resto della gara** → passo fermo a ~61 s → giri totali del leader 42-45
+invece di 38.8. Il valore sbagliato non restava e basta: **definiva il criterio con cui si giudicava
+se un dato fosse credibile**, e quel criterio escludeva la realta' che lo avrebbe corretto.
+
+### Cosa e' cambiato
+
+Si legge `Opponent.LastLapTime` dal gioco — la stessa fonte usata da sempre per il Player, e che il
+plugin leggeva **gia'** per la classifica a schermo (`DataPluginDemo.cs:2617`). Solo il tracker se
+lo cronometrava da solo. Le normalizzazioni (carburante, temperatura) sono invariate e si applicano
+al nuovo numero grezzo.
+
+**Il filtro di validita' non e' stato toccato**, su indicazione esplicita dell'utente: con la misura
+giusta non ci si finisce dentro, e cambiarlo alla cieca rischiava di rompere altro. La trappola
+resta latente — se un giorno una baseline dovesse comunque incastrarsi, il rimedio da valutare e'
+quello ADR-005 (rifiuti tutti nella stessa direzione = e' il riferimento a essere sbagliato).
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit code `0`, **208 `[PASS]`** (erano 202).
+
+### Stato
+- ✅ Compila — 0 errori · ✅ 208 test passano
+- ✅ Regressione ADR-004: invertendo la preferenza in `ResolveOpponentLapTime` il test diventa rosso
+  con `ottenuto 62,95` — il valore che aveva avvelenato la baseline
+
+### Per chi entra
+
+**Prossimo passo, e' una misura.** Rigirare il replay Road Atlanta e controllare, in ordine:
+
+| cosa | prima | atteso adesso |
+|---|---|---|
+| `L_Pace` (passo leader) | ~61 s | **~69.4 s** |
+| `LatchedTotal` leader | 42-45 | **~38-39** |
+| `PosAtFlag` (fascia p05-p95) | 1.26 giri | piu' stretta |
+
+**Chiedere all'utente di girarlo a 1x se ha tempo.** Non e' pignoleria: a 3x un tick copre 3 s di
+gara e falsa *tutte* le misure sugli avversari. Sapere quanto cambia fra 1x e 3x ci dice se in
+passato abbiamo inseguito artefatti del metodo di test — sospetto di si', almeno in parte.
+
+**NON toccare:** il filtro di validita' dei giri avversari (`isValidOppLap`, −2%/+3.5%) e il filtro
+di stabilita' del totale giri. Entrambi ricevono adesso ingressi sani per la prima volta: vanno
+osservati prima di essere ritoccati.
+
+**Attenzione a:** il fallback al cronometro interno resta attivo quando il gioco non espone il
+tempo. Se in qualche gioco/categoria `LastLapTime` non arrivasse, il difetto tornerebbe in silenzio
+— vale la pena, prima o poi, loggare quale delle due fonti e' stata usata.
+
+Restano aperti e non toccati: **Y-33** (corsia box, il piu' grosso — aspetta il JSON), **Y-34**
+(arrotondamento carburante, schema gia' approvato), e le due incoerenze minori segnalate due turni
+fa (`RaceAnalyzer.cs:935`, ramo `_leaderHasFinished`).
+
+---
+
 ## [2026-08-29 17:00] claude → prossimo turno: rigirare il replay e misurare
 
 **Task:** Y-35 (posizione del leader assente) e Y-32 (passo del leader)
