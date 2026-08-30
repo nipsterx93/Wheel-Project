@@ -931,12 +931,13 @@ namespace SimRIG
                             effectivePlayerTank = playerStintLaps;
                         }
 
-                        if (playerL_left > effectivePlayerTank && playerStintLaps > 0.0 && playerPitLoss > 0.0)
-                        {
-                            double J_player = playerPitLoss / playerStintLaps;
-                            playerL_left = (Results.RaceLifeTimeLeftSec - playerPitLoss + effectivePlayerTank * J_player) / (activePlayerPace + J_player);
-                            playerRemainingStops = 1 + (int)Math.Max(0, Math.Ceiling((playerL_left - effectivePlayerTank) / playerStintLaps) - 1);
-                        }
+                        var pitPlan = ProjectLapsLeftWithStops(Results.RaceLifeTimeLeftSec,
+                                                               activePlayerPace,
+                                                               effectivePlayerTank,
+                                                               playerStintLaps,
+                                                               playerPitLoss);
+                        playerL_left = pitPlan.LapsLeft;
+                        playerRemainingStops = pitPlan.StopsNeeded;
 
                         Results.RemainingPitsPlayer = playerRemainingStops;
 
@@ -1068,7 +1069,7 @@ namespace SimRIG
 
 
 
-            double fuelPenalty = currentFuel * fuelWeightCoef;
+            double fuelPenalty = RaceTimeProjection.FuelWeightPenaltySec(currentFuel, fuelWeightCoef);
 
             double tempPenalty = globalBaselineTemp > 0 ? ((trackTemp - globalBaselineTemp) * tempCoef) : 0.0;
 
@@ -1459,6 +1460,80 @@ namespace SimRIG
             if (rawProjectedPos > currentLatchedLaps + 0.05) return Math.Ceiling(rawProjectedPos - 0.05);
             if (allowDecrease && rawProjectedPos < currentLatchedLaps - 1.05) return Math.Ceiling(rawProjectedPos + 0.05);
             return currentLatchedLaps;
+        }
+
+        /// <summary>Esito di <see cref="ProjectLapsLeftWithStops"/>.</summary>
+        public struct LapsLeftPlan
+        {
+            /// <summary>Giri che il Player percorrera' ancora prima della bandiera.</summary>
+            public double LapsLeft;
+
+            /// <summary>Soste ancora necessarie per arrivare in fondo.</summary>
+            public int StopsNeeded;
+        }
+
+        /// <summary>
+        /// Giri che restano da percorrere, tolto il tempo che si perdera' nelle soste ancora dovute.
+        ///
+        /// **La sosta si sottrae come tempo, e basta** (Y-42):
+        /// <code>
+        ///   tempo netto = tempo alla bandiera − (numero soste × tempo perso per sosta)
+        ///   giri        = tempo netto / passo
+        /// </code>
+        ///
+        /// Prima c'era una formula analitica che, oltre a sottrarre la perdita, alterava anche il
+        /// **denominatore** (<c>pace + pitLoss/stintLaps</c>), spalmando cioe' il costo della sosta
+        /// su ogni giro. Il risultato era una sottrazione molto piu' grande del dovuto: misurata sul
+        /// replay Road Atlanta del 2026-08-30, toglieva **1.25 giri** dove la sosta reale ne era
+        /// costati **0.53** (41.1 s su un giro da 77.5 s). L'effetto si vedeva a occhio nel log:
+        /// <c>PosAtFlag</c> valeva 33.75-34.37 **prima** della sosta e 34.67-34.85 **dopo**, contro
+        /// un valore reale di 34.83. Dopo la sosta — quando la correzione vale zero — la proiezione
+        /// era gia' accurata; era la correzione stessa a sbagliare.
+        ///
+        /// **La direzione dell'errore contava:** sottostimare i giri significa imbarcare meno
+        /// carburante del necessario. Si restava a piedi, non si portava peso inutile.
+        ///
+        /// Il numero di soste si stima dai giri percorribili senza fermarsi, poi si ricontrolla una
+        /// volta sola sul risultato: una seconda iterazione non cambia mai il conteggio in una gara
+        /// da 45 minuti, e un ciclo aperto qui non e' desiderabile.
+        /// </summary>
+        /// <param name="timeToFlagSec">Tempo che manca alla bandiera.</param>
+        /// <param name="paceSec">Passo del Player.</param>
+        /// <param name="tankLapsRemaining">Giri percorribili col carburante a bordo adesso.</param>
+        /// <param name="stintLaps">Giri percorribili con un serbatoio pieno.</param>
+        /// <param name="pitLossSec">Tempo perso in una sosta: transito piu' tempo da fermi.</param>
+        public static LapsLeftPlan ProjectLapsLeftWithStops(double timeToFlagSec, double paceSec,
+                                                            double tankLapsRemaining, double stintLaps,
+                                                            double pitLossSec)
+        {
+            var plan = new LapsLeftPlan();
+            if (paceSec <= 0.0) return plan;
+
+            double lapsIfNoStop = Math.Max(0.0, timeToFlagSec) / paceSec;
+            plan.LapsLeft = lapsIfNoStop;
+
+            // Senza dati sulla sosta non si inventa una penalita': meglio la proiezione nuda.
+            if (stintLaps <= 0.0 || pitLossSec <= 0.0) return plan;
+
+            plan.StopsNeeded = StopsRequired(lapsIfNoStop, tankLapsRemaining, stintLaps);
+            if (plan.StopsNeeded == 0) return plan;
+
+            plan.LapsLeft = Math.Max(0.0, timeToFlagSec - plan.StopsNeeded * pitLossSec) / paceSec;
+
+            // Le soste tolgono giri, quindi il fabbisogno puo' solo calare: si ricontrolla una volta.
+            plan.StopsNeeded = StopsRequired(plan.LapsLeft, tankLapsRemaining, stintLaps);
+            return plan;
+        }
+
+        /// <summary>
+        /// Quante soste servono per coprire <paramref name="lapsToCover"/> partendo dal carburante
+        /// che si ha adesso. Zero se il serbatoio attuale basta.
+        /// </summary>
+        public static int StopsRequired(double lapsToCover, double tankLapsRemaining, double stintLaps)
+        {
+            if (stintLaps <= 0.0) return 0;
+            if (lapsToCover <= tankLapsRemaining) return 0;
+            return (int)Math.Ceiling((lapsToCover - tankLapsRemaining) / stintLaps);
         }
 
         /// <summary>

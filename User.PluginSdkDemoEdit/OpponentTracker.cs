@@ -587,7 +587,7 @@ namespace SimRIG
                 double playerRawLapTime = data.NewData.LastLapTime.TotalSeconds;
 
                 // Calculate normalized lap time for Player
-                double fuelPenalty = data.NewData.Fuel * fuelWeightCoef;
+                double fuelPenalty = RaceTimeProjection.FuelWeightPenaltySec(data.NewData.Fuel, fuelWeightCoef);
                 double tempPenalty = state.GlobalBaselineTemp > 0 ? ((state.TrackTemperature - state.GlobalBaselineTemp) * tempCoef) : 0.0;
                 double normalizedPlayerLap = playerRawLapTime - fuelPenalty - tempPenalty;
 
@@ -1454,7 +1454,7 @@ namespace SimRIG
                                 tData.EstimatedPitWindowTargetLap = tData.LapCount + tData.EstimatedPitWindow;
                             }
 
-                             double fuelPenalty = estimatedFuel * fuelWeightCoef;
+                             double fuelPenalty = RaceTimeProjection.FuelWeightPenaltySec(estimatedFuel, fuelWeightCoef);
 
                              double tempPenalty = state.GlobalBaselineTemp > 0 ? ((state.TrackTemperature - state.GlobalBaselineTemp) * tempCoef) : 0.0;
 

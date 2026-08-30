@@ -809,7 +809,7 @@ namespace SimRIG
                             if (!isThreat && oData != null)
                             {
                                 double oppPace = oData.NormalizedTimes.SectorBaseline * 3.0;
-                                double playerNewPace = raceResult.NormalizedRaceStartPace + (fuel.FuelToAdd * fuelWeightCoef);
+                                double playerNewPace = raceResult.NormalizedRaceStartPace + RaceTimeProjection.FuelWeightPenaltySec(fuel.FuelToAdd, fuelWeightCoef);
                                 if (oppPace > playerNewPace + 1.5)
                                 {
                                     isThreat = true;
@@ -841,7 +841,7 @@ namespace SimRIG
                     CurrentTarget.ReactionDeltaLaps = Math.Min(CurrentTarget.TargetLapsUntilPit, maxUndercutReactionWindow);
 
                     double targetPaceDegraded = targetRawPace; // NormalizedRaceStartPace + PaceDropDueToTyres
-                    double playerPaceFresh = raceResult.NormalizedRaceStartPace + (fuel.FuelToAdd * fuelWeightCoef);
+                    double playerPaceFresh = raceResult.NormalizedRaceStartPace + RaceTimeProjection.FuelWeightPenaltySec(fuel.FuelToAdd, fuelWeightCoef);
 
                     double prePitPaceGain = (targetPaceDegraded - playerPaceFresh) * CurrentTarget.ReactionDeltaLaps;
                     CurrentTarget.UndercutAdvantage = prePitPaceGain + netPitAdvantage - playerWarmup;

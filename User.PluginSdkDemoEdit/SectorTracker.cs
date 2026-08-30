@@ -112,7 +112,7 @@ namespace SimRIG
                     if (isCompleteTransit && sectorTime > 5.0 && sectorTime < 300.0)
                     {
                         LastTransitTime = sectorTime;
-                        double fuelPenalty = (currentFuel * fuelWeightCoef) * sectorWeight;
+                        double fuelPenalty = RaceTimeProjection.FuelWeightPenaltySec(currentFuel, fuelWeightCoef) * sectorWeight;
                         double tempPen = baselineTemp > 0 ? ((trackTemp - baselineTemp) * tempCoef) * sectorWeight : 0.0;
                         double normalizedSectorTime = sectorTime - fuelPenalty - tempPen;
 

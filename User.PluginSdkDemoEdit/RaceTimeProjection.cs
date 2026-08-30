@@ -78,6 +78,40 @@ namespace SimRIG
         }
 
         /// <summary>
+        /// Densita' della benzina da competizione, in kg per litro.
+        ///
+        /// Esiste come costante dichiarata perche' la sua **assenza** era un difetto (Y-43): la
+        /// penalita' di peso si applicava come <c>litri × coefficiente</c>, ma il coefficiente
+        /// standard del motorsport e' in **secondi per chilogrammo**, non per litro. Mancando la
+        /// conversione, la penalita' risultava sovrastimata del 33% ovunque venisse applicata.
+        ///
+        /// Il valore e' quello convenzionale per la benzina da competizione. Non e' una costante
+        /// universale — varia con la temperatura e la formulazione — ma un errore del 2-3% qui e'
+        /// irrilevante rispetto al 33% che si correggeva.
+        /// </summary>
+        public const double FuelDensityKgPerLitre = 0.75;
+
+        /// <summary>
+        /// Quanto rallenta un giro il carburante a bordo, in secondi.
+        ///
+        /// **L'unita' del coefficiente e' secondi per chilogrammo**, che e' la convenzione del
+        /// motorsport (~0.03 s/kg, cioe' 0.3 s per giro ogni 10 kg). Il carburante lo misuriamo
+        /// in litri, quindi la conversione va fatta qui e non puo' restare implicita: e' esattamente
+        /// l'omissione che ha prodotto Y-43.
+        ///
+        /// Tenere il coefficiente in s/kg significa anche che il valore esposto nelle impostazioni
+        /// coincide con quello che si trova in qualunque fonte di ingegneria di pista, invece di
+        /// essere un numero che vale solo dentro questo plugin.
+        /// </summary>
+        /// <param name="fuelLitres">Carburante a bordo, in litri.</param>
+        /// <param name="coefSecPerKg">Sensibilita' alla massa, in secondi per chilogrammo.</param>
+        public static double FuelWeightPenaltySec(double fuelLitres, double coefSecPerKg)
+        {
+            if (fuelLitres <= 0.0 || coefSecPerKg <= 0.0) return 0.0;
+            return fuelLitres * FuelDensityKgPerLitre * coefSecPerKg;
+        }
+
+        /// <summary>
         /// Tempo sul giro piu' breve fisicamente possibile su questo tracciato.
         /// Lunghezza non nota (zero o negativa) = nessun giudizio possibile: si restituisce 0,
         /// cioe' un limite che non scarta nulla. Stessa scelta del fallback di MaxSectorFraction.

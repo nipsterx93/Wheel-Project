@@ -36,6 +36,7 @@ namespace User.PluginSdkDemo.Tests
                 LeaderPositionMissingUnitTests.RunAllTests();
                 OpponentLapTimeSourceUnitTests.RunAllTests();
                 OpponentMaxTankUnitTests.RunAllTests();
+                FuelWeightAndPitLossUnitTests.RunAllTests();
                 ReplayBacktestIntegrationTest.RunMisanoGt3Backtest();
                 MisanoHuracanGT3ReplayTest.RunFullReplayMergeGapValidation();
 

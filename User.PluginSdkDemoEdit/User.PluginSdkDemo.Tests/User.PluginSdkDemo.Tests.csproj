@@ -77,6 +77,7 @@
     <Compile Include="UnitTests\LeaderPositionMissingUnitTests.cs" />
     <Compile Include="UnitTests\OpponentLapTimeSourceUnitTests.cs" />
     <Compile Include="UnitTests\OpponentMaxTankUnitTests.cs" />
+    <Compile Include="UnitTests\FuelWeightAndPitLossUnitTests.cs" />
     <Compile Include="IntegrationTests\ReplayBacktestIntegrationTest.cs" />
     <Compile Include="IntegrationTests\MisanoHuracanGT3ReplayTest.cs" />
     <Compile Include="Replay\SimHubReplayRAMReader.cs" />
