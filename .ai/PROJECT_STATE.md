@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-30T17:00:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-30T18:00:00Z
+task:       Y-39 — togliere il ripiego sul cronometro interno: 4 campioni su 4 sbagliati
+scope:      OpponentTracker.cs, User.PluginSdkDemo.Tests/
+expires:    2026-08-31T06:00:00Z
 ```
 
 **Regole del lock**
