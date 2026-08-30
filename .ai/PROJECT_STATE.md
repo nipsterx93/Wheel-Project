@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-30T21:00:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-31T09:00:00Z
+task:       Y-43 coefficiente carburante in s/kg con densita' esplicita, e Y-42 sottrazione della sosta nella forma corretta
+scope:      RaceTimeProjection.cs, RaceAnalyzer.cs, OpponentTracker.cs, SectorTracker.cs, TargetStrategyManager.cs, User.PluginSdkDemo.Tests/
+expires:    2026-08-31T21:00:00Z
 ```
 
 **Regole del lock**
