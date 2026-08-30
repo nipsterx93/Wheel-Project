@@ -35,6 +35,7 @@ namespace User.PluginSdkDemo.Tests
                 PlayerTotalLapsRatchetUnitTests.RunAllTests();
                 LeaderPositionMissingUnitTests.RunAllTests();
                 OpponentLapTimeSourceUnitTests.RunAllTests();
+                OpponentMaxTankUnitTests.RunAllTests();
                 ReplayBacktestIntegrationTest.RunMisanoGt3Backtest();
                 MisanoHuracanGT3ReplayTest.RunFullReplayMergeGapValidation();
 

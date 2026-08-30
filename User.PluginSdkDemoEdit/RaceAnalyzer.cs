@@ -37,6 +37,15 @@ namespace SimRIG
         /// </summary>
         public double LeaderProjectedPosAtCheckered { get; set; } = 0.0;
 
+        /// <summary>Fase 0a — il passo effettivamente usato per proiettare il Player.</summary>
+        public double PlayerPaceUsed { get; set; } = 0.0;
+
+        /// <summary>Fase 0a — giri proiettati **prima** della correzione per la sosta.</summary>
+        public double PlayerLapsLeftBeforePitLoss { get; set; } = 0.0;
+
+        /// <summary>Fase 0a — giri proiettati **dopo** la correzione per la sosta.</summary>
+        public double PlayerLapsLeftAfterPitLoss { get; set; } = 0.0;
+
         public int LeaderRaceLapsCompleted { get; set; } = 0;
 
         public double LeaderRaceLapsRemaining { get; set; } = 99.0;
@@ -478,7 +487,7 @@ namespace SimRIG
 
                     log.Log(LogModule.STRATEGY, LogType.EVENT, "Race Projections Update",
 
-                        $"L_Rem: {Results.LeaderRaceLapsRemaining:F2} | P_Rem: {Results.RaceLapsRemaining:F2} | L_Pace: {Results.LeaderEstimatedPace:F3} | P_PosAtFlag: {Results.ProjectedPosAtCheckered:F3} | P_Total: {Results.RaceTotalLaps:F2} | L_PosAtFlag: {Results.LeaderProjectedPosAtCheckered:F3} | L_Total: {Results.LeaderRaceTotalLaps:F2}");
+                        $"L_Rem: {Results.LeaderRaceLapsRemaining:F2} | P_Rem: {Results.RaceLapsRemaining:F2} | L_Pace: {Results.LeaderEstimatedPace:F3} | P_PosAtFlag: {Results.ProjectedPosAtCheckered:F3} | P_Total: {Results.RaceTotalLaps:F2} | L_PosAtFlag: {Results.LeaderProjectedPosAtCheckered:F3} | L_Total: {Results.LeaderRaceTotalLaps:F2} | P_Pace: {Results.PlayerPaceUsed:F3} | P_LeftPre: {Results.PlayerLapsLeftBeforePitLoss:F3} | P_LeftPost: {Results.PlayerLapsLeftAfterPitLoss:F3} | RaceLife: {Results.RaceLifeTimeLeftSec:F1}");
 
                 }
 
@@ -903,6 +912,13 @@ namespace SimRIG
                     if (!_isLatchedForPit)
                     {
                         double playerL_left = Results.RaceLifeTimeLeftSec / activePlayerPace;
+
+                        // Fase 0a: il valore prima che la correzione per la sosta lo tocchi. Il
+                        // sospetto da verificare e' che il Player risulti corretto **per caso**:
+                        // il passo normalizzato lo gonfia (+1.56% = +0.54 giri su questa gara) e la
+                        // correzione per la sosta lo sgonfia di altrettanto. Se e' cosi', passare ai
+                        // tempi misurati migliorerebbe il leader e **peggiorerebbe il Player**.
+                        double playerL_leftBeforePitLoss = playerL_left;
                         
                         double playerFuelPerLap = fuel.AverageFuelPerLap > 0.0 ? fuel.AverageFuelPerLap : 3.0;
                         double playerStintLaps = state.MaxFuelCapacity / playerFuelPerLap;
@@ -926,6 +942,10 @@ namespace SimRIG
 
                         double playerPosWhenLeaderFinishes = playerAbsolutePos + playerL_left;
                         Results.ProjectedPosAtCheckered = playerPosWhenLeaderFinishes;
+
+                        Results.PlayerPaceUsed = activePlayerPace;
+                        Results.PlayerLapsLeftBeforePitLoss = playerL_leftBeforePitLoss;
+                        Results.PlayerLapsLeftAfterPitLoss = playerL_left;
 
                         // Multiclasse: nessun tetto sul leader **assoluto**. Una GT3 e una GTP non
                         // fanno lo stesso numero di giri, quindi il confronto non dice nulla — e se

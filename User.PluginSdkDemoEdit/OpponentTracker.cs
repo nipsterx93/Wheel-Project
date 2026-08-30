@@ -235,6 +235,34 @@ namespace SimRIG
             return lastLap != -1 && lapStartClock > 0.0 && hasWitnessedLapStart;
         }
 
+        /// <summary>
+        /// La capienza del serbatoio da usare per un avversario.
+        ///
+        /// **La capienza e' una proprieta' della vettura, non della classe.** Nella sola classe GT3
+        /// di Road Atlanta convivono 100 L (BMW M4 GT3 EVO), 104 L (Ferrari 296 GT3) e 110 L
+        /// (Ford Mustang GT3, McLaren 720S GT3): appiattirle su un unico numero costa fino a 10 L.
+        ///
+        /// Il difetto corretto qui: <c>opponentMaxTank</c> veniva calcolato bene — capienza del
+        /// modello letta dal database, moltiplicata per il BoP di sessione — e poi **sovrascritto**
+        /// tre righe dopo dal record di traccia+classe, che e' un valore unico per tutta la classe.
+        /// Il log mostrava il valore per vettura mentre il codice ne usava un altro, ed e' il motivo
+        /// per cui non si notava.
+        ///
+        /// Il record di classe resta come ripiego **solo per una vettura non riconosciuta nel
+        /// database**: li' la capienza per modello non esiste e <c>opponentMaxTank</c> ricade su una
+        /// costante di famiglia (120 GT3 / 89 GTP / 96.9 LMP2 / 40 F4). Un dato di traccia misurato
+        /// e' comunque meglio di una costante.
+        /// </summary>
+        /// <param name="perCarTank">Capienza del modello dal database, gia' scalata col BoP.</param>
+        /// <param name="classRecordTank">Capienza del record traccia+classe. Zero = non presente.</param>
+        /// <param name="carRecognisedInDb">La vettura e' stata trovata nel database per modello?</param>
+        public static double ResolveOpponentMaxTank(double perCarTank, double classRecordTank,
+                                                    bool carRecognisedInDb)
+        {
+            if (!carRecognisedInDb && classRecordTank > 0.0) return classRecordTank;
+            return perCarTank;
+        }
+
         /// <summary>Sotto questa soglia non e' un giro: e' un contatore che e' saltato.</summary>
         public const double MinCredibleOpponentLapSec = 20.0;
 
@@ -646,6 +674,7 @@ namespace SimRIG
                     baseCap = 40.0;
                 }
 
+                bool carRecognisedInDb = false;
                 if (!string.IsNullOrEmpty(opp.CarName))
                 {
                     string oppClean = CleanString(opp.CarName);
@@ -667,6 +696,7 @@ namespace SimRIG
                     if (carRec != null)
                     {
                         baseCap = carRec.BaseCapacity;
+                        carRecognisedInDb = true;
                     }
                 }
 
@@ -765,12 +795,17 @@ namespace SimRIG
                     }
                 }
 
-                double classMaxTank = opponentMaxTank;
+                // La capienza e' una proprieta' della **vettura**, non della classe: nella stessa
+                // classe GT3 convivono 100 L (BMW M4), 104 L (Ferrari 296) e 110 L (Mustang,
+                // McLaren). `opponentMaxTank` la ricava dal database per modello e ci applica il BoP
+                // di sessione — e finora veniva ricalcolata correttamente e poi **buttata via** dal
+                // record di traccia+classe tre righe dopo, appiattendo fino a 10 L di differenza.
+                // Il record di classe resta come ripiego solo quando la vettura non e' riconosciuta
+                // nel database: li' `baseCap` e' una costante per famiglia (120 GT3 / 89 GTP /
+                // 96.9 LMP2 / 40 F4) e un dato di traccia misurato e' comunque meglio.
                 var dbRecord = radar.Database.Tracks.FirstOrDefault(t => t.TrackID == state.TrackId && t.CarClass == tData.CarClass);
-                if (dbRecord != null && dbRecord.MaxTank > 0.0)
-                {
-                    classMaxTank = dbRecord.MaxTank;
-                }
+                double classRecordMaxTank = dbRecord != null ? dbRecord.MaxTank : 0.0;
+                double classMaxTank = ResolveOpponentMaxTank(opponentMaxTank, classRecordMaxTank, carRecognisedInDb);
 
                 // Logghiamo i dettagli dell'avversario e dei consumi
                 if (!string.IsNullOrEmpty(opp.Name))
@@ -781,11 +816,11 @@ namespace SimRIG
                         if (classFuelBurn > 0.0)
                         {
                             _loggedOpponentFuelDetails.Add(opp.Name);
-                            log.Log(LogModule.OPPONENTS, LogType.EVENT, "Opponent BoP Loaded", $"{opp.Name} | Car: {opp.CarName} | Class: {opp.CarClassID} | BoP Pct: {bopPct:F3} | MaxTank: {opponentMaxTank:F1}L | GreenBurn: {classFuelBurn:F2}L/lap | YellowBurn: {yellowFuelBurn:F2}L/lap");
+                            log.Log(LogModule.OPPONENTS, LogType.EVENT, "Opponent BoP Loaded", $"{opp.Name} | Car: {opp.CarName} | Class: {opp.CarClassID} | BoP Pct: {bopPct:F3} | MaxTank: {opponentMaxTank:F1}L | usato={classMaxTank:F1}L | recClasse={classRecordMaxTank:F1}L | inDb={carRecognisedInDb} | GreenBurn: {classFuelBurn:F2}L/lap | YellowBurn: {yellowFuelBurn:F2}L/lap");
                         }
                         else
                         {
-                            log.Log(LogModule.OPPONENTS, LogType.EVENT, "Opponent BoP Loaded", $"{opp.Name} | Car: {opp.CarName} | Class: {opp.CarClassID} | BoP Pct: {bopPct:F3} | MaxTank: {opponentMaxTank:F1}L");
+                            log.Log(LogModule.OPPONENTS, LogType.EVENT, "Opponent BoP Loaded", $"{opp.Name} | Car: {opp.CarName} | Class: {opp.CarClassID} | BoP Pct: {bopPct:F3} | MaxTank: {opponentMaxTank:F1}L | usato={classMaxTank:F1}L | recClasse={classRecordMaxTank:F1}L | inDb={carRecognisedInDb}");
                         }
                     }
                     else if (classFuelBurn > 0.0 && !_loggedOpponentFuelDetails.Contains(opp.Name))
@@ -1609,6 +1644,12 @@ namespace SimRIG
                                    {
 
                                        tData.RawTimes.LapPaceDrop = Math.Max(0.0, tData.RawTimes.LapMovingAverage - tData.RawTimes.LapBaseline);
+
+                                       // Fase 0b: quanto il normalizzato corre piu' del misurato, per
+                                       // vettura. Le proiezioni usano oggi il normalizzato; questo
+                                       // dice di quanto sbagliano prima di cambiare qualcosa.
+                                       log.Log(LogModule.OPPONENTS, LogType.FLOW, "Opponent Pace Sources",
+                                               $"{tData.Name} | classe={tData.CarClass} | mediaGrezza={tData.RawTimes.LapMovingAverage:F3} | mediaNorm={tData.NormalizedTimes.LapMovingAverage:F3} | delta={tData.RawTimes.LapMovingAverage - tData.NormalizedTimes.LapMovingAverage:F3} | baseGrezza={tData.RawTimes.LapBaseline:F3} | baseNorm={tData.NormalizedTimes.LapBaseline:F3} | ultimoGiro={rawLapTime:F3}");
 
                                    }
 
