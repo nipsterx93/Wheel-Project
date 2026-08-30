@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-30T19:00:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-30T20:00:00Z
+task:       Fasi 0 e 1 del piano 2026-08-30-proiezioni-su-tempi-misurati (strumentazione + MaxTank per vettura)
+scope:      OpponentTracker.cs, RaceAnalyzer.cs, User.PluginSdkDemo.Tests/
+expires:    2026-08-31T08:00:00Z
 ```
 
 **Regole del lock**
