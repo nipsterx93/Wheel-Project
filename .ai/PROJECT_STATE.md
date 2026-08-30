@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-30T13:00:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-08-30T14:00:00Z
+task:       Y-37 — esporre la proiezione del leader con i decimali (proprieta' + log), come gia' fatto per il Player
+scope:      RaceAnalyzer.cs, DataPluginDemo.cs (sola proprieta' nuova)
+expires:    2026-08-31T02:00:00Z
 ```
 
 **Regole del lock**
