@@ -235,6 +235,69 @@ namespace SimRIG
             return lastLap != -1 && lapStartClock > 0.0 && hasWitnessedLapStart;
         }
 
+        /// <summary>Sotto questa soglia non e' un giro: e' un contatore che e' saltato.</summary>
+        public const double MinCredibleOpponentLapSec = 20.0;
+
+        /// <summary>Sopra questa soglia il "giro" contiene una sosta, una bandiera o un buco.</summary>
+        public const double MaxCredibleOpponentLapSec = 600.0;
+
+        /// <summary>
+        /// Il valore e' utilizzabile come tempo sul giro di un avversario?
+        /// Oltre alle due soglie di buon senso si applica il limite **fisico** del tracciato
+        /// (<see cref="RaceTimeProjection.IsPhysicallyPlausibleLap"/>), che a differenza di una
+        /// costante si trasferisce da un circuito all'altro.
+        /// </summary>
+        public static bool IsCredibleOpponentLap(double lapSec, double trackLengthMeters)
+        {
+            if (lapSec <= MinCredibleOpponentLapSec) return false;
+            if (lapSec >= MaxCredibleOpponentLapSec) return false;
+            return RaceTimeProjection.IsPhysicallyPlausibleLap(lapSec, trackLengthMeters);
+        }
+
+        /// <summary>
+        /// Il tempo sul giro di un avversario: **quello dichiarato dal gioco**, col cronometraggio
+        /// interno solo come ripiego quando il gioco non lo fornisce.
+        ///
+        /// **Perche' il cronometro interno non va bene** (Y-32). Il tempo veniva misurato come
+        /// <c>clock adesso - clock all'ultimo cambio di giro</c>, cioe' campionando: il passaggio sul
+        /// traguardo si vede al primo tick *dopo* che e' avvenuto. L'errore vale quindi fino a un
+        /// tick per estremo, e un tick non e' un istante — e' quanto tempo di gara scorre fra due
+        /// letture. Misurato sul replay Road Atlanta del 2026-08-30: **3.0 secondi di gara per
+        /// tick** (min 2.8, max 3.4), perche' il replay girava a 3x.
+        ///
+        /// Il risultato e' un'incoerenza logica prima ancora che numerica: la prima misura fissa la
+        /// baseline della vettura, e da quella baseline si ricava la finestra entro cui i giri
+        /// successivi sono considerati credibili (-2% / +3.5%). Ma l'incertezza dello strumento
+        /// (~4.3% di giro a 3x) e' **piu' larga della tolleranza che quello strumento poi impone**.
+        /// Su `Kalyann Mey4`: primo giro misurato 62.95 s contro 69.4 s reali — 6.45 s, circa due
+        /// tick — baseline normalizzata a 60.550, finestra risultante [59.34, 62.67] s, e tutti i
+        /// giri veri (~66.6 s normalizzati) rifiutati come anomali per il resto della gara. Il passo
+        /// del leader e' rimasto a ~61 s contro 69.4 reali, e da li' i giri totali del leader
+        /// finivano a 42-45 invece di 38.8.
+        ///
+        /// Il gioco il tempo sul giro ce lo da' gia': e' la stessa fonte che si usa per il Player
+        /// (<c>state.LastLapTimeSec</c>), e per gli avversari il plugin la leggeva gia' altrove per
+        /// la classifica a schermo. Le normalizzazioni (carburante, temperatura) si applicano dopo,
+        /// esattamente come prima: cambia da dove arriva il numero grezzo, non cosa ci si fa.
+        ///
+        /// **Limite noto e accettato:** il gioco espone l'*ultimo giro completato*, quindi in linea
+        /// teorica si puo' leggere il giro precedente invece di quello appena chiuso. E' uno
+        /// sfasamento di un giro sulla stessa vettura, non un errore di grandezza — irrilevante per
+        /// una media di passo, e comunque preferibile a un errore di quantizzazione che a 3x vale
+        /// il 4% del giro.
+        /// </summary>
+        /// <param name="gameReportedSec">Tempo dichiarato dal gioco per quella vettura.</param>
+        /// <param name="selfTimedSec">Tempo cronometrato internamente, usato solo se il primo manca.</param>
+        /// <param name="trackLengthMeters">Serve al limite fisico. Zero = nessun limite applicabile.</param>
+        /// <returns>Il tempo da usare, oppure <c>0.0</c> se nessuna delle due fonti e' credibile.</returns>
+        public static double ResolveOpponentLapTime(double gameReportedSec, double selfTimedSec,
+                                                    double trackLengthMeters)
+        {
+            if (IsCredibleOpponentLap(gameReportedSec, trackLengthMeters)) return gameReportedSec;
+            if (IsCredibleOpponentLap(selfTimedSec, trackLengthMeters)) return selfTimedSec;
+            return 0.0;
+        }
+
         /// <summary>
         /// Il cambio di giro appena osservato era un attraversamento vero, quindi l'istante attuale
         /// e' un ancoraggio valido per misurare il giro successivo?
@@ -1287,9 +1350,14 @@ namespace SimRIG
                     // vettura per la prima volta. Vedi HasWitnessedLapStart.
                     if (CanMeasureLap(tData.LastLap, tData.LastLapStartTimeSec, tData.HasWitnessedLapStart))
                     {
-                        double rawLapTime = Math.Abs(currentSessionClock - tData.LastLapStartTimeSec);
+                        // Y-32: il tempo sul giro si **legge dal gioco**, come si e' sempre fatto per
+                        // il Player. Il cronometraggio interno resta solo come ripiego.
+                        double selfTimedLap = Math.Abs(currentSessionClock - tData.LastLapStartTimeSec);
+                        double rawLapTime = ResolveOpponentLapTime(opp.LastLapTime.TotalSeconds,
+                                                                   selfTimedLap,
+                                                                   state.TrackLengthMeters);
 
-                        if (rawLapTime > 20.0 && rawLapTime < 600.0)
+                        if (rawLapTime > 0.0)
                         {
                             int calculatedLapsSincePit = 0;
                             int calculatedLapsSinceRefuel = 0;

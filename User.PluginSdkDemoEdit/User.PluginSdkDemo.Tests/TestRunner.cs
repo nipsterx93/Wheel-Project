@@ -34,6 +34,7 @@ namespace User.PluginSdkDemo.Tests
                 CalibrationCascadeUnitTests.RunAllTests();
                 PlayerTotalLapsRatchetUnitTests.RunAllTests();
                 LeaderPositionMissingUnitTests.RunAllTests();
+                OpponentLapTimeSourceUnitTests.RunAllTests();
                 ReplayBacktestIntegrationTest.RunMisanoGt3Backtest();
                 MisanoHuracanGT3ReplayTest.RunFullReplayMergeGapValidation();
 
