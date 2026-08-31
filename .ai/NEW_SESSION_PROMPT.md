@@ -118,10 +118,35 @@ COSA RESTA DA FARE, IN ORDINE (concordato)
   7. Base Pace + reiniezione della massa carburante giro per giro
   Y-44. Il valore del tempo di sosta è sovrastimato del 49% (0.79 giri contro 0.53 reali)
 
-Il consiglio lasciato dalla sessione precedente è di fare il 6 PRIMA di 4 e 5: l'outlier del passo
-leader continuerà a esistere finché non si affronta Y-38, ma un filtro che sa scendere lo assorbe
-invece di amplificarlo per tre giri. È la correzione col miglior rapporto valore/rischio e non
-dipende da nessun'altra.
+ORDINE CONSIGLIATO: fare 4 e 6 per primi, gli altri dopo.
+
+Il 6 (Alpha-Beta) perché l'outlier del passo leader continuerà a esistere finché non si affronta
+Y-38, ma un filtro che sa scendere lo ASSORBE invece di amplificarlo per tre giri. Non dipende da
+nessun'altra correzione.
+
+Il 4 perché risolve la causa invece del sintomo, e va capito bene prima di implementarlo:
+
+- OGGI proiettiamo UNA SOLA vettura: quella che in questo istante è P1 assoluto. Non calcoliamo la
+  proiezione per tutte le vetture di nessuna classe. Il punto 4 è ancora tutto da fare.
+- Il criterio corretto è il MINIMO DEL TEMPO DI ATTRAVERSAMENTO, cioè chi taglierà per primo dopo
+  lo scadere del cronometro — non "la posizione proiettata più alta". Quasi coincidono, ma due
+  vetture con passo diverso possono invertirsi.
+- Il nostro RaceTotalLaps NON dipende dalle altre classi: dipende solo da quando esce la bandiera
+  (che dipende solo dal leader assoluto) e dal nostro passo. Un cambio di posizioni fra GT3 non
+  tocca il nostro numero.
+- Il caso che ci fa male è il cambio di leader assoluto per una SOSTA: oggi cambiamo di colpo
+  vettura di riferimento e la proiezione salta. Col minimo, se il leader attuale ha ancora una
+  sosta da fare il suo tempo di sosta sposta avanti il suo attraversamento e la vettura dietro che
+  ha già finito le soste diventa il minimo IN MODO CONTINUO, prima del sorpasso fisico.
+- RIFINITURA rispetto al report: estendere il minimo a TUTTE le vetture, non solo alla classe più
+  veloce. Costa quasi nulla ed è più robusto quando la classe veloce non è davvero davanti (inizio
+  gara, o finestra in cui tutti i prototipi sono ai box insieme). Chi taglia per primo dopo lo
+  scadere È il leader per definizione, qualunque classe abbia.
+
+COSA NON ABBIAMO, E NON SERVE PER IL CARBURANTE: nessun leader DI CLASSE, da nessuna parte. È la
+stessa lacuna che aveva bloccato Y-19 (PositionInClass non è usato in nessun punto del progetto, e
+le convenzioni di conteggio giri degli avversari non sono verificate). Servirà solo se un giorno
+vorremo mostrare la posizione finale di classe.
 
 TRE TRAPPOLE, TUTTE GIÀ COSTATE TEMPO
 
