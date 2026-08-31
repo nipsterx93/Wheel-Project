@@ -68,6 +68,96 @@ mio disco, non nel repository. Se ti servono per verificare qualcosa, chiedimeli
 
 ---
 
+## Blocco per il lavoro in corso — proiezioni di fine gara (aggiornato 2026-08-31)
+
+> Da incollare **dopo** il blocco generico, quando si riprende il filone su cui si sta lavorando
+> adesso. Il blocco sopra ricostruisce il contesto del progetto; questo dice a che punto siamo su
+> questo lavoro specifico e cosa fare.
+
+```
+LAVORO IN CORSO: la proiezione dei giri di fine gara (quanti giri completeremo io e il leader
+assoluto quando esce la bandiera). È il numero da cui dipende quanto carburante imbarcare:
+sbagliarlo di un giro significa sbagliare il rifornimento di ~2.3 litri.
+
+LEGGI QUESTI, IN QUEST'ORDINE, PRIMA DI PROPORRE QUALSIASI COSA:
+
+1. .ai/HANDOFF_LOG.md — la prima voce (2026-08-31). Contiene i numeri misurati, le trappole in cui
+   sono già cascato, e l'ordine di lavoro concordato con me.
+
+2. .ai/plans/2026-08-30-formule-corrette-fine-gara.md — LE FORMULE CORRETTE, da una revisione
+   esterna. ATTENZIONE: nel PDF originale (DeepSearch/) le equazioni sono IMMAGINI, non testo: se
+   cerchi nel testo del PDF non le trovi. Lì sono trascritte.
+
+3. .ai/plans/2026-08-30-analisi-dahldesign.md — analisi di un plugin open source (Andreas Dahl,
+   in "Solo per analisi logiche/") che risolve gli stessi problemi. Utile perché conferma lo
+   scheletro e mostra soluzioni più semplici delle nostre su alcune parti.
+
+4. .ai/PROJECT_STATE.md — i punti Y-31 … Y-44. Quelli aperti sono Y-13, Y-14, Y-15, Y-26, Y-29,
+   Y-33, Y-34, Y-36, Y-38, Y-40, Y-44.
+
+DOVE SIAMO, IN BREVE
+
+Sette correzioni fatte (Y-31, Y-32, Y-35, Y-39, Y-41, Y-42, Y-43). Le proiezioni ora sono vicine al
+software di riferimento che uso in pista, in alcuni tick identiche al secondo decimale:
+
+  LeaderProjectedPosAtCheckered   38.0-39.0 tutta la gara    (riferimento: 38.8)
+  LeaderRaceTotalLaps             39 per quasi tutta la gara  (riferimento: 39)
+  ProjectedPosAtCheckered         34.83-34.91 nell'ultimo terzo (valore reale: 34.83)
+  RaceTotalLaps finale            35                          (giri realmente completati: 35)
+
+Resta un difetto visibile: a metà gara RaceTotalLaps sale a 37 per tre giri, poi torna a 35.
+Causa già isolata: CINQUE tick su 795 in cui il passo stimato del leader schizza a 278 secondi
+invece di ~69, e l'isteresi asimmetrica poi tiene il picco.
+
+COSA RESTA DA FARE, IN ORDINE (concordato)
+
+  3. Δt_cur dal timestamp dell'ultimo passaggio, non dalla posizione campionata
+  4. Bandiera = minimo su tutta la classe veloce, in modalità ombra (solo a log, non usata)
+  5. Filtro di Hampel + MAD + change-point al posto della finestra percentuale
+  6. Filtro Alpha-Beta al posto dell'isteresi asimmetrica
+  7. Base Pace + reiniezione della massa carburante giro per giro
+  Y-44. Il valore del tempo di sosta è sovrastimato del 49% (0.79 giri contro 0.53 reali)
+
+Il consiglio lasciato dalla sessione precedente è di fare il 6 PRIMA di 4 e 5: l'outlier del passo
+leader continuerà a esistere finché non si affronta Y-38, ma un filtro che sa scendere lo assorbe
+invece di amplificarlo per tre giri. È la correzione col miglior rapporto valore/rischio e non
+dipende da nessun'altra.
+
+TRE TRAPPOLE, TUTTE GIÀ COSTATE TEMPO
+
+- Nei log, dal commit 9d16172 ogni riga RaceProjectionsDiagnostics contiene DUE campi PosAtFlag
+  (Player e leader). Un grep ingenuo li somma e produce statistiche inventate. Usare:
+  sed -E 's/.*Player:[^|]*PosAtFlag=([0-9.]+).*/\1/'
+
+- Il totale converge SEMPRE al valore giusto a fine gara, perché la parte proiettata si riduce a
+  zero. "Il numero finale è corretto" non è mai una prova che il calcolo sia giusto.
+
+- Leggere valori da un log senza controllare a quale SESSIONE appartengono (pre-gara, qualifica,
+  gara) porta a conclusioni sbagliate di un ordine di grandezza. È già successo due volte.
+
+NON TOCCARE
+
+- La formula TimeUntilLeaderCheckered: è identica a quella della revisione esterna E a quella di
+  DahlDesign. Tre fonti indipendenti concordi. Non è lì il problema.
+- Il coefficiente FuelWeightCoef nelle impostazioni: resta 0.03 e ora è in secondi per CHILOGRAMMO.
+  La conversione litri→kg è nel codice, esplicita.
+
+COME VERIFICARE CHE PARTI DA UNA BASE SANA
+
+  "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+  "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+
+Atteso: exit code 0, 219 test PASS.
+
+COSA POSSO DARTI IO
+
+Replay di Road Atlanta girati a 3x, sempre la stessa gara, così i confronti fra un run e l'altro
+sono puliti. I log finiscono in Logs/Road Atlanta/. L'ultimo buono è SimRIG_DebugLog_20260831_195300.
+Dimmi cosa vuoi misurare e te lo procuro.
+```
+
+---
+
 ## Quando aprire una chat nuova
 
 Non aspettare che il contesto si esaurisca del tutto: quando la sessione comincia a rallentare o a
