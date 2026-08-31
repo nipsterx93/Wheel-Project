@@ -42,6 +42,129 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-01 12:00] claude -> utente (serve un replay)
+
+**Task:** punto 6 (stabilizzazione) **attivo**, punto 4 (bandiera = minimo) **in ombra**, piu' la
+strumentazione che rende osservabile il cambio del totale.
+**Commit:** `7bcd587` (lock) - questo
+**Log analizzato:** `Logs/Road Atlanta/SimRIG_DebugLog_20260831_195300.csv`
+**Punto di partenza taggato:** `baseline-proiezioni-2026-08-31` (= `7fe6d58`)
+
+### La cosa piu' importante di questo turno: la diagnosi registrata era sbagliata
+
+L'handoff del 31/08 attribuiva il `RaceTotalLaps` a 37 a "cinque tick sopra 35.05". **Non e' cosi',
+e la verifica ha cambiato cosa andava scritto nel codice.**
+
+- Quattro dei cinque tick (20:04:23-26) cadono **dopo** che il totale era gia' 37 dalle 20:04:09.525.
+- Il piu' alto dei cinque vale `35.435`. Per far scattare il filtro da 35 a 37 serve un ingresso
+  sopra **36.05**, che in tutto il log **non compare**.
+- Motivo: `RaceProjectionsDiagnostics` e' strozzata a **una riga al secondo**, mentre il calcolo gira
+  almeno a **12 Hz** (misurato: intervallo massimo fra due righe 1.085 s con strozzatura a 1.0 s).
+  Vediamo al massimo un fotogramma su dodici.
+
+**La causa vera, chiusa aritmeticamente (e' Y-38).** Alle 20:04:08.520 il P1 assoluto passa da
+`Sven Neiss` (passo 68.443) ad `Alessandro Barbagallo`, che porta un passo registrato di
+**278.563 s**. Il supplemento di `TimeUntilLeaderCheckered` vale al massimo un giro del leader:
+`278.563 / 76.524 =` **3.64 giri del Player in un fotogramma**.
+
+**La permanenza, invece, e' un difetto nuovo: Y-45.** Non era la banda di `UpdateLatchedLaps` - che
+e' geometricamente **simmetrica** (0.05 oltre il confine in entrambe le direzioni) e non ha mai
+bloccato niente. Era il **ritardo di 30 s applicato alla sola discesa**, che ripartiva da zero a
+ogni cambio del bersaglio:
+
+```
+20:04:37  raw=34.959 -> bersaglio 36   timer riarmato
+20:04:39  raw=34.946 -> bersaglio 35   timer riarmato
+20:04:40  raw=34.955 -> bersaglio 36   timer riarmato
+20:04:47  raw=34.950 -> bersaglio 35   timer riarmato
+20:04:50  raw=34.956 -> bersaglio 36   timer riarmato
+```
+
+**Nove millesimi di giro** - meno di un secondo di gara - a cavallo dello scalino di
+`Ceiling(x + 0.05)`, che sta esattamente a 34.95. Risultato: 79 s di blocco invece di 30, cioe' 237 s
+di gara, cioe' **tre giri**, con 4.2-4.4 L di rifornimento chiesti e non necessari.
+
+### Fatto
+
+- `ProjectionStabilizer.cs` (nuovo) - lisciamento della posizione proiettata con riconoscimento dei
+  cambi persistenti. Il tempo si misura in **secondi di gara**, non di orologio: a 3x un tick vale
+  3 s di gara, e un filtro tarato sull'orologio renderebbe due run non confrontabili.
+- `RaceAnalyzer.cs:905` e `RaceAnalyzer.cs:985` - **rimossi entrambi i ritardi di 30 s** (leader e
+  Player). La posizione entra nella banda gia' lisciata.
+- `RaceAnalyzer.cs:74` - `SmoothedPosAtCheckered` esposta accanto a `ProjectedPosAtCheckered`.
+  **La grezza resta grezza**: e' il numero che l'utente confronta col software di riferimento, e
+  lisciarlo al suo posto ne avrebbe cambiato il significato.
+- `RaceTimeProjection.cs:217` - `EarliestCheckeredTime`: il minimo del tempo di attraversamento su
+  tutte le vetture, con limite di plausibilita' sul passo. **Non usata da nessun calcolo.**
+- `RaceAnalyzer.cs:LogShadowFlagTime` - riga `Shadow Flag Time` (1/s) con il valore usato oggi, il
+  minimo con limite fisico, il minimo con limite stretto, e chi vince.
+- `RaceAnalyzer.cs:LogTotalLapsTransition` - riga `Total Laps Transition` che scatta **al cambio**
+  del totale, con l'ingresso grezzo, quello lisciato e lo stato del filtro.
+
+### Una scelta di progetto da non lasciare implicita
+
+Il report esterno raccomanda un **Alpha-Beta**. Il termine di velocita' e' stato **omesso**, non
+dimenticato: la posizione proiettata alla bandiera e' la previsione di un valore **finale e fisso**,
+la deriva misurata sul replay vale 0.5 giri in 900 s, e il ritardo che ne consegue e'
+`4 x 0.5/900 =` **0.002 giri** - quattro ordini di grandezza sotto la banda di 0.05 che dovrebbe
+superare per contare. Aggiungerlo estrapolerebbe rumore senza correggere nulla di misurabile. Va
+aggiunto **con una misura che lo giustifichi**, non per completezza formale.
+
+### Una proprieta' controintuitiva del punto 4, fissata in un test
+
+**Un passo piu' veloce non vince automaticamente il minimo.** Il tempo di attraversamento vale
+`T + frazione x passo` con la frazione in [0,1): un passo piu' veloce abbassa il *tetto* del
+supplemento, non il supplemento di adesso. Stessa vettura a 58.810 s: da posizione 24.0 attraversa a
+940.96 s e **perde**, da 24.2 attraversa a 929.20 s e **vince**. Conseguenza per quando si accendera'
+il punto 4: un passo falsamente veloce non falsa la bandiera in continuazione, la falsa **a
+intermittenza** - piu' difficile da riconoscere a occhio, non meno grave.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit code `0`, **235 `[PASS]`** (erano 219).
+
+### Stato
+
+- Compila - 0 errori. 235 test passano.
+- Regressione ADR-004, **tre neutralizzazioni separate**, tutte verificate rosse:
+
+| cosa ho neutralizzato | test diventato rosso | valore ottenuto |
+|---|---|---|
+| `SuspectJumpLaps` 1.5 -> 1000 (via il riconoscimento dell'artefatto) | il picco non deve muovere la stima | `ottenuto 35,779` - esattamente il 35.78 predetto nel commento del test |
+| `SmoothingTauRaceSec` 4.0 -> 0.0001 (via il lisciamento) | il bersaglio non deve piu' cambiare | `cambi contati 6` |
+| minimo -> massimo in `EarliestCheckeredTime` | deve vincere il leader vero | `ha vinto Alessandro Barbagallo` |
+
+### Per chi entra
+
+**Prossimo passo: serve un replay dall'utente.** Road Atlanta, la solita gara a 3x. Le due domande a
+cui deve rispondere, in ordine:
+
+1. **Il punto 6 funziona?** `RaceTotalLaps` deve restare 35 per tutta la seconda meta' e `FuelToAdd`
+   non deve piu' avere il gradino a 4.3 L. Si legge dalle righe `Total Laps Transition`: se ce ne
+   sono meno di prima, e quelle che restano hanno `grezzo` e `lisciato` vicini, il filtro lavora.
+2. **Il punto 4 cosa darebbe?** Dalle righe `Shadow Flag Time`: quanto vale `delta` (minimo meno
+   valore usato) e se `min` e `minStretto` divergono mai. Se non divergono, il limite fisico basta e
+   il punto 4 puo' accendersi senza il limite stretto.
+
+**Poi:** accendere il punto 4 (turno separato, un solo cambio di comportamento per volta - e' la
+lezione di Y-42). Restano 3, 5, 7 e Y-44.
+
+**NON toccare:** `TimeUntilLeaderCheckered` (tre fonti concordi), `FuelWeightCoef` (resta `0.03`,
+s/kg). E **non aggiungere le soste al minimo** finche' Y-44 e' aperto: il tempo di sosta e'
+sovrastimato del 49%, sommarlo adesso sostituirebbe un errore misurato con uno non misurato.
+
+**Attenzione a:** il totale converge sempre al valore giusto a fine gara, perche' la parte proiettata
+si riduce a zero. "Il numero finale e' corretto" non e' mai una prova. E la diagnostica a 1 Hz non
+basta a chiudere un difetto: e' costata una diagnosi sbagliata a questo stesso filone.
+
+---
+
 ## [2026-08-31 21:00] claude → nuova chat (contesto saturo)
 
 **Task:** Y-42 (forma della sottrazione della sosta) e Y-43 (penalita' carburante in s/kg)

@@ -73,6 +73,33 @@ namespace SimRIG
 
 
 
+        /// <summary>
+        /// La stessa posizione, **lisciata** dal filtro di stabilizzazione: e' questa che decide il
+        /// totale giri, mentre <see cref="ProjectedPosAtCheckered"/> resta la misura grezza.
+        ///
+        /// Le due restano separate di proposito. Il valore grezzo e' quello che l'utente confronta
+        /// tick per tick col software di riferimento che usa in pista: lisciarlo al suo posto
+        /// avrebbe cambiato il significato di un numero gia' validato contro una fonte esterna.
+        /// Averle entrambe a log permette anche di leggere direttamente quanto lavoro sta facendo
+        /// il filtro, che altrimenti si potrebbe solo dedurre.
+        /// </summary>
+        public double SmoothedPosAtCheckered { get; set; } = 0.0;
+
+
+
+        /// <summary>
+        /// **Modalita' ombra (punto 4).** Tempo alla bandiera calcolato come minimo del tempo di
+        /// attraversamento su tutte le vetture, invece che sul solo P1 assoluto istantaneo.
+        /// Calcolato e scritto a log, **non usato** da nessun calcolo: serve a misurare cosa
+        /// darebbe prima di dipenderne. Vedi RaceTimeProjection.EarliestCheckeredTime.
+        /// </summary>
+        public double ShadowTimeToFlagSec { get; set; } = 0.0;
+
+        /// <summary>Chi vince il minimo in modalita' ombra. Vuoto se nessuna vettura valutabile.</summary>
+        public string ShadowFlagWinner { get; set; } = "";
+
+
+
         public bool IsLapped { get; set; } = false;
 
         public double LeaderEstimatedPace { get; set; } = 0.0;
@@ -177,10 +204,22 @@ namespace SimRIG
 
         private double _latchedRaceLapsRemaining = 0.0;
         private DateTime _lastDiagnosticsLogTime = DateTime.MinValue;
-        private double _pendingLeaderTotalLaps = 0.0;
-        private DateTime _leaderLapsDecreaseStartTime = DateTime.MinValue;
-        private double _pendingPlayerTotalReality = 0.0;
-        private DateTime _playerLapsDecreaseStartTime = DateTime.MinValue;
+        // Y-45: i due ritardi di 30 s sulla sola discesa sono stati rimossi. Riarmandosi a ogni
+        // cambio del bersaglio tenevano il totale bloccato ben oltre i 30 s previsti (misurati 79
+        // su Road Atlanta 20260831_195300). Al loro posto la misura viene lisciata prima di
+        // arrivare alla banda: vedi ProjectionStabilizer.
+        private readonly ProjectionStabilizer _playerPosStabilizer = new ProjectionStabilizer();
+        private readonly ProjectionStabilizer _leaderPosStabilizer = new ProjectionStabilizer();
+
+        // Cronometro di sessione all'aggiornamento precedente: serve a dare al filtro un passo del
+        // tempo in secondi **di gara**, non di orologio (un replay a 3x ne comprime tre in uno).
+        private double _lastStabilizerTimeLeft = -1.0;
+
+        // Ultimo totale annunciato, per far scattare la riga di log solo quando cambia davvero.
+        private double _lastLoggedPlayerTotal = -1.0;
+        private double _lastLoggedLeaderTotal = -1.0;
+
+        private DateTime _lastShadowLogTime = DateTime.MinValue;
 
         public SectorTracker PlayerExtendedSectorRacingZone { get; private set; } = new SectorTracker { Name = "PlayerExtendedSectorRacingZone" };
         public SectorTracker PlayerExtendedPitZone { get; private set; } = new SectorTracker { Name = "PlayerExtendedPitZone" };
@@ -512,6 +551,29 @@ namespace SimRIG
                 effTrackPos = 0.0;
 
             }
+
+
+
+            // Passo del tempo per i filtri di stabilizzazione, in secondi **di gara**.
+            // Si legge dal countdown di sessione e non dall'orologio di sistema: un replay a 3x
+            // comprime tre secondi di gara in uno reale, e un filtro tarato sull'orologio si
+            // comporterebbe in modo diverso a ogni velocita' di riproduzione — due run della
+            // stessa gara non sarebbero piu' confrontabili, che e' il metodo con cui si verifica
+            // qui (ADR-004). Countdown fermo = nessuna informazione nuova = filtro fermo.
+            double stabilizerDtRaceSec = 0.0;
+            if (_lastStabilizerTimeLeft >= 0.0 && effSessionTimeLeft >= 0.0)
+            {
+                stabilizerDtRaceSec = _lastStabilizerTimeLeft - effSessionTimeLeft;
+                // Countdown che risale = cambio di sessione o replay riavvolto: si riparte puliti
+                // invece di lisciare attraverso un salto che non e' tempo di gara.
+                if (stabilizerDtRaceSec < 0.0)
+                {
+                    _playerPosStabilizer.Reset();
+                    _leaderPosStabilizer.Reset();
+                    stabilizerDtRaceSec = 0.0;
+                }
+            }
+            if (effSessionTimeLeft >= 0.0) _lastStabilizerTimeLeft = effSessionTimeLeft;
 
 
 
@@ -867,25 +929,11 @@ namespace SimRIG
                     double leaderPosAtZero = leaderAbsolutePos + leaderL_left;
                     Results.LeaderProjectedPosAtCheckered = leaderPosAtZero;
 
-                    double targetLeaderTotal = UpdateLatchedLaps(leaderPosAtZero, _latchedLeaderTotalLaps, !leaderIsInPit);
-                    if (targetLeaderTotal < _latchedLeaderTotalLaps)
-                    {
-                        if (_pendingLeaderTotalLaps != targetLeaderTotal)
-                        {
-                            _pendingLeaderTotalLaps = targetLeaderTotal;
-                            _leaderLapsDecreaseStartTime = DateTime.Now;
-                        }
-                        else if ((DateTime.Now - _leaderLapsDecreaseStartTime).TotalSeconds >= 30.0)
-                        {
-                            _latchedLeaderTotalLaps = targetLeaderTotal;
-                            _pendingLeaderTotalLaps = 0.0;
-                        }
-                    }
-                    else
-                    {
-                        _latchedLeaderTotalLaps = targetLeaderTotal;
-                        _pendingLeaderTotalLaps = 0.0;
-                    }
+                    // Y-45: la posizione entra nella banda **lisciata**, e la banda decide da sola.
+                    // Prima c'era, in aggiunta, un ritardo di 30 s applicato alla sola discesa: e'
+                    // quello che rendeva il filtro asimmetrico e lo bloccava in alto.
+                    double smoothedLeaderPosAtZero = _leaderPosStabilizer.Update(leaderPosAtZero, stabilizerDtRaceSec);
+                    _latchedLeaderTotalLaps = UpdateLatchedLaps(smoothedLeaderPosAtZero, _latchedLeaderTotalLaps, !leaderIsInPit);
 
                     leaderLapsRem = Math.Max(0, _latchedLeaderTotalLaps - leaderAbsolutePos);
 
@@ -900,6 +948,15 @@ namespace SimRIG
                     // a un giro, non piu' proporzionale alla durata della gara.
                     Results.RaceLifeTimeLeftSec = RaceTimeProjection.TimeUntilLeaderCheckered(
                         timeUntilZero, leaderAbsolutePos, leaderPace);
+
+                    // --- Punto 4, MODALITA' OMBRA -----------------------------------------
+                    // Lo stesso momento della bandiera calcolato come minimo del tempo di
+                    // attraversamento su **tutte** le vetture. Calcolato e scritto a log, non
+                    // usato: prima si misura cosa darebbe, poi si decide di dipenderne. Un solo
+                    // cambio di comportamento per turno, altrimenti il replay successivo non
+                    // distingue quale modifica ha prodotto quale effetto (lezione di Y-42).
+                    LogShadowFlagTime(state, tracker, log, timeUntilZero, playerAbsolutePos,
+                                      activePlayerPace, leaderName, leaderPace);
 
                     // Salviamo i risultati del leader nei campi di debug
                     Results.RemainingPitsLeader = leaderRemainingStops;
@@ -960,29 +1017,18 @@ namespace SimRIG
 
                         // Y-31: la posizione passa **continua**. Arrotondarla qui la quantizzava a
                         // intero, e un calo di un giro non superava piu' la soglia di 1.05 del filtro.
-                        double targetPlayerTotal = ProjectPlayerTotalLaps(playerPosWhenLeaderFinishes,
+                        // Y-45: la posizione entra lisciata; il ritardo di 30 s sulla discesa non
+                        // c'e' piu'. **ProjectedPosAtCheckered resta la misura grezza**, cosi' il
+                        // numero che l'utente confronta col software di riferimento non cambia
+                        // significato: il lisciamento serve al totale, non alla proprieta'.
+                        double smoothedPlayerPosAtFlag = _playerPosStabilizer.Update(playerPosWhenLeaderFinishes, stabilizerDtRaceSec);
+                        Results.SmoothedPosAtCheckered = smoothedPlayerPosAtFlag;
+
+                        _latchedPlayerTotalReality = ProjectPlayerTotalLaps(smoothedPlayerPosAtFlag,
                                                                           _latchedPlayerTotalReality,
                                                                           !state.IsInPitLane,
                                                                           state.Position == 1 ? _latchedLeaderTotalLaps : leaderTotalCap,
                                                                           state.Position == 1);
-                        if (targetPlayerTotal < _latchedPlayerTotalReality)
-                        {
-                            if (_pendingPlayerTotalReality != targetPlayerTotal)
-                            {
-                                _pendingPlayerTotalReality = targetPlayerTotal;
-                                _playerLapsDecreaseStartTime = DateTime.Now;
-                            }
-                            else if ((DateTime.Now - _playerLapsDecreaseStartTime).TotalSeconds >= 30.0)
-                            {
-                                _latchedPlayerTotalReality = targetPlayerTotal;
-                                _pendingPlayerTotalReality = 0.0;
-                            }
-                        }
-                        else
-                        {
-                            _latchedPlayerTotalReality = targetPlayerTotal;
-                            _pendingPlayerTotalReality = 0.0;
-                        }
                         if (_latchedLeaderTotalLaps > 0.0)
                         {
                             _latchedPlayerTotalReality = Math.Min(_latchedPlayerTotalReality, _latchedLeaderTotalLaps);
@@ -1006,6 +1052,16 @@ namespace SimRIG
             Results.LeaderRaceLapsRemaining = Math.Truncate(leaderLapsRem * 100) / 100.0;
 
             Results.RaceTotalLaps = _latchedPlayerTotalReality;
+
+            // --- La riga che scatta quando il totale CAMBIA ------------------------------
+            // Serve a rendere osservabile l'ingresso che ha fatto scattare il filtro. La
+            // diagnostica ordinaria scrive **una riga al secondo** mentre questo calcolo gira
+            // almeno a 12 Hz (misurato sugli intervalli del log 20260831_195300: massimo 1.085 s
+            // fra due righe con la strozzatura a 1.0 s, quindi al peggio un fotogramma su dodici
+            // finisce a log). Il salto del totale a 37 di quel replay richiedeva una posizione
+            // sopra 36.05 che **in tutto il log non compare**: era in uno dei fotogrammi non
+            // scritti. Un evento raro come un cambio di totale puo' permettersi una riga sempre.
+            LogTotalLapsTransition(state, log);
 
 
 
@@ -1462,6 +1518,141 @@ namespace SimRIG
             return currentLatchedLaps;
         }
 
+        /// <summary>
+        /// Scrive una riga **solo quando** uno dei due totali cambia, con dentro tutto quello che
+        /// serve a spiegare perche' e' cambiato: misura grezza, misura lisciata, stato del
+        /// riconoscimento dei cambi, identita' e passo del leader in quell'istante.
+        ///
+        /// Esiste perche' la diagnostica a 1 Hz non basta a chiudere un difetto come Y-45: il
+        /// fotogramma che fa scattare il filtro e' quasi sempre uno di quelli non scritti, e
+        /// dedurne il valore dai vicini e' esattamente il genere di ricostruzione che questo
+        /// repository non accetta come prova (ADR-004).
+        /// </summary>
+        private void LogTotalLapsTransition(SessionState state, LogManager log)
+        {
+            bool playerChanged = Math.Abs(_latchedPlayerTotalReality - _lastLoggedPlayerTotal) > 0.001;
+            bool leaderChanged = Math.Abs(_latchedLeaderTotalLaps - _lastLoggedLeaderTotal) > 0.001;
+            if (!playerChanged && !leaderChanged) return;
+
+            // Prima transizione della sessione: si registra il punto di partenza senza gridare a
+            // un cambio che non e' avvenuto.
+            bool isFirst = _lastLoggedPlayerTotal < 0.0 && _lastLoggedLeaderTotal < 0.0;
+
+            double previousPlayer = _lastLoggedPlayerTotal;
+            double previousLeader = _lastLoggedLeaderTotal;
+            _lastLoggedPlayerTotal = _latchedPlayerTotalReality;
+            _lastLoggedLeaderTotal = _latchedLeaderTotalLaps;
+
+            if (!state.IsSessionActive) return;
+
+            string leaderNow = "PLAYER";
+            if (state.Position != 1)
+            {
+                var p1 = state.Opponents.FirstOrDefault(o => o.Position == 1);
+                if (p1 != null && !string.IsNullOrEmpty(p1.Name)) leaderNow = p1.Name;
+            }
+
+            log.Log(LogModule.STRATEGY, LogType.EVENT, "Total Laps Transition",
+                $"{(isFirst ? "INIZIALE" : "CAMBIO")} | " +
+                $"Player: {previousPlayer:F0} -> {_latchedPlayerTotalReality:F0} | " +
+                $"grezzo={Results.ProjectedPosAtCheckered:F3} lisciato={Results.SmoothedPosAtCheckered:F3} " +
+                $"sospetto={_playerPosStabilizer.SuspicionRaceSec:F1}s | " +
+                $"Leader: {previousLeader:F0} -> {_latchedLeaderTotalLaps:F0} | " +
+                $"grezzo={Results.LeaderProjectedPosAtCheckered:F3} lisciato={_leaderPosStabilizer.Estimate:F3} " +
+                $"sospetto={_leaderPosStabilizer.SuspicionRaceSec:F1}s | " +
+                $"chiEraP1={leaderNow} passoLeader={Results.LeaderEstimatedPace:F2} | " +
+                $"tl={state.SessionTimeLeftSec:F1}s giro={state.CurrentLap} pos={state.TrackPositionPercent:F4} " +
+                $"inPit={state.IsInPitLane} | ombra={Results.ShadowTimeToFlagSec:F1}s vince={Results.ShadowFlagWinner}");
+        }
+
+        /// <summary>
+        /// **Punto 4, modalita' ombra.** Calcola il momento della bandiera come minimo del tempo di
+        /// attraversamento su tutte le vetture e lo scrive a log **senza usarlo**.
+        ///
+        /// Due varianti nella stessa riga, perche' la differenza fra le due e' il dato che serve
+        /// per decidere se accendere il punto 4:
+        /// <list type="bullet">
+        /// <item><c>min</c> — limite di plausibilita' **fisico** (lunghezza pista / 110 m/s):
+        /// generoso, scarta solo la spazzatura conclamata.</item>
+        /// <item><c>minStretto</c> — limite pari al **giro piu' veloce realmente osservato** nella
+        /// sessione: nessuno puo' tagliare prima di quel ritmo.</item>
+        /// </list>
+        /// Se le due coincidono per tutta la gara, il limite stretto non serve e il punto 4 puo'
+        /// accendersi con quello fisico. Se divergono, il replay dice **quando** e **per colpa di
+        /// chi** — che e' esattamente l'informazione che oggi non abbiamo.
+        ///
+        /// I passi usati sono i **normalizzati**, gli stessi da cui esce <c>leaderPace</c>: un
+        /// confronto fra vetture ha senso solo se la grandezza confrontata e' la stessa per tutte.
+        /// Le soste ancora dovute non entrano: vedi la nota su Y-44 in
+        /// <see cref="RaceTimeProjection.EarliestCheckeredTime"/>.
+        /// </summary>
+        private void LogShadowFlagTime(SessionState state, OpponentTracker tracker, LogManager log,
+                                       double timeUntilZero, double playerAbsolutePos,
+                                       double playerPace, string currentLeaderName, double currentLeaderPace)
+        {
+            var candidates = new List<RaceTimeProjection.CrossingCandidate>();
+            double fastestLapSeen = 0.0;
+
+            if (playerPace > 0.0)
+            {
+                candidates.Add(new RaceTimeProjection.CrossingCandidate
+                {
+                    Name = "PLAYER",
+                    AbsolutePos = playerAbsolutePos,
+                    PaceSec = playerPace
+                });
+            }
+            if (state.BestLapTimeSec > 0.0) fastestLapSeen = state.BestLapTimeSec;
+
+            foreach (var opponent in state.Opponents)
+            {
+                if (opponent == null || string.IsNullOrEmpty(opponent.Name)) continue;
+
+                OpponentTelemetryData data;
+                if (!tracker.TrackedOpponents.TryGetValue(opponent.Name, out data) || data == null) continue;
+
+                double pace = data.NormalizedTimes.LapMovingAverage > 0.0
+                    ? data.NormalizedTimes.LapMovingAverage
+                    : data.NormalizedTimes.BestLapTime;
+                if (pace <= 0.0) continue;
+
+                // Stessa convenzione del conteggio giri del leader: CurrentLap e' il giro in corso,
+                // quindi i giri completati sono uno di meno.
+                int lapsCompleted = Math.Max(0, (opponent.CurrentLap ?? 0) - 1);
+                double posPct = opponent.TrackPositionPercent ?? 0.0;
+
+                candidates.Add(new RaceTimeProjection.CrossingCandidate
+                {
+                    Name = opponent.Name,
+                    AbsolutePos = lapsCompleted + posPct,
+                    PaceSec = pace
+                });
+
+                double best = data.NormalizedTimes.BestLapTime;
+                if (best > 0.0 && (fastestLapSeen <= 0.0 || best < fastestLapSeen)) fastestLapSeen = best;
+            }
+
+            if (candidates.Count == 0) return;
+
+            double physicalFloor = RaceTimeProjection.MinimumPlausibleLapSec(state.TrackLengthMeters);
+
+            var loose = RaceTimeProjection.EarliestCheckeredTime(candidates, timeUntilZero, physicalFloor);
+            var strict = RaceTimeProjection.EarliestCheckeredTime(candidates, timeUntilZero, fastestLapSeen);
+
+            Results.ShadowTimeToFlagSec = loose.TimeSec;
+            Results.ShadowFlagWinner = loose.WinnerName;
+
+            if (!state.IsSessionActive) return;
+            if ((DateTime.Now - _lastShadowLogTime).TotalSeconds < 1.0) return;
+            _lastShadowLogTime = DateTime.Now;
+
+            log.Log(LogModule.STRATEGY, LogType.FLOW, "Shadow Flag Time",
+                $"usato={Results.RaceLifeTimeLeftSec:F1}s (leader={currentLeaderName}, passo={currentLeaderPace:F2}) | " +
+                $"min={loose.TimeSec:F1}s (vince={loose.WinnerName}, passo={loose.WinnerPaceSec:F2}, vetture={loose.Considered}, scartate={loose.RejectedByFloor}) | " +
+                $"minStretto={strict.TimeSec:F1}s (vince={strict.WinnerName}, passo={strict.WinnerPaceSec:F2}, vetture={strict.Considered}, scartate={strict.RejectedByFloor}) | " +
+                $"delta={loose.TimeSec - Results.RaceLifeTimeLeftSec:F1}s | limiteFisico={physicalFloor:F2} | giroPiuVeloce={fastestLapSeen:F3}");
+        }
+
         /// <summary>Esito di <see cref="ProjectLapsLeftWithStops"/>.</summary>
         public struct LapsLeftPlan
         {
@@ -1587,10 +1778,11 @@ namespace SimRIG
             _latchedPlayerTotalReality = 0.0;
             Results.ProjectedPosAtCheckered = 0.0;
             Results.LeaderProjectedPosAtCheckered = 0.0;
-            _pendingLeaderTotalLaps = 0.0;
-            _leaderLapsDecreaseStartTime = DateTime.MinValue;
-            _pendingPlayerTotalReality = 0.0;
-            _playerLapsDecreaseStartTime = DateTime.MinValue;
+            _playerPosStabilizer.Reset();
+            _leaderPosStabilizer.Reset();
+            _lastStabilizerTimeLeft = -1.0;
+            _lastLoggedPlayerTotal = -1.0;
+            _lastLoggedLeaderTotal = -1.0;
 
             _smoothedLeaderPace = 0.0;
             _leaderPaceFilter.Reset();

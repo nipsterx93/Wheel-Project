@@ -139,6 +139,7 @@
     <Compile Include="StrategyGateHysteresis.cs" />
     <Compile Include="PitLaneDetector.cs" />
     <Compile Include="TrackPositionValidator.cs" />
+    <Compile Include="ProjectionStabilizer.cs" />
     <Compile Include="RaceTimeProjection.cs" />
     <Compile Include="CalibrationConsensus.cs" />
     <Compile Include="PlayerPitSpeedObserver.cs" />

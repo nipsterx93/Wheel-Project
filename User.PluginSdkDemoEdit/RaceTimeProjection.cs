@@ -6,6 +6,7 @@
 // -------------------------------------------------------------------------
 
 using System;
+using System.Collections.Generic;
 
 namespace SimRIG
 {
@@ -133,6 +134,118 @@ namespace SimRIG
             double floor = MinimumPlausibleLapSec(trackLengthMeters);
             if (floor <= 0.0) return true;
             return paceSec >= floor;
+        }
+
+        /// <summary>Una vettura come la vede il calcolo del momento della bandiera.</summary>
+        public struct CrossingCandidate
+        {
+            /// <summary>Nome, solo per poter dire a log **chi** ha vinto il minimo.</summary>
+            public string Name;
+
+            /// <summary>Posizione assoluta: giri completati piu' frazione di giro in corso.</summary>
+            public double AbsolutePos;
+
+            /// <summary>Passo stimato della vettura, in secondi.</summary>
+            public double PaceSec;
+        }
+
+        /// <summary>Esito di <see cref="EarliestCheckeredTime"/>.</summary>
+        public struct EarliestCheckered
+        {
+            /// <summary>Secondi che mancano alla bandiera. Zero se nessuna vettura era valutabile.</summary>
+            public double TimeSec;
+
+            /// <summary>Chi taglia per primo dopo lo scadere del cronometro.</summary>
+            public string WinnerName;
+
+            /// <summary>Passo della vettura che ha vinto il minimo, per riconoscerne uno assurdo.</summary>
+            public double WinnerPaceSec;
+
+            /// <summary>Quante vetture sono entrate nel confronto.</summary>
+            public int Considered;
+
+            /// <summary>Quante sono state scartate dal limite di plausibilita' sul passo.</summary>
+            public int RejectedByFloor;
+
+            /// <summary>Vero se almeno una vettura era valutabile.</summary>
+            public bool HasResult;
+        }
+
+        /// <summary>
+        /// Il momento della bandiera come **minimo del tempo di attraversamento su tutte le
+        /// vetture**: chi taglia per primo dopo lo scadere del cronometro *e'* il leader, per
+        /// definizione, qualunque classe abbia.
+        ///
+        /// **Perche' non basta il P1 di adesso** (Y-38, e la causa misurata del totale a 37).
+        /// Oggi si proietta la sola vettura che in questo istante e' prima. Quando l'identita'
+        /// cambia — per un sorpasso, per una sosta, o per lo sfarfallio del dato — la vettura di
+        /// riferimento cambia **di colpo**, e con lei cambiano di colpo passo e posizione dentro
+        /// una formula che contiene un arrotondamento all'intero. Road Atlanta `20260831_195300`,
+        /// ore 20:04:08: il P1 passa a una vettura con passo registrato **278.563 s** invece di
+        /// ~68, e il supplemento di fine gara — che vale al massimo un giro del leader — passa da
+        /// ~68 a fino a 278 secondi. Sul Player sono <c>278.563 / 76.524 = 3.6 giri</c> in un solo
+        /// fotogramma.
+        ///
+        /// Col minimo quella vettura non viene semplicemente scelta: un passo di 278 s significa
+        /// attraversare **tardi**, e chi attraversa tardi perde il minimo. Sugli stessi numeri —
+        /// countdown 922.5 s — la vettura lenta da' 1112.1 s e il vero leader 934.3 s: il minimo e'
+        /// 934.3, e la proiezione del Player resta 34.28 invece di saltare a 37.
+        ///
+        /// **L'asimmetria che rende il criterio sicuro, e il suo rovescio.** Un passo sbagliato per
+        /// eccesso di lentezza sposta la vettura in fondo alla classifica del minimo, quindi e'
+        /// innocuo. Un passo sbagliato per eccesso di **velocita'** vincerebbe il minimo e
+        /// anticiperebbe la bandiera per tutti. Misurato sul replay: su 877 campioni e 42 vetture,
+        /// zero passi sotto i 66 s (implausibili qui) e sei sopra i 100 s — **tutti gli errori sono
+        /// nella direzione innocua**. Ma "tutti" vale per un circuito e un replay: da qui
+        /// <paramref name="paceFloorSec"/>, che scarta chi dichiara un passo piu' veloce del piu'
+        /// veloce giro realmente girato nella sessione. E' un limite osservato, non un parametro
+        /// da tarare.
+        ///
+        /// Le soste ancora da fare **non** entrano qui. La formula corretta le somma al tempo di
+        /// attraversamento di chi deve ancora fermarsi, ma il nostro tempo di sosta e' noto essere
+        /// sovrastimato del 49% (Y-44): aggiungerlo adesso significherebbe rimpiazzare un errore
+        /// misurato con uno altrettanto grande e non misurato. Va aggiunto dopo Y-44, e il difetto
+        /// per cui il minimo serve adesso — la vettura col passo assurdo — non ne ha bisogno.
+        /// </summary>
+        /// <param name="candidates">Tutte le vetture in pista, Player compreso.</param>
+        /// <param name="sessionTimeLeftSec">Countdown di sessione.</param>
+        /// <param name="paceFloorSec">
+        /// Passo piu' veloce ammissibile. Zero = nessun limite (nessun giro di riferimento ancora
+        /// osservato): meglio nessun giudizio che uno basato su un limite inventato — stessa scelta
+        /// di <see cref="IsPhysicallyPlausibleLap"/>.
+        /// </param>
+        public static EarliestCheckered EarliestCheckeredTime(IEnumerable<CrossingCandidate> candidates,
+                                                              double sessionTimeLeftSec,
+                                                              double paceFloorSec)
+        {
+            var result = new EarliestCheckered();
+            result.WinnerName = "";
+            if (candidates == null) return result;
+
+            foreach (var car in candidates)
+            {
+                if (car.PaceSec <= 0.0 || double.IsNaN(car.PaceSec)) continue;
+                if (car.AbsolutePos < 0.0 || double.IsNaN(car.AbsolutePos)) continue;
+
+                if (paceFloorSec > 0.0 && car.PaceSec < paceFloorSec)
+                {
+                    result.RejectedByFloor++;
+                    continue;
+                }
+
+                double crossing = TimeUntilLeaderCheckered(sessionTimeLeftSec, car.AbsolutePos, car.PaceSec);
+                result.Considered++;
+
+                if (!result.HasResult || crossing < result.TimeSec)
+                {
+                    result.HasResult = true;
+                    result.TimeSec = crossing;
+                    result.WinnerName = car.Name ?? "";
+                    result.WinnerPaceSec = car.PaceSec;
+                }
+            }
+
+            return result;
         }
 
         /// <summary>
