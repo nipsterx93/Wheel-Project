@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-08-31T11:00:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-09-01T09:00:00Z
+task:       Punto 6 (filtro Alpha-Beta al posto di isteresi + dwell) attivo, punto 4 (bandiera = minimo del tempo di attraversamento su tutte le vetture) in ombra
+scope:      User.PluginSdkDemoEdit/RaceTimeProjection.cs, RaceAnalyzer.cs, OpponentTracker.cs (sola lettura), User.PluginSdkDemo.Tests/**, .ai/**
+expires:    2026-09-01T21:00:00Z
 ```
 
 **Regole del lock**
