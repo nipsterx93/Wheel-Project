@@ -25,9 +25,12 @@ LEGGI IN QUESTO ORDINE, SENZA SALTARE:
    "Da dove partire", poi la tabella dei punti Y-1…Y-30: è lo stato di ogni questione aperta e
    chiusa, con commit e numeri misurati.
 
-3. .ai/plans/2026-08-24-roadmap.md
-   Cosa fare adesso e in che ordine. Il progetto è uscito dalla fase reattiva "cerca difetti nei
-   replay": ora c'è un piano in quattro fasi. Non proporre lavoro fuori da lì senza discuterlo.
+3. .ai/plans/2026-08-30-formule-corrette-fine-gara.md
+   LE FORMULE CORRETTE per la proiezione di fine gara, trascritte da una revisione esterna.
+   ATTENZIONE: nel PDF originale (DeepSearch/) le equazioni sono IMMAGINI, non testo — se cerchi
+   nel testo del PDF non le trovi. Qui sono trascritte. Leggi anche
+   .ai/plans/2026-08-30-analisi-dahldesign.md (analisi di un plugin open source che risolve gli
+   stessi problemi) e .ai/plans/2026-08-24-roadmap.md per il quadro generale.
 
 4. .ai/ARCHITECTURE.md
    Mappa dei moduli e ADR. Leggi almeno ADR-004 (come si verifica un fix qui) e ADR-005 (perché
