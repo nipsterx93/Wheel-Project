@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-09-01T12:00:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-09-01T15:00:00Z
+task:       Y-46 (tetto leader->Player riapplicato senza condizione in multiclasse) e revisione del punto 4 in ombra (minimo ristretto alle vetture sul giro del leader)
+scope:      User.PluginSdkDemoEdit/RaceAnalyzer.cs, RaceTimeProjection.cs, User.PluginSdkDemo.Tests/**, .ai/**
+expires:    2026-09-02T03:00:00Z
 ```
 
 **Regole del lock**
