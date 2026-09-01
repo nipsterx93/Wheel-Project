@@ -73,7 +73,7 @@
     <Compile Include="UnitTests\PhantomPitVisitUnitTests.cs" />
     <Compile Include="UnitTests\LeaderSampleUnitTests.cs" />
     <Compile Include="UnitTests\CalibrationCascadeUnitTests.cs" />
-    <Compile Include="UnitTests\EarliestCheckeredUnitTests.cs" />
+    <Compile Include="UnitTests\FlagMomentUnitTests.cs" />
     <Compile Include="UnitTests\LeaderTotalCapUnitTests.cs" />
     <Compile Include="UnitTests\PlayerTotalLapsRatchetUnitTests.cs" />
     <Compile Include="UnitTests\ProjectionStabilizerUnitTests.cs" />

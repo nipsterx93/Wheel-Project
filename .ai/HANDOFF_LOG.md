@@ -42,6 +42,142 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-01 21:30] claude -> utente (serve un replay)
+
+**Task:** punto 4, dal minimo del tempo di attraversamento al **massimo della posizione proiettata**.
+Resta in ombra.
+**Commit:** `5f715c7` (lock) - questo
+**Log analizzato:** `Logs/Road Atlanta/SimRIG_DebugLog_20260901_175019.csv`
+
+### Il replay ha dato tre risposte, e una ha cambiato il disegno
+
+**1. Il totale del Player e' il migliore mai misurato.** Tick sbagliati (il vero e' 35), sui sette replay:
+
+| replay | Player | leader |
+|---|---|---|
+| `20260830_102220` | 12.1% | 82.6% |
+| `20260830_113151` | 23.3% | 59.3% |
+| `20260830_121813` | 30.0% | 67.3% |
+| `20260830_140721` | 36.5% | 49.6% |
+| `20260831_195300` (baseline) | 13.3% | 13.8% |
+| `20260831_222417` | 15.8% | 6.7% |
+| **`20260901_175019`** | **3.6%** | 18.2% |
+
+`ProjectedPosAtCheckered` ha mediana **34.603** contro il vero 34.83 — la piu' vicina mai misurata
+(la baseline era 34.533) e la banda piu' stretta (0.914 contro 0.965).
+
+**2. Sul leader l'utente ha ragione, ma non nel modo che sembra.** La differenza fra gli ultimi due
+run **non e' attribuibile** alle modifiche: il diff mostra che ogni riga cambiata scrive sul *Player*
+o sta nella funzione in ombra, e `_latchedLeaderTotalLaps` non e' mai toccato. La variabilita'
+run-to-run su questa metrica e' enorme — i quattro replay vecchi, con codice **identico** fra loro,
+danno 49.6 / 59.3 / 67.3 / 82.6%.
+
+I 148 tick sbagliati di questo run si scompongono cosi':
+
+| errore | tick | c'era nella baseline? |
+|---|---|---|
+| totale a **40** (`L_PosAtFlag=39.085`, appena sopra soglia) | 93 | **si', e di piu': 112** |
+| crollo a **28-30** (Barbagallo, passo 278 s) | 29 | **no** |
+| risalita 37->38 dopo il crollo | 26 | no |
+
+Il crollo non c'era nella baseline perche' il ritardo di 30 s impediva al filtro di scendere. Non lo
+*preveniva*: lo **nascondeva** — ed e' la stessa cecita' che li' teneva il totale del Player a 37 per
+tre giri. La baseline non e' migliore sul leader: e' piu' cieca. **Ma Y-38 resta intatto.**
+
+**3. Il punto 4 v2 e' impossibile, e lo dice una grandezza che non dipende dal codice.** Il
+**supplemento** — di quanto la bandiera esce dopo lo scadere del cronometro. Allo scadere il leader
+e' a meta' giro in media, quindi su un giro da 69 s deve valere ~35 s e non puo' quasi mai essere
+zero. Su 758 campioni di gara:
+
+```
+criterio attuale (P1 di adesso)        mediana 50.6 s   (da 6.1 a 67.1)
+criterio v2 (minimo contendenti)       mediana  5.2 s   (da 0.5 a 19.6)
+```
+
+Cinque secondi: la bandiera uscirebbe sullo scadere del cronometro, sempre.
+
+**Causa.** "Chi taglia per primo dopo lo scadere" coincide col leader **solo fra vetture sullo stesso
+giro**. Se una e' a inizio del giro 39 e un'altra a fine del 38, la seconda taglia prima ma sta
+chiudendo il *suo* giro 38: non fa finire la gara. Con 5-8 contendenti dentro una finestra di un giro
+ce ne sono sempre a cavallo del confine.
+
+### Fatto
+
+- `RaceTimeProjection.cs` - `EarliestCheckeredTime` -> **`ProjectFlagMoment`**, e la struct
+  `EarliestCheckered` -> `FlagMoment`. Il nome vecchio era diventato una bugia: non si cerca piu' il
+  primo ad attraversare. Il criterio e' il **massimo della posizione proiettata**, poi il tempo di
+  attraversamento di quella vettura.
+- Il vecchio minimo resta calcolato in `FlagMoment.EarliestCrossingSec` come **diagnostica di
+  confronto sullo stesso tick**, cosi' il prossimo replay mette i due criteri fianco a fianco.
+- `Contenders` degradato a diagnostico: dice quanto e' contesa la testa, non entra nel calcolo.
+- `RaceAnalyzer.cs:LogShadowFlagTime` - la riga ora scrive `suppl=` per il criterio in uso e per il
+  nuovo, piu' `vecchioMin=`. Il supplemento e' la grandezza che ha bocciato v2: va letta per prima.
+- Test rinominati `EarliestCheckeredUnitTests.cs` -> `FlagMomentUnitTests.cs`, con la **storia delle
+  tre versioni in testa al file** perche' nessuno ripercorra la stessa strada.
+
+### La domanda dell'utente sulle soste degli avversari, e la risposta
+
+*"Se non conosciamo i dati di transito dei box della classe leader, come possiamo prevederne la
+perdita di tempo?"* Non serve, per tre motivi:
+
+1. Del leader serve **un numero solo**, e vive dentro un limite stretto: il tempo alla bandiera e' il
+   countdown (telemetria esatta) piu' un supplemento che non puo' mai superare **un giro del
+   leader**. Tutti gli errori sul leader stanno dentro quei ~69 s.
+2. Una sosta sposta la posizione proiettata di ~0.55 giri (40 s su 69). Col criterio del massimo
+   conta solo se cambia **chi** comanda: se due vetture distano piu' di mezzo giro non le inverte, e
+   se distano meno i loro tempi di attraversamento si somigliano comunque.
+3. **Non abbiamo un numero da esportare.** Il tempo di sosta che conosciamo meglio e' il nostro, ed
+   e' sovrastimato del 49% (Y-44). Applicarlo a 43 avversari sostituirebbe un'ignoranza onesta con un
+   errore sistematico moltiplicato per 43. DahlDesign non lo modella affatto.
+
+**Prezzo, detto chiaro:** e' esattamente la promessa del punto 4 che non si realizza — "il leader che
+deve ancora fermarsi cede il posto *prima* del sorpasso fisico". Senza quel dato il passaggio avviene
+al sorpasso. Resta l'immunita' al passo avvelenato, che e' il difetto che costa davvero.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit code `0`, **242 `[PASS]`**.
+
+### Stato
+
+- Compila - 0 errori. 242 test passano.
+- Regressione ADR-004, **tre neutralizzazioni**, tutte verificate rosse:
+
+| cosa ho neutralizzato | test rosso | valore ottenuto |
+|---|---|---|
+| massimo -> minimo della posizione proiettata | deve comandare il leader vero | `comanda Alessandro Barbagallo` |
+| ritorno al criterio v2 (minimo del tempo di attraversamento) | la bandiera cade sul suo attraversamento | `ottenuto 925,98` |
+| limite di plausibilita' che non scarta piu' | col limite deve comandare il leader vero | `comanda baseline anomala (Y-39)` |
+
+### Per chi entra
+
+**Prossimo passo: serve un replay.** Road Atlanta, la solita gara a 3x. Due domande, in ordine:
+
+1. **Il supplemento e' plausibile?** Nelle righe `Shadow Flag Time`, il campo `suppl=` del criterio
+   `max=` deve stare intorno a 35-50 s e **non** avvicinarsi a zero. Se ci va vicino, anche v3 e'
+   sbagliato e va abbandonato invece di ritarato.
+2. **`comanda=` sfarfalla?** Deve essere una vettura di testa e non deve cambiare a ogni tick. Se e'
+   stabile dove oggi il P1 sfarfalla, il punto 4 chiude Y-38 e si puo' accendere.
+
+**Poi:** se v3 regge, accenderlo (turno separato). Altrimenti **Y-44**, che e' il difetto visibile
+residuo sul numero del Player.
+
+**NON toccare:** `TimeUntilLeaderCheckered` (tre fonti concordi), `FuelWeightCoef` (`0.03`, s/kg).
+E **non aggiungere le soste degli avversari** finche' Y-44 e' aperto.
+
+**Attenzione a:** questo filone ha ora bocciato **due** disegni del punto 4 su misura, non su
+opinione. Il metodo che ha funzionato entrambe le volte e' lo stesso: trovare una grandezza fisica
+che si possa controllare **senza sapere niente del codice** — qui il supplemento di fine gara — e
+guardare se il numero e' possibile. Prima di accendere qualcosa, cercare quella grandezza.
+
+---
+
 ## [2026-09-01 18:00] claude -> utente (serve un replay)
 
 **Task:** Y-46 (il tetto leader->Player che si riapplicava senza condizione) e revisione del

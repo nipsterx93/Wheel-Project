@@ -1566,11 +1566,21 @@ namespace SimRIG
         }
 
         /// <summary>
-        /// **Punto 4, modalita' ombra.** Calcola il momento della bandiera come minimo del tempo di
-        /// attraversamento fra le vetture **in lotta per la bandiera** e lo scrive a log **senza
-        /// usarlo**. Il campo `inLotta` dice quante vetture sono sopravvissute alla restrizione sul
-        /// giro del leader: se vale 1 per tutta la gara il minimo sta degenerando nel leader
-        /// corrente e il punto 4 non porta niente; se vale 40 la restrizione non sta filtrando.
+        /// **Punto 4, modalita' ombra.** Calcola il momento della bandiera come tempo di
+        /// attraversamento della vettura che sara' **al comando** allo scadere — quella con la
+        /// posizione proiettata piu' alta — e lo scrive a log **senza usarlo**.
+        ///
+        /// Cosa leggere nella riga, in ordine di importanza:
+        /// <list type="bullet">
+        /// <item><c>suppl=</c> — di quanto la bandiera esce dopo lo scadere. Deve stare intorno a
+        /// meta' giro del leader (~35 s qui) e non deve quasi mai avvicinarsi a zero. E' la
+        /// grandezza che ha bocciato il criterio precedente.</item>
+        /// <item><c>comanda=</c> — chi risulta al comando. Deve essere una vettura di testa, e non
+        /// deve cambiare a ogni tick.</item>
+        /// <item><c>vecchioMin=</c> — cosa avrebbe dato il criterio del minimo, per confronto
+        /// diretto sullo stesso tick. Non usato.</item>
+        /// <item><c>inLotta=</c> — quanto e' contesa la testa. Diagnostico, non entra nel calcolo.</item>
+        /// </list>
         ///
         /// Due varianti nella stessa riga, perche' la differenza fra le due e' il dato che serve
         /// per decidere se accendere il punto 4:
@@ -1639,22 +1649,30 @@ namespace SimRIG
 
             double physicalFloor = RaceTimeProjection.MinimumPlausibleLapSec(state.TrackLengthMeters);
 
-            var loose = RaceTimeProjection.EarliestCheckeredTime(candidates, timeUntilZero, physicalFloor);
-            var strict = RaceTimeProjection.EarliestCheckeredTime(candidates, timeUntilZero, fastestLapSeen);
+            var loose = RaceTimeProjection.ProjectFlagMoment(candidates, timeUntilZero, physicalFloor);
+            var strict = RaceTimeProjection.ProjectFlagMoment(candidates, timeUntilZero, fastestLapSeen);
 
             Results.ShadowTimeToFlagSec = loose.TimeSec;
-            Results.ShadowFlagWinner = loose.WinnerName;
+            Results.ShadowFlagWinner = loose.LeaderName;
 
             if (!state.IsSessionActive) return;
             if ((DateTime.Now - _lastShadowLogTime).TotalSeconds < 1.0) return;
             _lastShadowLogTime = DateTime.Now;
 
+            // Il supplemento — di quanto la bandiera esce **dopo** lo scadere del cronometro — e' la
+            // grandezza che ha bocciato il criterio del minimo, e si legge senza sapere nulla del
+            // codice: allo scadere il leader e' a meta' giro in media, quindi deve valere ~35 s su
+            // un giro da 69 e non puo' quasi mai essere zero. Va a log per tutti e tre i criteri.
+            double overrunUsed = Results.RaceLifeTimeLeftSec - timeUntilZero;
+            double overrunMax = loose.TimeSec - timeUntilZero;
+            double overrunMin = loose.EarliestCrossingSec - timeUntilZero;
+
             log.Log(LogModule.STRATEGY, LogType.FLOW, "Shadow Flag Time",
-                $"usato={Results.RaceLifeTimeLeftSec:F1}s (leader={currentLeaderName}, passo={currentLeaderPace:F2}) | " +
-                $"min={loose.TimeSec:F1}s (vince={loose.WinnerName}, passo={loose.WinnerPaceSec:F2}, " +
+                $"usato={Results.RaceLifeTimeLeftSec:F1}s (leader={currentLeaderName}, passo={currentLeaderPace:F2}, suppl={overrunUsed:F1}s) | " +
+                $"max={loose.TimeSec:F1}s (comanda={loose.LeaderName}, passo={loose.LeaderPaceSec:F2}, suppl={overrunMax:F1}s, " +
                 $"vetture={loose.Considered}, inLotta={loose.Contenders}, scartate={loose.RejectedByFloor}, maxProiettato={loose.MaxProjectedPos:F2}) | " +
-                $"minStretto={strict.TimeSec:F1}s (vince={strict.WinnerName}, passo={strict.WinnerPaceSec:F2}, " +
-                $"vetture={strict.Considered}, inLotta={strict.Contenders}, scartate={strict.RejectedByFloor}) | " +
+                $"maxStretto={strict.TimeSec:F1}s (comanda={strict.LeaderName}, passo={strict.LeaderPaceSec:F2}, scartate={strict.RejectedByFloor}) | " +
+                $"vecchioMin={loose.EarliestCrossingSec:F1}s (suppl={overrunMin:F1}s) | " +
                 $"delta={loose.TimeSec - Results.RaceLifeTimeLeftSec:F1}s | limiteFisico={physicalFloor:F2} | giroPiuVeloce={fastestLapSeen:F3}");
         }
 

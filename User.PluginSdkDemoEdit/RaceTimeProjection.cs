@@ -158,116 +158,125 @@ namespace SimRIG
             public double PaceSec;
         }
 
-        /// <summary>Esito di <see cref="EarliestCheckeredTime"/>.</summary>
-        public struct EarliestCheckered
+        /// <summary>Esito di <see cref="ProjectFlagMoment"/>.</summary>
+        public struct FlagMoment
         {
-            /// <summary>Secondi che mancano alla bandiera. Zero se nessuna vettura era valutabile.</summary>
+            /// <summary>
+            /// Secondi che mancano alla bandiera: il tempo di attraversamento della vettura che
+            /// sara' **al comando** allo scadere. Zero se nessuna vettura era valutabile.
+            /// </summary>
             public double TimeSec;
 
-            /// <summary>Chi taglia per primo dopo lo scadere del cronometro.</summary>
-            public string WinnerName;
+            /// <summary>Chi sara' al comando quando esce la bandiera.</summary>
+            public string LeaderName;
 
-            /// <summary>Passo della vettura che ha vinto il minimo, per riconoscerne uno assurdo.</summary>
-            public double WinnerPaceSec;
+            /// <summary>Passo di quella vettura, per riconoscerne uno assurdo a log.</summary>
+            public double LeaderPaceSec;
 
-            /// <summary>Quante vetture sono entrate nel confronto.</summary>
+            /// <summary>Dove sara' quella vettura allo scadere del cronometro: e' il massimo.</summary>
+            public double MaxProjectedPos;
+
+            /// <summary>Quante vetture sono state valutate.</summary>
             public int Considered;
 
             /// <summary>Quante sono state scartate dal limite di plausibilita' sul passo.</summary>
             public int RejectedByFloor;
 
             /// <summary>
-            /// Quante, fra quelle valutate, sono in lotta per la bandiera — cioe' entro un giro dal
-            /// massimo proiettato. Solo fra queste si prende il minimo.
+            /// Quante sono entro un giro dal massimo. **Diagnostico**: dice quanto e' contesa la
+            /// testa della corsa, non entra nel calcolo.
             /// </summary>
             public int Contenders;
 
-            /// <summary>La posizione proiettata piu' alta allo scadere del cronometro.</summary>
-            public double MaxProjectedPos;
+            /// <summary>
+            /// Il vecchio criterio — minimo del tempo di attraversamento fra i contendenti —
+            /// tenuto come **diagnostica di confronto**. Non usato. E' il valore che la misura del
+            /// 2026-09-01 ha dimostrato impossibile: vedi <see cref="ProjectFlagMoment"/>.
+            /// </summary>
+            public double EarliestCrossingSec;
 
             /// <summary>Vero se almeno una vettura era valutabile.</summary>
             public bool HasResult;
         }
 
         /// <summary>
-        /// Il momento della bandiera come **minimo del tempo di attraversamento fra le vetture in
-        /// lotta**: chi taglia per primo dopo lo scadere del cronometro *e'* il leader, per
-        /// definizione, qualunque classe abbia — purche' sia sul giro del leader.
+        /// Il momento in cui esce la bandiera: **il tempo di attraversamento della vettura che sara'
+        /// al comando allo scadere del cronometro**, cioe' quella con la posizione proiettata piu'
+        /// alta.
         ///
-        /// **Perche' non basta il P1 di adesso** (Y-38, e la causa misurata del totale a 37).
-        /// Oggi si proietta la sola vettura che in questo istante e' prima. Quando l'identita'
-        /// cambia — per un sorpasso, per una sosta, o per lo sfarfallio del dato — la vettura di
-        /// riferimento cambia **di colpo**, e con lei cambiano di colpo passo e posizione dentro
-        /// una formula che contiene un arrotondamento all'intero. Road Atlanta `20260831_195300`,
-        /// ore 20:04:08: il P1 passa a una vettura con passo registrato **278.563 s** invece di
-        /// ~68, e il supplemento di fine gara — che vale al massimo un giro del leader — passa da
-        /// ~68 a fino a 278 secondi. Sul Player sono <c>278.563 / 76.524 = 3.6 giri</c> in un solo
-        /// fotogramma.
+        /// **Perche' non il P1 di adesso.** Oggi si proietta la vettura che in questo istante e'
+        /// prima. Quando l'identita' cambia — per un sorpasso, per una sosta, o per lo sfarfallio
+        /// del dato (Y-38) — la vettura di riferimento cambia **di colpo**, e con lei cambiano di
+        /// colpo passo e posizione dentro una formula che contiene un arrotondamento all'intero.
+        /// Road Atlanta `20260831_195300`, ore 20:04:08: il P1 passa a una vettura con passo
+        /// registrato **278.563 s** invece di ~68, e il supplemento — che vale al massimo un giro
+        /// del leader — passa da ~68 a fino a 278 secondi: sul Player sono `278.563 / 76.524 =`
+        /// **3.64 giri in un fotogramma**.
         ///
-        /// Col minimo quella vettura non viene semplicemente scelta: un passo di 278 s significa
-        /// attraversare **tardi**, e chi attraversa tardi perde il minimo. Sugli stessi numeri —
-        /// countdown 922.5 s — la vettura lenta da' 1112.1 s e il vero leader 934.3 s: il minimo e'
-        /// 934.3, e la proiezione del Player resta 34.28 invece di saltare a 37.
+        /// Col massimo quella vettura non viene neppure considerata: con un passo di 278 s proietta
+        /// **27.3 giri contro i 39** del massimo. **Non e' mai il massimo**, e non serve
+        /// riconoscerne il passo come anomalo perche' se ne occupa il conteggio giri.
         ///
-        /// **Il minimo va preso solo fra chi e' in lotta per la bandiera, e questa non era l'idea
-        /// iniziale: l'ha imposta la misura.** La prima versione prendeva il minimo su *tutte* le
-        /// vetture. Girata in modalita' ombra su Road Atlanta `20260831_222417` ha dato, su 910
-        /// campioni, un valore **piu' basso di quello in uso 867 volte**, mediana **-28.9 s** (circa
-        /// -0.4 giri) con code fino a -169 s. E il vincitore ruotava fra una quarantina di vetture,
-        /// **Player compreso**.
+        /// **Perche' non il MINIMO del tempo di attraversamento, che era il disegno precedente.**
+        /// Sembra equivalente — "chi taglia per primo dopo lo scadere e' il leader" — e non lo e'.
+        /// Vale solo fra vetture sullo **stesso giro**. Se una vettura e' a inizio del giro 39 e
+        /// un'altra a fine del giro 38, la seconda taglia prima, ma sta chiudendo il *suo* giro 38:
+        /// non fa finire la gara.
         ///
-        /// La ragione e' semplice e non dipende dal circuito: con 43 vetture in pista, in ogni
-        /// istante *qualcuna* si trova a pochi metri dal traguardo. Il minimo su tutte collassa
-        /// quindi sul countdown nudo, e il giro finale del leader — la parte che fa uscire la
-        /// bandiera **dopo** lo scadere — sparisce del tutto.
+        /// La modalita' ombra lo ha dimostrato con una grandezza che non dipende dal codice: **di
+        /// quanto la bandiera esce dopo lo scadere del cronometro**. Allo scadere il leader e' a
+        /// meta' giro in media, quindi su un giro da 69 s quel supplemento deve valere circa 35 s e
+        /// non puo' quasi mai essere zero. Misurato su `20260901_175019`, 758 campioni di gara:
         ///
-        /// L'errore di ragionamento era su cosa distingue le vetture. Non e' la classe: e' il
-        /// **conteggio giri**. Una vettura **doppiata** che taglia il traguardo non fa finire la
-        /// gara. Da qui la restrizione: si guarda dove sara' ciascuno allo scadere, si prende il
-        /// massimo, e si tengono solo quelli entro <see cref="LeadLapMarginLaps"/> da li'.
+        /// <code>
+        ///   criterio P1 di adesso        mediana 50.6 s   (da  6.1 a 67.1)
+        ///   criterio minimo contendenti  mediana  5.2 s   (da  0.5 a 19.6)
+        /// </code>
         ///
-        /// La restrizione **non toglie nulla** al motivo per cui il minimo serve: fra i contendenti
-        /// il passaggio resta continuo, perche' chi deve ancora fermarsi vede il proprio
-        /// attraversamento spostarsi in avanti e cede il minimo prima del sorpasso fisico. E copre
-        /// il caso che l'ha motivata: una vettura con passo 278 s proietta ~28 giri contro i 39 del
-        /// massimo, quindi **esce da sola** dall'insieme senza bisogno di riconoscerla come anomala.
+        /// Cinque secondi: la bandiera uscirebbe sullo scadere del cronometro, sempre. Con 5-8
+        /// contendenti dentro una finestra di un giro ci sono sempre vetture a cavallo del confine,
+        /// e il minimo pesca sistematicamente quella che sta chiudendo il giro precedente. Il
+        /// vecchio valore resta calcolato in <see cref="FlagMoment.EarliestCrossingSec"/> come
+        /// diagnostica di confronto.
         ///
-        /// **L'asimmetria che rende il criterio sicuro, e il suo rovescio.** Un passo sbagliato per
-        /// eccesso di lentezza sposta la vettura in fondo alla classifica del minimo, quindi e'
-        /// innocuo. Un passo sbagliato per eccesso di **velocita'** puo' vincere il minimo e
-        /// anticipare la bandiera per tutti. Misurato: su 877 campioni e 42 vetture, zero passi
-        /// sotto i 66 s (implausibili qui) e sei sopra i 100 s — **tutti gli errori sono nella
-        /// direzione innocua**; e nel replay `222417` il limite di plausibilita' non ha scartato
-        /// nessuno, **0 volte su 910**. Ma "tutti" vale per un circuito e due replay: da qui
-        /// <paramref name="paceFloorSec"/>, che scarta chi dichiara un passo piu' veloce del piu'
-        /// veloce giro realmente girato nella sessione. E' un limite osservato, non un parametro
-        /// da tarare.
+        /// **Il limite di plausibilita' conta piu' di prima, non meno.** Col minimo, un passo
+        /// sbagliato per eccesso di lentezza era innocuo. Col massimo si inverte il verso del
+        /// pericolo: un passo falsamente **veloce** gonfia la posizione proiettata
+        /// (<c>pos + T/passo</c>) e vincerebbe il massimo, anticipando la bandiera per tutti. Il
+        /// massimo e' per sua natura sensibile a un solo campione sbagliato — e' il difetto di
+        /// famiglia di questo repository (ADR-005) — quindi
+        /// <paramref name="paceFloorSec"/> e' la sua unica protezione. Nel replay `20260901_175019`
+        /// non ha mai scartato nessuno, 0 volte su 910: la rete c'e' e non ha ancora dovuto reggere
+        /// nulla.
         ///
-        /// Le soste ancora da fare **non** entrano qui. La formula corretta le somma al tempo di
-        /// attraversamento di chi deve ancora fermarsi, ma il nostro tempo di sosta e' noto essere
-        /// sovrastimato del 49% (Y-44): aggiungerlo adesso significherebbe rimpiazzare un errore
-        /// misurato con uno altrettanto grande e non misurato. Va aggiunto dopo Y-44, e il difetto
-        /// per cui il minimo serve adesso — la vettura col passo assurdo — non ne ha bisogno.
+        /// Le soste ancora da fare **non** entrano. La formula del report esterno le somma al tempo
+        /// di attraversamento di chi deve ancora fermarsi, ma il nostro tempo di sosta e' noto
+        /// essere sovrastimato del 49% (Y-44): applicarlo a 43 avversari sostituirebbe
+        /// un'ignoranza onesta con un errore sistematico moltiplicato per 43. Il prezzo di non
+        /// farlo, detto esplicitamente: il passaggio di consegne fra un leader che deve ancora
+        /// fermarsi e chi ha gia' finito avviene al sorpasso fisico invece che prima. E' la meta'
+        /// della promessa del punto 4 che resta non mantenuta finche' Y-44 e' aperto.
         /// </summary>
         /// <param name="candidates">Tutte le vetture in pista, Player compreso.</param>
         /// <param name="sessionTimeLeftSec">Countdown di sessione.</param>
         /// <param name="paceFloorSec">
-        /// Passo piu' veloce ammissibile. Zero = nessun limite (nessun giro di riferimento ancora
-        /// osservato): meglio nessun giudizio che uno basato su un limite inventato — stessa scelta
-        /// di <see cref="IsPhysicallyPlausibleLap"/>.
+        /// Passo piu' veloce ammissibile. Zero = nessun giro di riferimento ancora osservato: meglio
+        /// nessun giudizio che uno basato su un limite inventato — stessa scelta di
+        /// <see cref="IsPhysicallyPlausibleLap"/>.
         /// </param>
-        public static EarliestCheckered EarliestCheckeredTime(IEnumerable<CrossingCandidate> candidates,
-                                                              double sessionTimeLeftSec,
-                                                              double paceFloorSec)
+        public static FlagMoment ProjectFlagMoment(IEnumerable<CrossingCandidate> candidates,
+                                                   double sessionTimeLeftSec,
+                                                   double paceFloorSec)
         {
-            var result = new EarliestCheckered();
-            result.WinnerName = "";
+            var result = new FlagMoment();
+            result.LeaderName = "";
             if (candidates == null) return result;
 
             // Prima passata: chi e' valutabile, e dove sara' ciascuno allo scadere del cronometro.
             var usable = new List<CrossingCandidate>();
             var projectedPos = new List<double>();
             double timeLeft = Math.Max(0.0, sessionTimeLeftSec);
+            int leaderIndex = -1;
 
             foreach (var car in candidates)
             {
@@ -285,13 +294,27 @@ namespace SimRIG
                 projectedPos.Add(pos);
                 result.Considered++;
 
-                if (usable.Count == 1 || pos > result.MaxProjectedPos) result.MaxProjectedPos = pos;
+                if (leaderIndex < 0 || pos > result.MaxProjectedPos)
+                {
+                    result.MaxProjectedPos = pos;
+                    leaderIndex = usable.Count - 1;
+                }
             }
 
-            if (usable.Count == 0) return result;
+            if (leaderIndex < 0) return result;
 
-            // Seconda passata: il minimo, ma **solo fra chi e' in lotta per la bandiera**.
+            // La bandiera esce quando **chi e' al comando** chiude il giro in corso allo scadere.
+            result.HasResult = true;
+            result.LeaderName = usable[leaderIndex].Name ?? "";
+            result.LeaderPaceSec = usable[leaderIndex].PaceSec;
+            result.TimeSec = TimeUntilLeaderCheckered(sessionTimeLeftSec,
+                                                      usable[leaderIndex].AbsolutePos,
+                                                      usable[leaderIndex].PaceSec);
+
+            // Seconda passata, **solo diagnostica**: quanto e' contesa la testa, e cosa avrebbe
+            // dato il vecchio criterio del minimo. Nessuno dei due entra nel risultato.
             double leadLapThreshold = result.MaxProjectedPos - LeadLapMarginLaps;
+            bool anyContender = false;
 
             for (int i = 0; i < usable.Count; i++)
             {
@@ -301,13 +324,10 @@ namespace SimRIG
                 double crossing = TimeUntilLeaderCheckered(sessionTimeLeftSec,
                                                            usable[i].AbsolutePos,
                                                            usable[i].PaceSec);
-
-                if (!result.HasResult || crossing < result.TimeSec)
+                if (!anyContender || crossing < result.EarliestCrossingSec)
                 {
-                    result.HasResult = true;
-                    result.TimeSec = crossing;
-                    result.WinnerName = usable[i].Name ?? "";
-                    result.WinnerPaceSec = usable[i].PaceSec;
+                    anyContender = true;
+                    result.EarliestCrossingSec = crossing;
                 }
             }
 
