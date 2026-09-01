@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-09-02T01:00:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-09-02T09:00:00Z
+task:       Y-48: collegare anche il TOTALE e la PROIEZIONE del leader alla vettura al comando (oggi seguono ancora il P1 istantaneo e crollano a 28), piu' la validazione a orizzonti fissi nella riga di verita' di terreno
+scope:      User.PluginSdkDemoEdit/RaceAnalyzer.cs, RaceTimeProjection.cs, User.PluginSdkDemo.Tests/**, .ai/**
+expires:    2026-09-02T21:00:00Z
 ```
 
 **Regole del lock**
