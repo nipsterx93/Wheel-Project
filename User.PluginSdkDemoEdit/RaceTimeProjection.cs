@@ -344,6 +344,101 @@ namespace SimRIG
         }
 
         /// <summary>
+        /// Frazione di giro coperta dalla zona box, dai due estremi della geofence piu' il margine
+        /// che li estende da entrambi i lati.
+        ///
+        /// Gestisce il caso — normale, non eccezionale — in cui la corsia box scavalchi la linea del
+        /// traguardo: a Road Atlanta l'ingresso e' a <c>0.957</c> e l'uscita a <c>0.088</c>, quindi
+        /// la sottrazione diretta darebbe un numero negativo.
+        ///
+        /// Restituisce <c>0</c> se la geofence non e' calibrata (estremi negativi) o se il risultato
+        /// non e' plausibile: meglio nessuna correzione che una basata su una geometria inventata.
+        /// Mezzo giro e' il tetto — una corsia box piu' lunga di mezzo tracciato non esiste, e un
+        /// valore simile vorrebbe dire che gli estremi sono scambiati.
+        /// </summary>
+        /// <param name="pitEntryPct">Posizione dell'ingresso corsia box, in frazione di giro.</param>
+        /// <param name="pitExitPct">Posizione dell'uscita.</param>
+        /// <param name="exclusionMargin">Quanto la zona estesa deborda oltre i due estremi.</param>
+        public static double PitZoneLapFraction(double pitEntryPct, double pitExitPct, double exclusionMargin)
+        {
+            if (pitEntryPct < 0.0 || pitExitPct < 0.0) return 0.0;
+            if (pitEntryPct > 1.0 || pitExitPct > 1.0) return 0.0;
+
+            double span = pitExitPct - pitEntryPct;
+            if (span < 0.0) span += 1.0;      // la corsia box scavalca il traguardo
+
+            double margin = exclusionMargin > 0.0 ? exclusionMargin : 0.0;
+            double total = span + 2.0 * margin;
+
+            if (total <= 0.0 || total > 0.5) return 0.0;
+            return total;
+        }
+
+        /// <summary>
+        /// Quanto costa davvero una sosta, in secondi.
+        ///
+        /// **Il difetto che questa funzione chiude (Y-44).** Il costo veniva calcolato come
+        /// <c>transito + accelerazione/decelerazione + tempo da fermo</c>, cioe' **tutto il tempo
+        /// passato nella zona box**. Ma attraversando la corsia si copre comunque una parte del
+        /// tracciato: il tempo che ci avresti messo a percorrerla in pista non e' perso, lo avresti
+        /// speso comunque. E' l'errore che il report esterno chiama "trattare la sosta come un
+        /// ritardo forfettario indivisibile".
+        ///
+        /// Misurato su Road Atlanta `20260901_211532`, dai tempi sul giro — che sono la definizione
+        /// stessa della perdita, non una ricostruzione:
+        ///
+        /// <code>
+        ///   giri 14+15+16 (in-lap, out-lap, primo giro pieno)  268.20 s
+        ///   tre giri normali                                   232.35 s
+        ///   perdita reale                                       35.85 s   di cui 14.75 da fermo
+        ///                                                                 quindi 21.05 non-ferma
+        ///   il plugin ne contava                                36.10 s   (26.38 + 9.72)
+        ///   eccesso                                             15.05 s = 0.194 di giro
+        /// </code>
+        ///
+        /// E 0.194 di giro e' esattamente quanto misura la zona box: <c>0.131</c> di corsia stretta
+        /// (ingresso 0.957, uscita 0.088) piu' due volte il margine di esclusione. La coincidenza
+        /// fra l'eccesso di tempo e la geometria della zona **e'** la dimostrazione della causa.
+        ///
+        /// **Cosa resta fuori.** Con questa correzione la stima passa da circa +52% a circa -8%:
+        /// resta un residuo dell'ordine di tre secondi, attribuibile al fatto che la corsia box non
+        /// e' esattamente parallela al tracciato e che gli estremi della geofence hanno una loro
+        /// incertezza. Il segno del residuo e' quello **sicuro**: sottostimare la perdita significa
+        /// proiettare qualche giro in piu' e imbarcare qualche decilitro di troppo, non restare a
+        /// piedi.
+        ///
+        /// **Il tempo da fermo non e' contenuto nel transito**, ed e' il secondo sospetto registrato
+        /// in Y-44, qui escluso: <c>PitRadar</c> lo sottrae gia' quando calibra
+        /// (<c>num2 = num - _pitBoxTimeCache</c>). Va quindi sommato, ed e' l'unica parte del costo
+        /// che dipende da quanto carburante si imbarca.
+        /// </summary>
+        /// <param name="transitTimeSec">Tempo per attraversare la corsia box, gia' al netto della sosta.</param>
+        /// <param name="accelDecelTimeSec">Tempo perso a rallentare prima e riaccelerare dopo.</param>
+        /// <param name="stationaryTimeSec">Tempo previsto da fermo: rifornimento o gomme.</param>
+        /// <param name="pitZoneLapFraction">Frazione di giro coperta dalla zona, da <see cref="PitZoneLapFraction"/>.</param>
+        /// <param name="paceSec">Passo della vettura, per convertire la frazione in secondi.</param>
+        public static double PitLossSec(double transitTimeSec, double accelDecelTimeSec,
+                                        double stationaryTimeSec, double pitZoneLapFraction,
+                                        double paceSec)
+        {
+            double timeInZone = Math.Max(0.0, transitTimeSec) + Math.Max(0.0, accelDecelTimeSec);
+            double stationary = Math.Max(0.0, stationaryTimeSec);
+
+            // Senza geometria o senza passo non si corregge nulla: si torna al comportamento
+            // vecchio invece di sottrarre un numero inventato.
+            if (pitZoneLapFraction <= 0.0 || paceSec <= 0.0) return timeInZone + stationary;
+
+            double onTrackEquivalent = pitZoneLapFraction * paceSec;
+
+            // L'equivalente in pista non puo' superare il tempo passato nella zona: in corsia box si
+            // va piu' piano, sempre. Se lo supera, la geometria o il passo non sono credibili e si
+            // rinuncia alla correzione invece di azzerare il costo della sosta.
+            if (onTrackEquivalent >= timeInZone) return timeInZone + stationary;
+
+            return (timeInZone - onTrackEquivalent) + stationary;
+        }
+
+        /// <summary>
         /// Giri totali che una vettura avra' completato quando esce la bandiera, dato il tempo che
         /// manca alla bandiera stessa (uguale per tutti: la gara finisce quando il leader assoluto
         /// taglia) e il passo di *quella* vettura.

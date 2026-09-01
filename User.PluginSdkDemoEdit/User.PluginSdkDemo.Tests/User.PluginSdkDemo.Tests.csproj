@@ -54,6 +54,7 @@
   <ItemGroup>
     <Compile Include="TestRunner.cs" />
     <Compile Include="UnitTests\PitLossUnitTests.cs" />
+    <Compile Include="UnitTests\PitLossOnTrackEquivalentUnitTests.cs" />
     <Compile Include="UnitTests\MergeGapUnitTests.cs" />
     <Compile Include="UnitTests\RelativePaceUnitTests.cs" />
     <Compile Include="UnitTests\StrategyLoggingUnitTests.cs" />

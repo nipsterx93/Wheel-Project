@@ -1091,7 +1091,30 @@ namespace SimRIG
                         
                         double playerFuelPerLap = fuel.AverageFuelPerLap > 0.0 ? fuel.AverageFuelPerLap : 3.0;
                         double playerStintLaps = state.MaxFuelCapacity / playerFuelPerLap;
-                        double playerPitLoss = radar.PitTransitTime + radar.PitInOutAccDecTime + Math.Max(fuel.FuelToAdd / (radar.MeasuredFuelFillRate > 0 ? radar.MeasuredFuelFillRate : 2.7), radar.DbTireChangeTime);
+                        // Y-44: il costo della sosta e' il tempo passato nella zona box **meno**
+                        // quello che ci avresti messo a percorrere quella stessa porzione di
+                        // tracciato in pista. Prima si contava la traversata intera: sul replay
+                        // 20260901_211532 la perdita reale misurata dai tempi sul giro era 35.85 s
+                        // e il plugin ne sottraeva ~54, cioe' il 52% in piu'.
+                        double playerStationaryTime = Math.Max(
+                            fuel.FuelToAdd / (radar.MeasuredFuelFillRate > 0 ? radar.MeasuredFuelFillRate : 2.7),
+                            radar.DbTireChangeTime);
+
+                        double pitZoneFraction = 0.0;
+                        if (radar.CurrentTrack != null)
+                        {
+                            pitZoneFraction = RaceTimeProjection.PitZoneLapFraction(
+                                radar.CurrentTrack.PitEntryPct,
+                                radar.CurrentTrack.PitExitPct,
+                                radar.CurrentTrack.ExclusionMargin);
+                        }
+
+                        double playerPitLoss = RaceTimeProjection.PitLossSec(
+                            radar.PitTransitTime,
+                            radar.PitInOutAccDecTime,
+                            playerStationaryTime,
+                            pitZoneFraction,
+                            activePlayerPace);
                         int playerRemainingStops = 0;
 
                         double effectivePlayerTank = fuel.TankLapsRemaining;
