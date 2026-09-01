@@ -29,8 +29,12 @@
 //   v3  massimo della posizione proiettata: chi comanda quando esce la
 //       bandiera. E' quello verificato qui.
 //
-// NOTA: gira in MODALITA' OMBRA — calcolato e scritto a log, non usato da
-// nessun calcolo. Questi test verificano la funzione, non che il plugin la usi.
+// NOTA: v3 e' ATTIVA dal 2026-09-01 (commit 718cd8b) e alimenta il tempo alla
+// bandiera; dal 2026-09-02 (Y-48, commit 0fd8e21) anche il totale e la
+// proiezione del leader. Questo file verifica la formula; il cablaggio sta in
+// FlagTimeWiringUnitTests.cs e LeaderTotalFromCommandUnitTests.cs — distinzione
+// che questo repository ha pagato tre volte (Y-31, Y-46, Y-48: formula giusta,
+// collegata al posto sbagliato).
 // -------------------------------------------------------------------------
 
 using System;

@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      claude        # NONE | antigravity | claude | codex | human
-since:      2026-09-02T12:00:00Z
-task:       Commento obsoleto in FlagMomentUnitTests.cs (dice ancora "modalita' ombra", il punto 4 e' attivo da due turni)
-scope:      User.PluginSdkDemo.Tests/UnitTests/FlagMomentUnitTests.cs, .ai/PROJECT_STATE.md
-expires:    2026-09-02T14:00:00Z
+owner:      NONE          # NONE | antigravity | claude | codex | human
+since:      2026-09-02T12:30:00Z
+task:       —
+scope:      —
+expires:    —
 ```
 
 **Regole del lock**
