@@ -312,6 +312,15 @@ namespace SimRIG
             pm.AddProperty("SimRIG.Session.ProjectedPosAtCheckered", t, 0.0);
             // Dove sara' il LEADER ASSOLUTO quando scade il cronometro, col decimale (es. 38.85).
             pm.AddProperty("SimRIG.Session.LeaderProjectedPosAtCheckered", t, 0.0);
+            // Punto 4: chi decide il momento della bandiera, e dove sara' allo scadere.
+            pm.AddProperty("SimRIG.Session.FlagLeaderName", t, "");
+            pm.AddProperty("SimRIG.Session.FlagLeaderProjectedPos", t, 0.0);
+            // Posizione grezza del leader adesso, e la fotografia allo scadere del cronometro:
+            // e' la verita' di terreno contro cui si verifica la proiezione (vedi RaceAnalyzer).
+            pm.AddProperty("SimRIG.Session.LeaderTrackPct", t, 0.0);
+            pm.AddProperty("SimRIG.Session.LeaderPosAtExpiry", t, -1.0);
+            pm.AddProperty("SimRIG.Session.LeaderTrackPctAtExpiry", t, -1.0);
+            pm.AddProperty("SimRIG.Session.LeaderNameAtExpiry", t, "");
             pm.AddProperty("SimRIG.Session.RaceLapsCompleted", t, 0);
             pm.AddProperty("SimRIG.Session.RaceLapsRemaining", t, 0.0);
             pm.AddProperty("SimRIG.Session.IsLapped", t, false);
@@ -1682,6 +1691,12 @@ namespace SimRIG
             PluginManager.SetPropertyValue("SimRIG.Session.RaceTotalLaps", t, RaceAnalyzer.Results.RaceTotalLaps);
             PluginManager.SetPropertyValue("SimRIG.Session.ProjectedPosAtCheckered", t, Math.Round(RaceAnalyzer.Results.ProjectedPosAtCheckered, 2));
             PluginManager.SetPropertyValue("SimRIG.Session.LeaderProjectedPosAtCheckered", t, Math.Round(RaceAnalyzer.Results.LeaderProjectedPosAtCheckered, 2));
+            PluginManager.SetPropertyValue("SimRIG.Session.FlagLeaderName", t, RaceAnalyzer.Results.FlagLeaderName);
+            PluginManager.SetPropertyValue("SimRIG.Session.FlagLeaderProjectedPos", t, Math.Round(RaceAnalyzer.Results.FlagLeaderProjectedPos, 2));
+            PluginManager.SetPropertyValue("SimRIG.Session.LeaderTrackPct", t, Math.Round(RaceAnalyzer.Results.LeaderTrackPct, 4));
+            PluginManager.SetPropertyValue("SimRIG.Session.LeaderPosAtExpiry", t, Math.Round(RaceAnalyzer.Results.LeaderPosAtExpiry, 3));
+            PluginManager.SetPropertyValue("SimRIG.Session.LeaderTrackPctAtExpiry", t, Math.Round(RaceAnalyzer.Results.LeaderTrackPctAtExpiry, 4));
+            PluginManager.SetPropertyValue("SimRIG.Session.LeaderNameAtExpiry", t, RaceAnalyzer.Results.LeaderNameAtExpiry);
             PluginManager.SetPropertyValue("SimRIG.Session.RaceLapsCompleted", t, RaceAnalyzer.Results.RaceLapsCompleted);
             PluginManager.SetPropertyValue("SimRIG.Session.RaceLapsRemaining", t, RaceAnalyzer.Results.RaceLapsRemaining);
             PluginManager.SetPropertyValue("SimRIG.Session.IsLapped", t, RaceAnalyzer.Results.IsLapped);

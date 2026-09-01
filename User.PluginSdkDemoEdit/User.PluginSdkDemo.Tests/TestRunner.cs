@@ -35,6 +35,7 @@ namespace User.PluginSdkDemo.Tests
                 PlayerTotalLapsRatchetUnitTests.RunAllTests();
                 ProjectionStabilizerUnitTests.RunAllTests();
                 FlagMomentUnitTests.RunAllTests();
+                FlagTimeWiringUnitTests.RunAllTests();
                 LeaderTotalCapUnitTests.RunAllTests();
                 LeaderPositionMissingUnitTests.RunAllTests();
                 OpponentLapTimeSourceUnitTests.RunAllTests();
