@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-09-01T21:30:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-09-01T23:00:00Z
+task:       Punto 4 v3 ACCESO (la bandiera dalla vettura al comando) + verita' di terreno sulla posizione del leader allo scadere del cronometro
+scope:      User.PluginSdkDemoEdit/RaceAnalyzer.cs, DataPluginDemo.cs, User.PluginSdkDemo.Tests/**, .ai/**
+expires:    2026-09-02T11:00:00Z
 ```
 
 **Regole del lock**
