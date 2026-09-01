@@ -272,6 +272,13 @@ namespace SimRIG
         // Verita' di terreno sulla posizione del leader allo scadere del cronometro. Vedi
         // CaptureLeaderPositionAtExpiry: e' l'unico modo che abbiamo di verificare la proiezione
         // contro un dato misurato invece che contro un altro software.
+        // Fotografie della proiezione a distanze fisse dalla bandiera. Servono a confrontare la
+        // previsione con la verita' di terreno: il confronto **allo scadere** non dimostra nulla,
+        // perche' li' il countdown vale zero e la proiezione coincide per costruzione con la
+        // posizione misurata (era il difetto della prima versione di questa strumentazione).
+        private readonly double[] _projectionAtHorizon = new double[ValidationHorizonsSec.Length];
+        private readonly double[] _p1ProjectionAtHorizon = new double[ValidationHorizonsSec.Length];
+
         private bool _hasSeenPositiveCountdown = false;
         private double _leaderPosAtExpiry = -1.0;
         private string _leaderNameAtExpiry = "";
@@ -988,8 +995,36 @@ namespace SimRIG
                         }
                     }
 
-                    double leaderPosAtZero = leaderAbsolutePos + leaderL_left;
+                    // Dove sara' allo scadere il **P1 di questo istante**. Resta calcolato come
+                    // ripiego e come termine di paragone a log, ma non e' piu' il valore in uso.
+                    double leaderPosAtZeroFromP1 = leaderAbsolutePos + leaderL_left;
+
+                    // --- Punto 4: chi comanda ---------------------------------------------
+                    // Va calcolato **qui**, prima del totale del leader, perche' e' da qui che
+                    // discendono sia il totale sia il tempo alla bandiera. Nel turno precedente era
+                    // piu' in basso e alimentava solo il tempo: il totale continuava a seguire il
+                    // P1 istantaneo e crollava con lui (Y-48).
+                    var flagMoment = ComputeFlagMoment(state, tracker, timeUntilZero,
+                                                       playerAbsolutePos, activePlayerPace);
+
+                    // Y-48: il totale del leader viene da **chi comanda**, non da chi e' primo
+                    // adesso. Road Atlanta 20260901_202537, ore 20:36:33: il P1 istantaneo era una
+                    // vettura con passo registrato 278 s che proiettava 27.886, e il totale del
+                    // leader crollava a 30, poi 29, poi 28 — mentre nello stesso identico tick il
+                    // punto 4 gia' diceva `comanda=Aleix Nogue, proiezione=38.27`. La risposta
+                    // giusta era calcolata e non collegata.
+                    double leaderPosAtZero = ResolveLeaderPosAtZero(flagMoment.HasResult,
+                                                                    flagMoment.MaxProjectedPos,
+                                                                    leaderPosAtZeroFromP1);
+                    double leaderPosNow = ResolveLeaderPosAtZero(flagMoment.HasResult,
+                                                                 flagMoment.LeaderAbsolutePos,
+                                                                 leaderAbsolutePos);
+
                     Results.LeaderProjectedPosAtCheckered = leaderPosAtZero;
+                    Results.FlagLeaderName = flagMoment.HasResult ? flagMoment.LeaderName : leaderName;
+                    Results.FlagLeaderProjectedPos = leaderPosAtZero;
+
+                    RecordValidationHorizons(timeUntilZero, leaderPosAtZero, leaderPosAtZeroFromP1);
 
                     // Y-45: la posizione entra nella banda **lisciata**, e la banda decide da sola.
                     // Prima c'era, in aggiunta, un ritardo di 30 s applicato alla sola discesa: e'
@@ -997,7 +1032,10 @@ namespace SimRIG
                     double smoothedLeaderPosAtZero = _leaderPosStabilizer.Update(leaderPosAtZero, stabilizerDtRaceSec);
                     _latchedLeaderTotalLaps = UpdateLatchedLaps(smoothedLeaderPosAtZero, _latchedLeaderTotalLaps, !leaderIsInPit);
 
-                    leaderLapsRem = Math.Max(0, _latchedLeaderTotalLaps - leaderAbsolutePos);
+                    // I giri che restano al leader si contano sulla posizione di **chi comanda**:
+                    // mescolare il totale di una vettura con la posizione di un'altra darebbe un
+                    // conteggio che non descrive nessuna vettura reale.
+                    leaderLapsRem = Math.Max(0, _latchedLeaderTotalLaps - leaderPosNow);
 
                     // Il tempo che manca alla bandiera si legge dal cronometro di sessione, non si
                     // ricostruisce dai giri del leader. Prima era
@@ -1008,11 +1046,6 @@ namespace SimRIG
                     // stimati contro ~1400 s reali). Ancorando al countdown, il passo del leader
                     // pesa solo sulla frazione di giro che gli manca per tagliare: errore limitato
                     // a un giro, non piu' proporzionale alla durata della gara.
-                    // Il momento della bandiera dal **P1 di questo istante**: resta calcolato come
-                    // ripiego e come termine di paragone a log, ma non e' piu' il valore in uso.
-                    double flagFromCurrentP1 = RaceTimeProjection.TimeUntilLeaderCheckered(
-                        timeUntilZero, leaderAbsolutePos, leaderPace);
-
                     // --- Punto 4, ATTIVO --------------------------------------------------
                     // La bandiera esce quando chiude il giro chi sara' **al comando** allo scadere,
                     // non chi e' P1 in questo istante. Vedi RaceTimeProjection.ProjectFlagMoment
@@ -1022,11 +1055,11 @@ namespace SimRIG
                     // con passo registrato 278.60 s: il criterio vecchio produceva un supplemento di
                     // fine gara di **154.7 s** — piu' di due giri del leader, impossibile — mentre
                     // questo teneva ~50 s stabili mettendo al comando vetture con passi veri.
-                    var flagMoment = ComputeFlagMoment(state, tracker, timeUntilZero,
-                                                       playerAbsolutePos, activePlayerPace);
-
-                    Results.FlagLeaderName = flagMoment.HasResult ? flagMoment.LeaderName : leaderName;
-                    Results.FlagLeaderProjectedPos = flagMoment.HasResult ? flagMoment.MaxProjectedPos : leaderPosAtZero;
+                    //
+                    // Il momento della bandiera dal P1 di questo istante resta calcolato come
+                    // ripiego e come termine di paragone a log.
+                    double flagFromCurrentP1 = RaceTimeProjection.TimeUntilLeaderCheckered(
+                        timeUntilZero, leaderAbsolutePos, leaderPace);
 
                     // Ripiego sul criterio vecchio se nessuna vettura era valutabile: meglio una
                     // stima imperfetta che un tempo alla bandiera pari a zero, che a valle
@@ -1035,7 +1068,7 @@ namespace SimRIG
                                                                   flagFromCurrentP1);
 
                     LogFlagMoment(state, tracker, log, timeUntilZero, flagMoment,
-                                  flagFromCurrentP1, leaderName, leaderPace);
+                                  flagFromCurrentP1, leaderName, leaderPace, leaderPosAtZeroFromP1);
 
                     // Salviamo i risultati del leader nei campi di debug
                     Results.RemainingPitsLeader = leaderRemainingStops;
@@ -1753,7 +1786,8 @@ namespace SimRIG
         /// </summary>
         private void LogFlagMoment(SessionState state, OpponentTracker tracker, LogManager log,
                                    double timeUntilZero, RaceTimeProjection.FlagMoment loose,
-                                   double flagFromCurrentP1, string currentLeaderName, double currentLeaderPace)
+                                   double flagFromCurrentP1, string currentLeaderName, double currentLeaderPace,
+                                   double leaderPosAtZeroFromP1)
         {
             if (!state.IsSessionActive) return;
             if ((DateTime.Now - _lastShadowLogTime).TotalSeconds < 1.0) return;
@@ -1774,7 +1808,9 @@ namespace SimRIG
             log.Log(LogModule.STRATEGY, LogType.FLOW, "Flag Moment",
                 $"USATO={Results.RaceLifeTimeLeftSec:F1}s (comanda={loose.LeaderName}, passo={loose.LeaderPaceSec:F2}, suppl={overrunMax:F1}s, " +
                 $"vetture={loose.Considered}, inLotta={loose.Contenders}, scartate={loose.RejectedByFloor}, maxProiettato={loose.MaxProjectedPos:F2}) | " +
-                $"vecchioP1={flagFromCurrentP1:F1}s (P1={currentLeaderName}, passo={currentLeaderPace:F2}, suppl={overrunUsed:F1}s) | " +
+                $"totLeader={_latchedLeaderTotalLaps:F0} | " +
+                $"vecchioP1={flagFromCurrentP1:F1}s (P1={currentLeaderName}, passo={currentLeaderPace:F2}, " +
+                $"suppl={overrunUsed:F1}s, proiez={leaderPosAtZeroFromP1:F2}) | " +
                 $"maxStretto={strict.TimeSec:F1}s (comanda={strict.LeaderName}, passo={strict.LeaderPaceSec:F2}, scartate={strict.RejectedByFloor}) | " +
                 $"vecchioMin={loose.EarliestCrossingSec:F1}s (suppl={overrunMin:F1}s) | " +
                 $"delta={loose.TimeSec - flagFromCurrentP1:F1}s | limiteFisico={physicalFloor:F2} | giroPiuVeloce={fastestLapSeen:F3}");
@@ -1876,9 +1912,24 @@ namespace SimRIG
             log.Log(LogModule.STRATEGY, LogType.EVENT, "Leader Position At Expiry",
                 $"VERITA' DI TERRENO | leader={_leaderNameAtExpiry} | giriCompletati={lapsCompleted} | " +
                 $"posSulGiro={_leaderTrackPctAtExpiry:F4} | posAssoluta={_leaderPosAtExpiry:F3} | " +
-                $"giriCheCompletera={Math.Ceiling(_leaderPosAtExpiry):F0} | " +
-                $"noiAvevamoProiettato={Results.FlagLeaderProjectedPos:F3} " +
-                $"(comanda={Results.FlagLeaderName}) | vecchioCriterio={Results.LeaderProjectedPosAtCheckered:F3}");
+                $"giriCheCompletera={Math.Ceiling(_leaderPosAtExpiry):F0}");
+
+            // Il confronto che conta: cosa avevamo previsto **prima**, non allo scadere. Allo
+            // scadere il countdown vale zero e la proiezione coincide per costruzione con la
+            // posizione misurata — la prima versione di questa riga confrontava proprio quello, e
+            // i tre numeri leggevano tutti 38.061. Non dimostrava niente.
+            var righe = new System.Text.StringBuilder();
+            for (int i = 0; i < ValidationHorizonsSec.Length; i++)
+            {
+                if (_projectionAtHorizon[i] <= 0.0) continue;
+                righe.Append($" | a-{ValidationHorizonsSec[i] / 60.0:F0}min: punto4={_projectionAtHorizon[i]:F3} " +
+                             $"(err {_projectionAtHorizon[i] - _leaderPosAtExpiry:+0.000;-0.000}) " +
+                             $"vecchioP1={_p1ProjectionAtHorizon[i]:F3} " +
+                             $"(err {_p1ProjectionAtHorizon[i] - _leaderPosAtExpiry:+0.000;-0.000})");
+            }
+
+            log.Log(LogModule.STRATEGY, LogType.EVENT, "Projection Validation",
+                $"vero={_leaderPosAtExpiry:F3}{righe}");
         }
 
         /// <summary>
@@ -1920,6 +1971,53 @@ namespace SimRIG
             if (!hasSeenPositiveCountdown) return false;
             if (alreadyCaptured) return false;
             return true;
+        }
+
+        /// <summary>
+        /// Distanze dalla bandiera, in secondi di gara, a cui si fotografa la proiezione per poterla
+        /// poi confrontare con la verita' di terreno. Venti, quindici, dieci, cinque e due minuti:
+        /// sono gli orizzonti proposti dal report esterno, che chiede anche che l'errore **cali in
+        /// modo monotono** — se a dieci minuti si sbaglia piu' che a venti, qualcosa e' rotto.
+        /// </summary>
+        public static readonly double[] ValidationHorizonsSec = { 1200.0, 900.0, 600.0, 300.0, 120.0 };
+
+        /// <summary>
+        /// Quale posizione del leader usare: quella di **chi comanda** (punto 4) se e' stato
+        /// possibile calcolarla, altrimenti il ripiego sul P1 di questo istante.
+        ///
+        /// **Esiste come funzione pura perche' questo difetto era esattamente il chiamante** (Y-48).
+        /// Il criterio del punto 4 era gia' acceso e gia' corretto, ma il totale del leader
+        /// continuava a leggere dal P1 istantaneo: Road Atlanta `20260901_202537`, ore 20:36:33, il
+        /// P1 era una vettura con passo registrato 278 s che proiettava `27.886` e il totale del
+        /// leader crollava a 30, 29, 28 — mentre nello stesso tick il punto 4 diceva gia'
+        /// `comanda=Aleix Nogue, proiezione=38.27`. Nessuna formula era sbagliata: mancava un filo.
+        /// E' la stessa lezione di Y-31, per la terza volta in questo repository.
+        /// </summary>
+        public static double ResolveLeaderPosAtZero(bool hasCommandingCar, double fromCommandingCar,
+                                                    double fromCurrentP1)
+        {
+            if (!hasCommandingCar) return fromCurrentP1;
+            if (fromCommandingCar <= 0.0) return fromCurrentP1;
+            return fromCommandingCar;
+        }
+
+        /// <summary>
+        /// Fotografa la proiezione ogni volta che il countdown scende sotto uno degli orizzonti di
+        /// <see cref="ValidationHorizonsSec"/>, una volta per orizzonte. Nessun effetto sul calcolo:
+        /// serve solo perche' la riga di fine gara possa mettere in fila previsione ed esito.
+        /// </summary>
+        private void RecordValidationHorizons(double timeUntilZero, double projection, double p1Projection)
+        {
+            if (timeUntilZero <= 0.0) return;
+
+            for (int i = 0; i < ValidationHorizonsSec.Length; i++)
+            {
+                if (_projectionAtHorizon[i] > 0.0) continue;
+                if (timeUntilZero > ValidationHorizonsSec[i]) continue;
+
+                _projectionAtHorizon[i] = projection;
+                _p1ProjectionAtHorizon[i] = p1Projection;
+            }
         }
 
         /// <summary>Esito di <see cref="ProjectLapsLeftWithStops"/>.</summary>
@@ -2049,6 +2147,11 @@ namespace SimRIG
             Results.LeaderProjectedPosAtCheckered = 0.0;
             _playerPosStabilizer.Reset();
             _leaderPosStabilizer.Reset();
+            for (int i = 0; i < ValidationHorizonsSec.Length; i++)
+            {
+                _projectionAtHorizon[i] = 0.0;
+                _p1ProjectionAtHorizon[i] = 0.0;
+            }
             _hasSeenPositiveCountdown = false;
             _leaderPosAtExpiry = -1.0;
             _leaderNameAtExpiry = "";

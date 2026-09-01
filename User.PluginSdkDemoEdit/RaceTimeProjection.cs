@@ -176,6 +176,14 @@ namespace SimRIG
             /// <summary>Dove sara' quella vettura allo scadere del cronometro: e' il massimo.</summary>
             public double MaxProjectedPos;
 
+            /// <summary>
+            /// Dove si trova **adesso** la vettura al comando: giri completati piu' frazione.
+            /// Serve perche' i giri che le restano si calcolino sulla sua posizione e non su quella
+            /// del P1 di questo istante — mescolare le due produce un conteggio che non descrive
+            /// nessuna vettura reale.
+            /// </summary>
+            public double LeaderAbsolutePos;
+
             /// <summary>Quante vetture sono state valutate.</summary>
             public int Considered;
 
@@ -307,6 +315,7 @@ namespace SimRIG
             result.HasResult = true;
             result.LeaderName = usable[leaderIndex].Name ?? "";
             result.LeaderPaceSec = usable[leaderIndex].PaceSec;
+            result.LeaderAbsolutePos = usable[leaderIndex].AbsolutePos;
             result.TimeSec = TimeUntilLeaderCheckered(sessionTimeLeftSec,
                                                       usable[leaderIndex].AbsolutePos,
                                                       usable[leaderIndex].PaceSec);

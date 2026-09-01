@@ -37,6 +37,7 @@ namespace User.PluginSdkDemo.Tests
                 FlagMomentUnitTests.RunAllTests();
                 FlagTimeWiringUnitTests.RunAllTests();
                 LeaderTotalCapUnitTests.RunAllTests();
+                LeaderTotalFromCommandUnitTests.RunAllTests();
                 LeaderPositionMissingUnitTests.RunAllTests();
                 OpponentLapTimeSourceUnitTests.RunAllTests();
                 OpponentMaxTankUnitTests.RunAllTests();

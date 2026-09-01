@@ -76,6 +76,7 @@
     <Compile Include="UnitTests\FlagMomentUnitTests.cs" />
     <Compile Include="UnitTests\FlagTimeWiringUnitTests.cs" />
     <Compile Include="UnitTests\LeaderTotalCapUnitTests.cs" />
+    <Compile Include="UnitTests\LeaderTotalFromCommandUnitTests.cs" />
     <Compile Include="UnitTests\PlayerTotalLapsRatchetUnitTests.cs" />
     <Compile Include="UnitTests\ProjectionStabilizerUnitTests.cs" />
     <Compile Include="UnitTests\LeaderPositionMissingUnitTests.cs" />
