@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-09-01T18:00:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-09-01T20:00:00Z
+task:       Punto 4: dal minimo del tempo di attraversamento al MASSIMO della posizione proiettata. Resta in ombra.
+scope:      User.PluginSdkDemoEdit/RaceTimeProjection.cs, RaceAnalyzer.cs, User.PluginSdkDemo.Tests/**, .ai/**
+expires:    2026-09-02T08:00:00Z
 ```
 
 **Regole del lock**
