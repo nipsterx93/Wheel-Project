@@ -15,9 +15,17 @@
 //   Sven Neiss           posizione assoluta 24.34   passo  68.443 s
 //   Player               posizione assoluta 22.0675 passo  76.524 s
 //
-// NOTA: in questo turno il minimo gira in MODALITA' OMBRA — calcolato e scritto
-// a log, non usato da nessun calcolo. Questi test verificano la funzione, non
-// che il plugin la stia usando.
+// NOTA: il minimo gira in MODALITA' OMBRA — calcolato e scritto a log, non usato
+// da nessun calcolo. Questi test verificano la funzione, non che il plugin la
+// stia usando.
+//
+// AGGIORNAMENTO 2026-09-01: il minimo e' ristretto alle vetture IN LOTTA per la
+// bandiera (entro un giro dal massimo proiettato). La prima versione lo prendeva
+// su tutte, e la modalita' ombra ha dimostrato che era sbagliato: su
+// 20260831_222417, 867 campioni su 910 sotto il valore in uso, mediana -28.9 s,
+// vincitore che ruotava fra 40 vetture, Player compreso. Con 43 vetture in pista
+// c'e' sempre qualcuno a pochi metri dalla linea. Una vettura DOPPIATA che taglia
+// il traguardo non fa uscire la bandiera.
 // -------------------------------------------------------------------------
 
 using System;
@@ -70,6 +78,9 @@ namespace User.PluginSdkDemo.Tests
             Test_EmptyInputHasNoResult();
             Test_TheMinimumIsBlindToClass();
             Test_AFasterPaceDoesNotAutomaticallyWinTheMinimum();
+            Test_Regression_ALappedCarNearTheLineDoesNotEndTheRace();
+            Test_TheSlowOutlierIsExcludedByLapCountBeforeAnyComparison();
+            Test_ContendersCountsOnlyTheCarsOnTheLeadLap();
 
             Console.WriteLine("[TEST SUCCESS] All Earliest Checkered Tests Passed!");
         }
@@ -266,6 +277,92 @@ namespace User.PluginSdkDemo.Tests
                    $"a posizione 24.2 lo stesso passo attraversa PRIMA ({fastAndWins:F1} contro {leader:F1})");
 
             Pass($"Passo piu' veloce non vince da solo: stesso passo, 940.96 s da una posizione e 929.20 s dall'altra");
+        }
+
+        /// <summary>
+        /// **Il difetto che la modalita' ombra ha intercettato.** Una vettura doppiata a pochi metri
+        /// dal traguardo taglia prima di chiunque altro dopo lo scadere del cronometro — ma non fa
+        /// finire la gara, perche' non e' in lotta per la bandiera.
+        ///
+        /// Numeri: la doppiata (passo GT3 77.20 s, posizione 22.0) proietta **33.949** contro il
+        /// **37.818** del leader, quindi e' quasi quattro giri indietro. Il suo attraversamento cade
+        /// a **926.4 s**, prima dei **934.9 s** del leader: col minimo ingenuo vincerebbe lei.
+        ///
+        /// Neutralizzazione (ADR-004): alzando LeadLapMarginLaps a un valore grande — cioe'
+        /// togliendo la restrizione — il test diventa rosso, e vince la doppiata con 926.4 s.
+        /// </summary>
+        private static void Test_Regression_ALappedCarNearTheLineDoesNotEndTheRace()
+        {
+            var cars = FromTheLog();
+            cars.Add(Car("doppiato vicino al traguardo", 22.0, 77.20));
+
+            var result = RaceTimeProjection.EarliestCheckeredTime(cars, CountdownSec, 0.0);
+
+            // Premesse sui soli ingressi, indipendenti dalla funzione in prova: restano vere anche
+            // neutralizzando la restrizione, cosi' il rosso cade sull'asserzione che conta.
+            double lappedCrossing = RaceTimeProjection.TimeUntilLeaderCheckered(CountdownSec, 22.0, 77.20);
+            double leaderCrossing = RaceTimeProjection.TimeUntilLeaderCheckered(CountdownSec, 24.34, 68.443);
+            Assert(Math.Abs(lappedCrossing - 926.400) < 0.01,
+                   $"la doppiata attraversa a 926.40 s, ottenuto {lappedCrossing:F3}");
+            Assert(lappedCrossing < leaderCrossing,
+                   $"e attraversa PRIMA del leader ({lappedCrossing:F1} contro {leaderCrossing:F1}): col minimo ingenuo vincerebbe lei");
+
+            Assert(result.WinnerName == "Sven Neiss",
+                   $"ma la bandiera la fa uscire il leader, ha vinto {result.WinnerName}");
+            Assert(Math.Abs(result.TimeSec - 934.931) < 0.01,
+                   $"e il momento resta 934.93 s, ottenuto {result.TimeSec:F3}");
+
+            Pass("Regressione: la doppiata attraversa a 926.4 s ma non fa uscire la bandiera (934.9 s)");
+        }
+
+        /// <summary>
+        /// Proprieta' piu' forte di quella verificata sopra sul passo lento. La vettura col passo a
+        /// 278 s non "perde" il confronto: **non ci arriva proprio**. Proietta 27.312 contro il
+        /// 37.818 del massimo, cioe' dieci giri indietro, quindi esce con i doppiati.
+        ///
+        /// Conta perche' rende il criterio indipendente dal riconoscere il passo come anomalo: non
+        /// serve una soglia sul passo per escluderla, ci pensa il conteggio giri.
+        /// </summary>
+        private static void Test_TheSlowOutlierIsExcludedByLapCountBeforeAnyComparison()
+        {
+            var onlyTheOutlierAndTheLeader = new List<RaceTimeProjection.CrossingCandidate>
+            {
+                Car("Alessandro Barbagallo", 24.0, 278.563),
+                Car("Sven Neiss", 24.34, 68.443)
+            };
+
+            var result = RaceTimeProjection.EarliestCheckeredTime(onlyTheOutlierAndTheLeader, CountdownSec, 0.0);
+
+            Assert(result.Considered == 2, $"entrambe le vetture sono valutabili, valutate {result.Considered}");
+            Assert(result.Contenders == 1, $"ma una sola e' in lotta, in lotta {result.Contenders}");
+            Assert(result.WinnerName == "Sven Neiss", $"ha vinto {result.WinnerName}");
+            Assert(Math.Abs(result.MaxProjectedPos - 37.818) < 0.01,
+                   $"il massimo proiettato deve essere 37.82, ottenuto {result.MaxProjectedPos:F3}");
+
+            Pass("Il passo a 278 s proietta 27.3 contro 37.8: escluso dal conteggio giri, non dal confronto");
+        }
+
+        /// <summary>
+        /// Il conteggio dei contendenti e' il numero da leggere nel log per capire se la restrizione
+        /// sta lavorando: se vale 1 per tutta la gara il minimo sta degenerando nel leader corrente e
+        /// il punto 4 non porta niente; se vale quanto le vetture in pista non sta filtrando nulla.
+        /// </summary>
+        private static void Test_ContendersCountsOnlyTheCarsOnTheLeadLap()
+        {
+            var cars = new List<RaceTimeProjection.CrossingCandidate>
+            {
+                Car("in lotta A", 24.34, 68.443),   // proietta 37.818, e' il massimo
+                Car("in lotta B", 24.00, 68.443),   // proietta 37.478, dentro il margine
+                Car("doppiato", 22.00, 77.200),     // proietta 33.949, fuori
+                Car("passo assurdo", 24.00, 278.563) // proietta 27.312, fuori
+            };
+
+            var result = RaceTimeProjection.EarliestCheckeredTime(cars, CountdownSec, 0.0);
+
+            Assert(result.Considered == 4, $"tutte e quattro sono valutabili, valutate {result.Considered}");
+            Assert(result.Contenders == 2, $"due sono in lotta, in lotta {result.Contenders}");
+
+            Pass("Contendenti: 4 vetture valutate, 2 sul giro del leader");
         }
     }
 }

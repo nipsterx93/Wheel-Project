@@ -1029,10 +1029,10 @@ namespace SimRIG
                                                                           !state.IsInPitLane,
                                                                           state.Position == 1 ? _latchedLeaderTotalLaps : leaderTotalCap,
                                                                           state.Position == 1);
-                        if (_latchedLeaderTotalLaps > 0.0)
-                        {
-                            _latchedPlayerTotalReality = Math.Min(_latchedPlayerTotalReality, _latchedLeaderTotalLaps);
-                        }
+                        _latchedPlayerTotalReality = ApplyLeaderTotalCap(_latchedPlayerTotalReality,
+                                                                        _latchedLeaderTotalLaps,
+                                                                        isMultiClass,
+                                                                        state.Position == 1);
                     }
                 }
             }
@@ -1567,7 +1567,10 @@ namespace SimRIG
 
         /// <summary>
         /// **Punto 4, modalita' ombra.** Calcola il momento della bandiera come minimo del tempo di
-        /// attraversamento su tutte le vetture e lo scrive a log **senza usarlo**.
+        /// attraversamento fra le vetture **in lotta per la bandiera** e lo scrive a log **senza
+        /// usarlo**. Il campo `inLotta` dice quante vetture sono sopravvissute alla restrizione sul
+        /// giro del leader: se vale 1 per tutta la gara il minimo sta degenerando nel leader
+        /// corrente e il punto 4 non porta niente; se vale 40 la restrizione non sta filtrando.
         ///
         /// Due varianti nella stessa riga, perche' la differenza fra le due e' il dato che serve
         /// per decidere se accendere il punto 4:
@@ -1648,9 +1651,57 @@ namespace SimRIG
 
             log.Log(LogModule.STRATEGY, LogType.FLOW, "Shadow Flag Time",
                 $"usato={Results.RaceLifeTimeLeftSec:F1}s (leader={currentLeaderName}, passo={currentLeaderPace:F2}) | " +
-                $"min={loose.TimeSec:F1}s (vince={loose.WinnerName}, passo={loose.WinnerPaceSec:F2}, vetture={loose.Considered}, scartate={loose.RejectedByFloor}) | " +
-                $"minStretto={strict.TimeSec:F1}s (vince={strict.WinnerName}, passo={strict.WinnerPaceSec:F2}, vetture={strict.Considered}, scartate={strict.RejectedByFloor}) | " +
+                $"min={loose.TimeSec:F1}s (vince={loose.WinnerName}, passo={loose.WinnerPaceSec:F2}, " +
+                $"vetture={loose.Considered}, inLotta={loose.Contenders}, scartate={loose.RejectedByFloor}, maxProiettato={loose.MaxProjectedPos:F2}) | " +
+                $"minStretto={strict.TimeSec:F1}s (vince={strict.WinnerName}, passo={strict.WinnerPaceSec:F2}, " +
+                $"vetture={strict.Considered}, inLotta={strict.Contenders}, scartate={strict.RejectedByFloor}) | " +
                 $"delta={loose.TimeSec - Results.RaceLifeTimeLeftSec:F1}s | limiteFisico={physicalFloor:F2} | giroPiuVeloce={fastestLapSeen:F3}");
+        }
+
+        /// <summary>
+        /// Applica al totale del Player il tetto "non puoi completare piu' giri del leader".
+        ///
+        /// **Il difetto che questa funzione chiude (Y-46).** Il tetto veniva disattivato in
+        /// multiclasse — correttamente, e con tanto di commento che spiega perche' — e poi
+        /// **riapplicato tre righe dopo senza alcuna condizione**. Il codice contraddiceva il
+        /// proprio commento.
+        ///
+        /// Road Atlanta `20260831_222417`, ore 22:35:25: il passo fasullo di `Alessandro Barbagallo`
+        /// (278 s, difetto Y-38) fa crollare il totale del **leader** da 39 a 28, e questo tetto lo
+        /// trasferisce di peso al Player. Per **103 secondi di gara** il totale del Player ha letto
+        /// 28-30 mentre la sua proiezione era ferma e corretta a `34.53`:
+        ///
+        /// <code>
+        ///   t=22:35:24  posAtFlag=34.537  TOT=35   leaderTot=39
+        ///   t=22:35:25  posAtFlag=34.530  TOT=30   leaderTot=30
+        ///   t=22:35:29  posAtFlag=34.527  TOT=28   leaderTot=28
+        /// </code>
+        ///
+        /// Il totale del Player copiava quello del leader cifra per cifra. Sette giri di
+        /// sottostima, cioe' ~15 L di carburante in meno del necessario: la direzione pericolosa.
+        ///
+        /// **Perche' non basta cancellare la riga.** In monoclasse il tetto ha una funzione reale e
+        /// **non** e' ridondante: il tetto applicato a monte agisce sulla posizione *continua*
+        /// prima della banda, quindi se il totale memorizzato e' gia' sopra il tetto la banda puo'
+        /// tenercelo (serve un calo di piu' di un giro per scendere). Qui invece si agisce sul
+        /// totale gia' formato. Le due applicazioni fanno cose diverse e servono entrambe.
+        ///
+        /// **Le due condizioni in cui il tetto vale.** Monoclasse: tutti fanno lo stesso numero di
+        /// giri, quindi il confronto ha senso. Player che **e'** il leader: il suo totale *e'* per
+        /// definizione quello del leader, qualunque sia la struttura delle classi. In multiclasse
+        /// e non leader il confronto non dice nulla — una GT3 e una GTP non fanno lo stesso numero
+        /// di giri — ed e' li' che il tetto faceva danno.
+        /// </summary>
+        /// <param name="playerTotal">Totale del Player dopo la banda di stabilita'.</param>
+        /// <param name="leaderTotal">Totale del leader assoluto. Zero = non ancora stimato.</param>
+        /// <param name="isMultiClass">Vero se in pista c'e' piu' di una classe.</param>
+        /// <param name="playerIsLeader">Vero se il Player e' P1 assoluto.</param>
+        public static double ApplyLeaderTotalCap(double playerTotal, double leaderTotal,
+                                                 bool isMultiClass, bool playerIsLeader)
+        {
+            if (leaderTotal <= 0.0) return playerTotal;
+            if (isMultiClass && !playerIsLeader) return playerTotal;
+            return Math.Min(playerTotal, leaderTotal);
         }
 
         /// <summary>Esito di <see cref="ProjectLapsLeftWithStops"/>.</summary>

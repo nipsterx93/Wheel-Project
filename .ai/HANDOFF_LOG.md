@@ -42,6 +42,122 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-01 18:00] claude -> utente (serve un replay)
+
+**Task:** Y-46 (il tetto leader->Player che si riapplicava senza condizione) e revisione del
+punto 4, che resta in ombra.
+**Commit:** `4f573b0` (lock) - questo
+**Log analizzato:** `Logs/Road Atlanta/SimRIG_DebugLog_20260831_222417.csv` (primo replay dopo Y-45)
+
+### Cosa ha detto il replay, in tre punti
+
+**1. Il calo 35 -> 34 alla sosta e' Y-44, non un difetto nuovo.** L'utente l'aveva notato e
+ipotizzato che fosse dovuto alla risposta piu' rapida del filtro. Meta' giusto: il filtro si comporta
+bene, ma l'ingresso e' sbagliato.
+
+| `ProjectedPosAtCheckered` | mediana | min | max |
+|---|---|---|---|
+| **prima** della sosta | 33.967 | 33.919 | 34.802 |
+| **dopo** la sosta | 34.460 | 34.121 | 35.089 |
+
+Il vero e' 34.83. Prima della sosta sottostimiamo di quasi un giro. **Il calo non e' al momento della
+sosta:** inizia alle 22:30:14 (giro 11, cinque minuti di gara PRIMA) e finisce un secondo dopo il
+`Pit Complete` delle 22:31:53. Non e' "la sosta sballa il conto", e' "finche' una sosta e' pendente,
+il conto e' sballato". Il ritardo di 30 s lo stava nascondendo. Margine sottilissimo: la soglia di
+discesa e' a 33.95, la mediana 33.967 — diciassette millesimi.
+
+**2. Y-46, e l'ho scoperchiato io.** Alle 22:35:25 il totale del Player e' sceso a **28** per 103
+secondi di gara (29 tick su 811), mentre la sua proiezione era ferma a 34.53:
+
+```
+t=22:35:24  posAtFlag=34.537  TOT=35   leaderTot=39
+t=22:35:25  posAtFlag=34.530  TOT=30   leaderTot=30
+t=22:35:29  posAtFlag=34.527  TOT=28   leaderTot=28
+```
+
+Il totale copiava quello del leader cifra per cifra: un `Math.Min(player, leader)` incondizionato,
+tre righe sotto un commento che dice che in multiclasse quel tetto non va applicato. Difetto vecchio,
+ma **prima di Y-45 non si vedeva**: verificato sul log `195300`, dove nella stessa finestra
+`leaderTot` resta 39.00 perche' il ritardo di 30 s bloccava la discesa. Togliendo una protezione
+rotta se n'e' trovata una seconda sotto.
+
+**3. La modalita' ombra ha bocciato il punto 4 come era specificato.** Ed e' il risultato piu' utile
+del turno, perche' e' costato zero.
+
+- minimo **piu' basso** del valore in uso **867 volte su 910**, mediana **-28.9 s** (circa -0.4 giri),
+  code fino a -169 s;
+- vincitore che ruota fra ~40 vetture, **Player compreso** (80 volte);
+- limite di plausibilita' sul passo: **0 scarti su 910**.
+
+Causa, e non dipende dal circuito: con 43 vetture in pista, in ogni istante *qualcuna* e' a pochi
+metri dalla linea. Il minimo su tutte collassa sul countdown e il giro finale del leader sparisce.
+**Il discriminante non e' la classe, e' il conteggio giri: una vettura doppiata che taglia il
+traguardo non fa uscire la bandiera.**
+
+### Fatto
+
+- `RaceAnalyzer.cs:ApplyLeaderTotalCap` (nuovo) - il tetto vale in monoclasse e quando il Player
+  **e'** il leader; in multiclasse e non leader, no. Estratto in funzione pura perche' la lezione di
+  Y-31 e' che il difetto sta nel chiamante. **Non e' ridondante col tetto a monte:** quello agisce
+  sulla posizione continua prima della banda, questo sul totale gia' formato — se il totale
+  memorizzato e' gia' sopra il tetto, la banda puo' tenercelo.
+- `RaceTimeProjection.cs:EarliestCheckeredTime` - due passate: si calcola dove sara' ciascuno allo
+  scadere, si prende il massimo, si tengono solo quelli entro `LeadLapMarginLaps` (= 1.0 giro), e
+  **fra quelli** si prende il minimo. Aggiunti `Contenders` e `MaxProjectedPos` al risultato.
+- `RaceAnalyzer.cs:LogShadowFlagTime` - la riga ora espone `inLotta=` e `maxProiettato=`.
+
+Il margine di un giro non e' stretto di proposito: non deve discriminare fra contendenti, deve solo
+escludere i doppiati, e una sosta ancora da fare costa ~0.5 giri che deve restare dentro.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit code `0`, **243 `[PASS]`** (erano 235).
+
+### Stato
+
+- Compila - 0 errori. 243 test passano.
+- Regressione ADR-004, **due neutralizzazioni**, entrambe verificate rosse:
+
+| cosa ho neutralizzato | test rosso | valore ottenuto |
+|---|---|---|
+| la condizione in `ApplyLeaderTotalCap` (tetto di nuovo incondizionato) | il Player non segue il leader | `ottenuto 28` |
+| `LeadLapMarginLaps` 1.0 -> 9999 (via la restrizione) | la bandiera la fa uscire il leader | `ha vinto doppiato vicino al traguardo` |
+
+Nota di metodo: la seconda neutralizzazione all'inizio faceva fallire una *premessa* del test invece
+dell'asserzione significativa, con un messaggio fuorviante. Le premesse sono state riscritte in modo
+da dipendere solo dagli ingressi, cosi' il rosso cade dove serve.
+
+### Per chi entra
+
+**Prossimo passo: serve un replay dall'utente.** Road Atlanta, la solita gara a 3x. Tre domande:
+
+1. **Y-46 e' chiuso?** Il totale del Player non deve piu' seguire quello del leader. Nelle righe
+   `Total Laps Transition` non devono piu' comparire discese del Player con `grezzo`/`lisciato`
+   fermi intorno a 34.5.
+2. **Il punto 4 rivisto e' plausibile?** Dalle righe `Shadow Flag Time`: `inLotta` deve stare fra 2 e
+   ~8 (le vetture in lotta per la vittoria assoluta). Se vale 1 per tutta la gara il minimo degenera
+   nel leader corrente e il punto 4 non porta niente; se vale ~40 la restrizione non filtra. E
+   `delta` deve tornare vicino a zero, non piu' -28.9 s di mediana.
+3. **Quanto resta di Y-44?** Il calo prima della sosta e' ora il difetto visibile piu' grosso.
+
+**Poi:** se il punto 4 regge, accenderlo (turno separato). Altrimenti Y-44 prima. Restano 3, 5, 7.
+
+**NON toccare:** `TimeUntilLeaderCheckered` (tre fonti concordi), `FuelWeightCoef` (`0.03`, s/kg), e
+il limite di plausibilita' sul passo, che ora sappiamo non scattare mai — va lasciato dov'e' come
+rete, non tarato.
+
+**Attenzione a:** questo turno ha mostrato due volte lo stesso schema — una protezione rotta che ne
+nascondeva un'altra. Dopo il prossimo replay, prima di aggiungere, conviene chiedersi cosa **altro**
+era mascherato.
+
+---
+
 ## [2026-09-01 12:00] claude -> utente (serve un replay)
 
 **Task:** punto 6 (stabilizzazione) **attivo**, punto 4 (bandiera = minimo) **in ombra**, piu' la
