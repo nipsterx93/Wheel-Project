@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-09-02T12:30:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-09-02T14:00:00Z
+task:       Y-44: il tempo di sosta conta l'intera traversata della corsia box come perdita, senza sottrarre il tempo che ci avresti messo in pista
+scope:      User.PluginSdkDemoEdit/RaceTimeProjection.cs, RaceAnalyzer.cs, User.PluginSdkDemo.Tests/**, .ai/**
+expires:    2026-09-03T02:00:00Z
 ```
 
 **Regole del lock**
