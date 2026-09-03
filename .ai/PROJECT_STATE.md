@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-09-02T16:00:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-09-03T10:00:00Z
+task:       Y-49: il ramo che aggiorna l'ancora del passo verso il basso e' irraggiungibile — la finestra di validita' rifiuta i giri piu' veloci prima che possano correggere una baseline sbagliata
+scope:      User.PluginSdkDemoEdit/OpponentTracker.cs, RaceTimeProjection.cs, User.PluginSdkDemo.Tests/**, .ai/**
+expires:    2026-09-03T22:00:00Z
 ```
 
 **Regole del lock**
