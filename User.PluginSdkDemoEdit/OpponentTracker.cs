@@ -115,6 +115,13 @@ namespace SimRIG
 
         public double NormalizedRaceStartPace { get; set; } = 0.0;
 
+        /// <summary>
+        /// Miglioramento grande dell'ancora in attesa di conferma (Y-49). Zero = nessuno.
+        /// Un solo giro molto piu' veloce puo' essere un errore di misura; due consecutivi
+        /// d'accordo fra loro no.
+        /// </summary>
+        public double PendingPaceAnchor { get; set; } = 0.0;
+
         public double PaceDropDueToTyres { get; set; } = 0.0;
 
 
@@ -275,6 +282,109 @@ namespace SimRIG
         /// (<see cref="RaceTimeProjection.IsPhysicallyPlausibleLap"/>), che a differenza di una
         /// costante si trasferisce da un circuito all'altro.
         /// </summary>
+        /// <summary>
+        /// Quanto puo' migliorare l'ancora del passo in un colpo solo, prima che il miglioramento
+        /// vada confermato. E' la stessa ampiezza della vecchia tolleranza sul lato veloce: un
+        /// miglioramento entro il 2% e' ordinario e si prende subito.
+        /// </summary>
+        public const double OrdinaryImprovementFrac = 0.020;
+
+        /// <summary>
+        /// Quanto due giri devono somigliarsi perche' il secondo confermi il primo. E' la stessa
+        /// ampiezza della tolleranza sul lato lento, per non introdurre un terzo numero da tarare.
+        /// </summary>
+        public const double ConfirmationFrac = 0.035;
+
+        /// <summary>
+        /// Aggiorna l'ancora del passo di una vettura con un giro nuovo, e dice se quel giro va
+        /// considerato valido.
+        ///
+        /// **Il difetto che questa funzione chiude (Y-49).** L'ancora sapeva gia' migliorare — il
+        /// codice la abbassava a ogni giro piu' veloce. Ma il controllo di validita' girava
+        /// **prima**, e scartava i giri che deviassero dall'ancora oltre il 2% sul lato veloce.
+        /// Cosi' un'ancora sbagliata rendeva invalidi proprio i giri che l'avrebbero corretta: il
+        /// ramo che li avrebbe promossi non veniva mai raggiunto.
+        ///
+        /// Misurato su Road Atlanta `20260901_211532`, su 803 tick di gara:
+        ///
+        /// <code>
+        ///   Baseline Established          48 volte
+        ///   Baseline Updated (Better)     55 volte
+        ///   Baseline Reset (Improvement)   0 volte
+        ///
+        ///   Alessandro Barbagallo: ancora fissata a 278.563 s al giro 7, mai piu' aggiornata.
+        ///   Finestra che ne derivava: [273.0 , 288.3]. I suoi giri veri: ~69 s. Tutti rifiutati.
+        /// </code>
+        ///
+        /// **E c'era un secondo blocco, aritmetico.** Il ramo "Reset (Improvement)" pretendeva un
+        /// miglioramento superiore a 1.5 s, ma la finestra ne concedeva al massimo il 2% dell'ancora.
+        /// Per qualunque ancora sotto i 75 s le due condizioni sono incompatibili — su una GTP a
+        /// 69 s la finestra concede 1.38 s e il ramo ne chiede 1.5. **Non poteva scattare mai**, ed
+        /// e' coerente con gli zero casi contati in gara.
+        ///
+        /// **Il criterio adottato.** Un giro piu' veloce non viene piu' giudicato dall'ancora che
+        /// deve correggere. Ma non lo si prende nemmeno alla cieca: col criterio del massimo
+        /// (punto 4) un passo falsamente **veloce** e' la direzione pericolosa, perche' porta quella
+        /// vettura al comando. Quindi:
+        ///
+        /// <list type="bullet">
+        /// <item>miglioramento <b>ordinario</b> (entro il 2%): si prende subito, come prima;</item>
+        /// <item>miglioramento <b>grande</b>: si tiene in attesa e serve un secondo giro che lo
+        /// confermi. Due giri consecutivi d'accordo non sono un errore di misura.</item>
+        /// </list>
+        ///
+        /// Il giro in attesa **non entra nella storia**: se entrasse, un errore di misura
+        /// inquinerebbe la media mobile anche senza diventare ancora.
+        ///
+        /// La plausibilita' assoluta resta a monte, in <see cref="IsCredibleOpponentLap"/>: questa
+        /// funzione presuppone un giro gia' credibile di suo.
+        /// </summary>
+        /// <param name="lapSec">Il giro appena completato, gia' normalizzato.</param>
+        /// <param name="anchor">L'ancora corrente. Zero = non ancora stabilita.</param>
+        /// <param name="pending">Il miglioramento grande in attesa di conferma. Zero = nessuno.</param>
+        /// <returns>Vero se il giro va trattato come valido e puo' entrare nella storia.</returns>
+        public static bool UpdatePaceAnchor(double lapSec, ref double anchor, ref double pending)
+        {
+            if (lapSec <= 0.0) return false;
+
+            // Prima misura: diventa l'ancora. Non c'e' niente con cui confrontarla.
+            if (anchor <= 0.0)
+            {
+                anchor = lapSec;
+                pending = 0.0;
+                return true;
+            }
+
+            // Non e' un miglioramento: il lato lento lo giudica il chiamante, con la sua finestra.
+            if (lapSec >= anchor)
+            {
+                pending = 0.0;
+                return true;
+            }
+
+            double improvement = anchor - lapSec;
+
+            // Miglioramento ordinario: si prende subito. E' il comportamento di sempre.
+            if (improvement <= anchor * OrdinaryImprovementFrac)
+            {
+                anchor = lapSec;
+                pending = 0.0;
+                return true;
+            }
+
+            // Miglioramento grande gia' visto una volta, e il secondo giro lo conferma.
+            if (pending > 0.0 && Math.Abs(lapSec - pending) <= pending * ConfirmationFrac)
+            {
+                anchor = lapSec;
+                pending = 0.0;
+                return true;
+            }
+
+            // Prima volta, o due miglioramenti grandi che non si somigliano: si aspetta.
+            pending = lapSec;
+            return false;
+        }
+
         public static bool IsCredibleOpponentLap(double lapSec, double trackLengthMeters)
         {
             if (lapSec <= MinCredibleOpponentLapSec) return false;
@@ -1481,7 +1591,12 @@ namespace SimRIG
 
                                   double deviation = normalizedOppLap - tData.NormalizedRaceStartPace;
 
-                                  if (deviation > (tData.NormalizedRaceStartPace * 0.035) || deviation < -(tData.NormalizedRaceStartPace * 0.020))
+                                  // Y-49: solo il lato **lento** viene giudicato dall'ancora. Un giro
+                                  // piu' veloce non puo' essere giudicato dal numero che deve
+                                  // correggere: se lo fosse, un'ancora sbagliata renderebbe invalidi
+                                  // proprio i dati che la aggiusterebbero. Il lato veloce lo decide
+                                  // UpdatePaceAnchor, che chiede una conferma ai miglioramenti grandi.
+                                  if (deviation > (tData.NormalizedRaceStartPace * 0.035))
 
                                   {
 
@@ -1503,53 +1618,58 @@ namespace SimRIG
 
                                    {
 
-                                       if (tData.NormalizedTimes.LapBaseline == 0.0)
+                                       // Y-49: l'ancora del passo. Il lato veloce si decide qui,
+                                       // non nella finestra di validita': un giro piu' veloce non
+                                       // puo' essere giudicato dal numero che deve correggere.
+                                       double anchorValue = tData.NormalizedTimes.LapBaseline;
+                                       double anchorPending = tData.PendingPaceAnchor;
+                                       double anchorBefore = anchorValue;
+                                       bool anchorWasEmpty = anchorValue <= 0.0;
 
+                                       bool anchorAccepts = UpdatePaceAnchor(normalizedOppLap,
+                                                                             ref anchorValue,
+                                                                             ref anchorPending);
+
+                                       tData.NormalizedTimes.LapBaseline = anchorValue;
+                                       tData.PendingPaceAnchor = anchorPending;
+
+                                       if (!anchorAccepts)
                                        {
-
-                                           tData.NormalizedTimes.LapBaseline = normalizedOppLap;
-
+                                           // Miglioramento grande non ancora confermato: il giro
+                                           // resta fuori dalla storia, altrimenti un errore di
+                                           // misura inquinerebbe la media senza diventare ancora.
+                                           isValidOppLap = false;
+                                           log.Log(LogModule.OPPONENTS, LogType.EVENT, "Baseline Improvement Pending",
+                                                   $"{tData.Name}: {normalizedOppLap:F3} contro ancora {anchorBefore:F3} | serve un secondo giro che confermi");
+                                       }
+                                       else if (anchorWasEmpty)
+                                       {
                                            // Y-39: da dove arriva il numero. Una baseline sbagliata
                                            // e' diagnosticabile solo sapendo se il tempo l'ha dato
                                            // il gioco o se abbiamo ripiegato sul cronometro interno:
                                            // sono due difetti diversi con due rimedi diversi, e
                                            // dal solo valore finale non si distinguono.
                                            log.Log(LogModule.OPPONENTS, LogType.EVENT, "Baseline Established",
-                                                   $"{tData.Name}: {tData.NormalizedTimes.LapBaseline:F3} | game={gameLapTime:F3} | self={selfTimedLap:F3} | lap={rawCurrentLap}");
-
+                                                   $"{tData.Name}: {anchorValue:F3} | game={gameLapTime:F3} | self={selfTimedLap:F3} | lap={rawCurrentLap}");
                                        }
-
-                                       else if (normalizedOppLap < tData.NormalizedTimes.LapBaseline)
-
+                                       else if (anchorValue < anchorBefore)
                                        {
-
-                                           if (tData.NormalizedTimes.LapBaseline - normalizedOppLap > 1.5)
-
+                                           if (anchorBefore - anchorValue > anchorBefore * OrdinaryImprovementFrac)
                                            {
-
-                                               tData.NormalizedTimes.LapBaseline = normalizedOppLap;
-
+                                               // Salto grande e confermato: i giri raccolti sotto
+                                               // l'ancora vecchia erano giudicati da un numero
+                                               // sbagliato e non valgono piu'.
                                                tData.NormalizedTimes.LapHistory.Clear();
-
                                                tData.RawTimes.LapHistory.Clear();
-
-                                               log.Log(LogModule.OPPONENTS, LogType.EVENT, "Baseline Reset (Improvement)", $"{tData.Name}: {tData.NormalizedTimes.LapBaseline:F3}");
-
+                                               log.Log(LogModule.OPPONENTS, LogType.EVENT, "Baseline Reset (Improvement)",
+                                                       $"{tData.Name}: {anchorBefore:F3} -> {anchorValue:F3} | storia azzerata");
                                            }
-
                                            else
-
                                            {
-
-                                               tData.NormalizedTimes.LapBaseline = normalizedOppLap;
-
-                                               log.Log(LogModule.OPPONENTS, LogType.EVENT, "Baseline Updated (Better)", $"{tData.Name}: {tData.NormalizedTimes.LapBaseline:F3}");
-
+                                               log.Log(LogModule.OPPONENTS, LogType.EVENT, "Baseline Updated (Better)",
+                                                       $"{tData.Name}: {anchorValue:F3}");
                                            }
-
                                        }
-
-
 
                                        if (tData.RawTimes.LapBaseline == 0.0)
 

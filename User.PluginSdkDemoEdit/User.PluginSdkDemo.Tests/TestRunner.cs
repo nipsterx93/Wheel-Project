@@ -12,6 +12,7 @@ namespace User.PluginSdkDemo.Tests
 
             try
             {
+                PaceAnchorUnitTests.RunAllTests();
                 PitLossUnitTests.RunAllTests();
                 PitLossOnTrackEquivalentUnitTests.RunAllTests();
                 MergeGapUnitTests.RunAllTests();

@@ -20,7 +20,7 @@ Esistono **due** grandezze, entrambe calcolate a ogni giro:
 
 | grandezza | com'è fatta | valore a Road Atlanta |
 |---|---|---|
-| `NormalizedRaceStartPace` | il **primo giro valido**, normalizzato | **76.524 s** |
+| `NormalizedRaceStartPace` | il **miglior giro** entro la finestra di gomme nuove (40 km), normalizzato | **76.524 s** |
 | `EstimatedCurrentPace` | baseline + degrado gomme + peso carburante + temperatura | **77.24 s** |
 
 `EstimatedCurrentPace` (`RaceAnalyzer.cs:1468`) è il passo *vero di adesso*: parte dalla baseline e ci
@@ -54,33 +54,47 @@ Per ogni vettura, a ogni giro completato:
 3. **Validità relativa** (`isValidOppLap`), tre condizioni:
    - scartato se è un out-lap (`lapsSincePit <= 1`);
    - scartato se la vettura è dentro la geofence dei box;
-   - scartato se devia dalla **baseline** più di **+3.5%** o meno di **−2.0%**.
-4. **Se valido e con gomme sotto i 40 km**: entra nella storia dei giri. Se la baseline non esiste
-   ancora, **questo giro diventa la baseline**.
+   - scartato se è più lento della baseline oltre il **+3.5%**.
+     *(Fino a Y-49 c'era anche un limite a −2.0% sul lato veloce: vedi 1.3.)*
+4. **Se valido e con gomme sotto i 40 km**: l'àncora si aggiorna se il giro è migliore, e il giro
+   entra nella storia. Un miglioramento **grande** resta in attesa di conferma e il giro non entra.
 5. **`LapMovingAverage`** = media degli **ultimi 5** giri della storia.
 
 Ogni tempo esiste in **due contenitori paralleli**: `RawTimes` (grezzo) e `NormalizedTimes`
 (scontato di peso carburante e temperatura). La proiezione usa il **normalizzato**.
 
-### 1.3 Il difetto strutturale della catena, e come il 278 è entrato
+### 1.3 Il difetto strutturale (Y-49): l'àncora sa migliorare, ma non ci arriva mai
 
-Il punto 4 dice: *se la baseline non esiste ancora, questo giro diventa la baseline*. Ma il controllo
-di deviazione al punto 3 si applica **solo se la baseline esiste già**:
+⚠️ **Correzione a una prima stesura di questo documento.** Avevo scritto che la baseline è "il primo
+giro valido". **Non è vero**: il codice la abbassa a ogni giro più veloce
+(`OpponentTracker.cs:1506-1520`). L'àncora sul giro migliore, che stavo per proporre come lavoro
+nuovo, **esiste già**.
+
+Il difetto è un altro, ed è l'**ordine dei controlli**. La finestra di validità gira *prima*
+dell'aggiornamento, e scarta i giri che deviano dalla baseline oltre il **−2.0%**. Quindi un giro
+molto più veloce viene giudicato dal numero che dovrebbe correggere, e rifiutato.
+
+Misurato su `20260901_211532`, 803 tick di gara:
 
 ```
-if (NormalizedRaceStartPace > 0 && isValidOppLap) { ...controllo -2% / +3.5%... }
+Baseline Established           48 volte
+Baseline Updated (Better)      55 volte
+Baseline Reset (Improvement)    0 volte
+
+Alessandro Barbagallo   ancora fissata a 278.563 s al giro 7, mai piu' aggiornata
+finestra che ne deriva  [273.0 , 288.3]
+i suoi giri veri        ~69 s      → 204 s sotto il limite, tutti rifiutati
 ```
 
-**Quindi il primo giro valido di ogni vettura entra senza nessun controllo di plausibilità** oltre
-ai 20-600 s. E da lì in poi la finestra di validità è centrata **su quel giro**.
+**E c'è un secondo blocco, aritmetico.** Il ramo `Reset (Improvement)` pretendeva un miglioramento
+superiore a **1.5 s**, ma la finestra ne concedeva al massimo il **2%** della baseline. Sotto i 75 s
+di giro le due condizioni sono incompatibili — su una GTP a 69 s la finestra concede 1.38 s e il ramo
+ne chiede 1.5. **Non poteva scattare mai**, ed è coerente con gli zero casi contati in gara.
 
-È così che `Alessandro Barbagallo` è arrivato a un passo di **278.563 s**: il suo primo giro
-accettato era un giro sporco, è diventato la baseline, e la finestra centrata su 278 ha poi
-rifiutato tutti i suoi giri veri. Il difetto si auto-difende — una baseline sbagliata rende
-invalidi proprio i dati che la correggerebbero.
-
-**È esattamente ciò che il filtro ancorato al giro più veloce risolve**: un'àncora che può solo
-migliorare non può insediarsi.
+✅ **Corretto** (Y-49): il lato veloce non è più giudicato dalla baseline. Un miglioramento ordinario
+si prende subito come prima; uno grande resta in attesa finché un secondo giro non lo conferma — e
+finché è in attesa il giro non entra nella media, così un errore di misura non inquina il passo
+nemmeno senza diventare àncora.
 
 ### 1.4 Il passo del leader: due strade, e il filtro non è più su quella principale
 
@@ -184,7 +198,7 @@ Lo schema che ha motivato questo inventario, elencato:
 | 3 | perdita ai box con equivalente **misurato** | la proiezione usa quella geometrica (scritta ieri) |
 | 4 | `ClassBestExtendedPitZoneTime` | solo la classe del Player |
 | 5 | `LeaderPaceFilter` (alpha 0.10) | non più sul percorso che decide la bandiera |
-| 6 | àncora sul giro **più veloce** | la finestra è centrata sul **primo** giro valido |
+| 6 | ~~àncora sul giro **più veloce**~~ | ✅ **esisteva già** — il difetto era la finestra che ne bloccava l'aggiornamento (Y-49, corretto) |
 | 7 | `PitLaneZoneRacingTime` | zona corta sottratta da zona estesa |
 
 Più i quattro già chiusi in questa settimana: Y-31 (posizione arrotondata prima del filtro), Y-46
@@ -196,8 +210,9 @@ strati, dove ogni strato ha risolto il problema che aveva davanti scrivendosi il
 
 ### Cosa ne deriva, per l'ordine di lavoro
 
-1. **L'àncora sul giro più veloce (#6)** resta la correzione con più valore: è la causa a monte del
-   passo a 278 s, e nessuna delle altre la tocca.
+1. ~~**L'àncora sul giro più veloce (#6)**~~ — **fatta** (Y-49). Non era da scrivere: era da
+   sbloccare. La lezione è che anche questo inventario ha commesso l'errore che denuncia, dando per
+   assente un calcolo che c'era.
 2. **#1 e #2 sono collegamenti**, non algoritmi: poche righe, effetto misurabile, rischio basso.
 3. **#3, #4 e #7 vanno fatti insieme**, perché sono la stessa cascata.
 4. **#5 va deciso, non corretto**: serve stabilire se il passo dei candidati del punto 4 debba
