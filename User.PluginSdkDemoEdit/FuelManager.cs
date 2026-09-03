@@ -1,4 +1,4 @@
-﻿// -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
 
 // FILE: FuelManager.cs
 
@@ -90,7 +90,43 @@ namespace SimRIG
 
     {
 
-        private const int HISTORY_SIZE = 4;
+        public const int MAX_CLEAN_HISTORY_LAPS = 10;
+        private const int HISTORY_SIZE = MAX_CLEAN_HISTORY_LAPS;
+
+        /// <summary>
+        /// Convalida un valore di consumo carburante per giro utilizzando l'algoritmo
+        /// Interquartile Range (IQR) e la tolleranza del 15% sulla media di irdashies (fuelCalculations.ts).
+        /// </summary>
+        public static bool ValidateFuelConsumptionIQR(double fuelUsed, IReadOnlyList<double> cleanHistory)
+        {
+            if (fuelUsed <= 0.0) return false;
+
+            // Servono almeno 3 giri validi per la validazione statistica
+            if (cleanHistory == null || cleanHistory.Count < 3) return true;
+
+            var sorted = cleanHistory.OrderBy(x => x).ToList();
+            int count = sorted.Count;
+
+            // Indicizzazione intera esatta di irdashies: Math.Floor(length * 0.25) e Math.Floor(length * 0.75)
+            int q1Index = (int)Math.Floor(count * 0.25);
+            int q3Index = (int)Math.Floor(count * 0.75);
+
+            double q1 = sorted[q1Index];
+            double q3 = sorted[q3Index];
+            double iqr = q3 - q1;
+
+            const double factor = 2.0;
+            double lowerBound = q1 - (factor * iqr);
+            double upperBound = q3 + (factor * iqr);
+
+            double mean = sorted.Average();
+            double tolerance = mean * 0.15;
+
+            bool isWithinIQR = fuelUsed >= lowerBound && fuelUsed <= upperBound;
+            bool isWithinTolerance = Math.Abs(fuelUsed - mean) <= tolerance;
+
+            return isWithinIQR || isWithinTolerance;
+        }
 
         /// <summary>
         /// Massimo risparmio di carburante ottenibile guidando, come frazione del consumo.
@@ -144,91 +180,92 @@ namespace SimRIG
         }
 
         private List<double> _fuelHistory = new List<double>();
+        public IReadOnlyList<double> FuelHistory => _fuelHistory;
 
         private int _lastEvaluatedLap = -1;
-
         private double _fuelAtLapStart = 0.0;
 
+        private bool _wasInPitLaneDuringLap = false;
+        private bool _wasPreviousLapPit = false;
+        private bool _isLapFullyGreen = true;
 
+        public bool WasInPitLaneDuringLap => _wasInPitLaneDuringLap;
+        public bool WasPreviousLapPit => _wasPreviousLapPit;
+        public bool IsLapFullyGreen => _isLapFullyGreen;
 
         public FuelCalculations Calculations { get; private set; } = new FuelCalculations();
 
-
-
         public FuelManager() { }
 
-
-
         // Aggiunto LogManager
-
         public void Update(SessionState state, double raceLapsRemaining, double fuelCapacityInTireTime, LogManager log)
-
         {
-
             if (!state.IsGameRunning) return;
 
-
-
             if (state.CurrentLap != _lastEvaluatedLap)
-
             {
-
                 if (_lastEvaluatedLap > 0 && state.CurrentLap > 1)
-
                 {
-
                     double fuelUsed = _fuelAtLapStart - state.CurrentFuelLevel;
+                    bool isOutLap = _wasPreviousLapPit;
+                    bool isInLap = _wasInPitLaneDuringLap;
+                    bool isGreen = _isLapFullyGreen;
 
+                    bool isSanityOk = fuelUsed > 0.1 && fuelUsed < state.MaxFuelCapacity && state.Flag_Black == 0;
 
-
-                    if (!state.IsInPitLane && state.Flag_Black == 0 && fuelUsed > 0.1 && fuelUsed < state.MaxFuelCapacity)
-
+                    if (isSanityOk && !isInLap && !isOutLap && isGreen)
                     {
-
                         Calculations.LastLapFuelUsed = fuelUsed;
 
-                        _fuelHistory.Add(fuelUsed);
-
-                        if (_fuelHistory.Count > HISTORY_SIZE) _fuelHistory.RemoveAt(0);
-
-
-
-                        Calculations.AverageFuelPerLap = _fuelHistory.Average();
-
-
-
-                        if (!Calculations.TargetManuallySet && Calculations.AverageFuelPerLap > 0)
-
+                        if (ValidateFuelConsumptionIQR(fuelUsed, _fuelHistory))
                         {
+                            _fuelHistory.Add(fuelUsed);
+                            if (_fuelHistory.Count > HISTORY_SIZE) _fuelHistory.RemoveAt(0);
 
-                            Calculations.FuelPerLapTarget = Calculations.AverageFuelPerLap;
+                            Calculations.AverageFuelPerLap = _fuelHistory.Average();
 
+                            if (!Calculations.TargetManuallySet && Calculations.AverageFuelPerLap > 0)
+                            {
+                                Calculations.FuelPerLapTarget = Calculations.AverageFuelPerLap;
+                            }
+
+                            log?.Log(LogModule.FUEL, LogType.EVENT, "Lap Fuel Consumption (Accepted)",
+                                $"Lap {_lastEvaluatedLap} | Used: {fuelUsed:F2}L | Avg: {Calculations.AverageFuelPerLap:F2}L | CleanHistoryCount: {_fuelHistory.Count}");
                         }
-
-
-
-                        // LOG EVENTO: Consumo al termine del giro
-
-                        log.Log(LogModule.FUEL, LogType.EVENT, "Lap Fuel Consumption", $"Lap {_lastEvaluatedLap} | Used: {fuelUsed:F2}L | Avg: {Calculations.AverageFuelPerLap:F2}L");
-
+                        else
+                        {
+                            log?.Log(LogModule.FUEL, LogType.EVENT, "Lap Fuel Outlier Rejected (IQR)",
+                                $"Lap {_lastEvaluatedLap} | Used: {fuelUsed:F2}L | CleanHistoryAvg: {(_fuelHistory.Count > 0 ? _fuelHistory.Average() : 0):F2}L");
+                        }
                     }
-
                     else
-
                     {
+                        string reason = !isSanityOk ? "Sanity Failed" :
+                                        isInLap ? "In-Lap / Pit Active" :
+                                        isOutLap ? "Out-Lap" : "!Green Flag";
 
-                        log.Log(LogModule.FUEL, LogType.EVENT, "Lap Fuel Ignored", $"Lap {_lastEvaluatedLap} | Used: {fuelUsed:F2}L | Pit/Flag active");
-
+                        log?.Log(LogModule.FUEL, LogType.EVENT, "Lap Fuel Ignored",
+                            $"Lap {_lastEvaluatedLap} | Used: {fuelUsed:F2}L | Reason: {reason}");
                     }
 
+                    // Reset esplicito e pulito per il nuovo giro (come concordato con Claude)
+                    _wasPreviousLapPit = _wasInPitLaneDuringLap;
+                    _wasInPitLaneDuringLap = false;
+                    _isLapFullyGreen = true;
                 }
 
-
-
                 _fuelAtLapStart = state.CurrentFuelLevel;
-
                 _lastEvaluatedLap = state.CurrentLap;
+            }
 
+            // Accumulatori di stato ad ogni tick del frame (dopo eventuale cambio giro)
+            if (state.IsInPitLane)
+            {
+                _wasInPitLaneDuringLap = true;
+            }
+            if (state.Flag_Yellow > 0)
+            {
+                _isLapFullyGreen = false;
             }
 
 
@@ -404,17 +441,14 @@ namespace SimRIG
 
 
         public void ResetSession()
-
         {
-
             _fuelHistory.Clear();
-
             _lastEvaluatedLap = -1;
-
             _fuelAtLapStart = 0.0;
-
+            _wasInPitLaneDuringLap = false;
+            _wasPreviousLapPit = false;
+            _isLapFullyGreen = true;
             Calculations = new FuelCalculations();
-
         }
 
     }

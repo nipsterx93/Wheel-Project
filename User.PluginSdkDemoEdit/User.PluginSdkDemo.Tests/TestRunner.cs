@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace User.PluginSdkDemo.Tests
 {
@@ -24,6 +24,7 @@ namespace User.PluginSdkDemo.Tests
                 OvercutTrafficUnitTests.RunAllTests();
                 PitLaneDetectionUnitTests.RunAllTests();
                 FuelSavingUnitTests.RunAllTests();
+                FuelOutlierFilterUnitTests.RunAllTests();
                 TrackPositionValidatorUnitTests.RunAllTests();
                 CalibrationConfidenceUnitTests.RunAllTests();
                 GeofenceCalibrationGateUnitTests.RunAllTests();
