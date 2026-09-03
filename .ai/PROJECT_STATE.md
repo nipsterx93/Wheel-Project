@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-09-03T20:45:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-09-03T21:15:00Z
+task:       Y-50 — il filtro IQR si chiude sui rifiuti e non si riapre piu'
+scope:      FuelManager.cs, FuelOutlierFilterUnitTests.cs. Non toccare il resto.
+expires:    2026-09-03T23:15:00Z
 ```
 
 **Regole del lock**
