@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      antigravity   # NONE | antigravity | claude | codex | human
-since:      2026-09-03T20:36:00Z
-task:       Passo 1: Filtro IQR Carburante, latch giro verde/pit lane e buffer a 10 giri (allineamento irdashies)
-scope:      User.PluginSdkDemoEdit/FuelManager.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/*, .ai/*
-expires:    2026-09-03T22:36:00Z
+owner:      NONE          # NONE | antigravity | claude | codex | human
+since:      2026-09-03T20:45:00Z
+task:       —
+scope:      —
+expires:    —
 ```
 
 **Regole del lock**

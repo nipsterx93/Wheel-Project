@@ -46,7 +46,7 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 **Task:** Passo 1: Filtro IQR Carburante, latch giro verde/pit lane e buffer a 10 giri (allineamento irdashies).
 **Piano:** `implementation_plan.md` e discussione in chat.
-**Commit:** questo
+**Commit:** `c0be69d`
 
 ### Fatto
 - `User.PluginSdkDemoEdit/FuelManager.cs:90-130`:
