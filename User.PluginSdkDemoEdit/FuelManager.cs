@@ -1,4 +1,4 @@
-// -------------------------------------------------------------------------
+﻿// -------------------------------------------------------------------------
 
 // FILE: FuelManager.cs
 
@@ -90,8 +90,13 @@ namespace SimRIG
 
     {
 
+        /// <summary>
+        /// Ampiezza della finestra **cronologica** su cui si misura la statistica. Ci entrano
+        /// tutti i giri che hanno passato i controlli di contesto, accettati **e rifiutati**:
+        /// e' l'accumularsi dei rifiuti che espelle i vecchi accettati e fa riaprire il filtro
+        /// quando il consumo reale e' cambiato davvero (Y-50).
+        /// </summary>
         public const int MAX_CLEAN_HISTORY_LAPS = 10;
-        private const int HISTORY_SIZE = MAX_CLEAN_HISTORY_LAPS;
 
         /// <summary>
         /// Convalida un valore di consumo carburante per giro utilizzando l'algoritmo
@@ -179,8 +184,36 @@ namespace SimRIG
             return plan;
         }
 
-        private List<double> _fuelHistory = new List<double>();
-        public IReadOnlyList<double> FuelHistory => _fuelHistory;
+        /// <summary>Un giro gia' passato dai controlli di contesto, con l'esito del filtro.</summary>
+        private struct FuelLapSample
+        {
+            public double FuelUsed;
+            public bool Accepted;
+        }
+
+        private readonly List<FuelLapSample> _recentLaps = new List<FuelLapSample>();
+
+        /// <summary>Consumi dei soli giri accettati presenti nella finestra.</summary>
+        public IReadOnlyList<double> FuelHistory => AcceptedSamples();
+
+        /// <summary>Numero di giri nella finestra, accettati e rifiutati. Diagnostico.</summary>
+        public int RecentLapCount => _recentLaps.Count;
+
+        private List<double> AcceptedSamples()
+        {
+            var accepted = new List<double>(_recentLaps.Count);
+            for (int i = 0; i < _recentLaps.Count; i++)
+            {
+                if (_recentLaps[i].Accepted) accepted.Add(_recentLaps[i].FuelUsed);
+            }
+            return accepted;
+        }
+
+        private void RecordLap(double fuelUsed, bool accepted)
+        {
+            _recentLaps.Add(new FuelLapSample { FuelUsed = fuelUsed, Accepted = accepted });
+            if (_recentLaps.Count > MAX_CLEAN_HISTORY_LAPS) _recentLaps.RemoveAt(0);
+        }
 
         private int _lastEvaluatedLap = -1;
         private double _fuelAtLapStart = 0.0;
@@ -213,16 +246,30 @@ namespace SimRIG
 
                     bool isSanityOk = fuelUsed > 0.1 && fuelUsed < state.MaxFuelCapacity && state.Flag_Black == 0;
 
-                    if (isSanityOk && !isInLap && !isOutLap && isGreen)
+                    // `LastLapFuelUsed` e' una **misura**, non una statistica: va aggiornata anche
+                    // quando il giro non e' rappresentativo (gialla, out-lap). L'unico caso in cui
+                    // il numero non significa nulla e' l'in-lap: con un rifornimento parziale
+                    // `fuelAtLapStart - fuelLevel` sottostima il consumo vero, e da li' finirebbe
+                    // nell'allarme vocale FUEL_TARGET_ALERT (DataPluginDemo.cs:1152).
+                    if (isSanityOk && !isInLap)
                     {
                         Calculations.LastLapFuelUsed = fuelUsed;
+                    }
 
-                        if (ValidateFuelConsumptionIQR(fuelUsed, _fuelHistory))
+                    if (isSanityOk && !isInLap && !isOutLap && isGreen)
+                    {
+                        // La baseline sono i soli accettati **dentro la finestra**, non tutti gli
+                        // accettati di sempre: quando il consumo reale cambia, i rifiuti riempiono
+                        // la finestra ed espellono i vecchi accettati, finche' sotto i tre campioni
+                        // ValidateFuelConsumptionIQR riapre da sola (Y-50).
+                        bool accepted = ValidateFuelConsumptionIQR(fuelUsed, AcceptedSamples());
+                        RecordLap(fuelUsed, accepted);
+
+                        var acceptedNow = AcceptedSamples();
+
+                        if (accepted && acceptedNow.Count > 0)
                         {
-                            _fuelHistory.Add(fuelUsed);
-                            if (_fuelHistory.Count > HISTORY_SIZE) _fuelHistory.RemoveAt(0);
-
-                            Calculations.AverageFuelPerLap = _fuelHistory.Average();
+                            Calculations.AverageFuelPerLap = acceptedNow.Average();
 
                             if (!Calculations.TargetManuallySet && Calculations.AverageFuelPerLap > 0)
                             {
@@ -230,12 +277,12 @@ namespace SimRIG
                             }
 
                             log?.Log(LogModule.FUEL, LogType.EVENT, "Lap Fuel Consumption (Accepted)",
-                                $"Lap {_lastEvaluatedLap} | Used: {fuelUsed:F2}L | Avg: {Calculations.AverageFuelPerLap:F2}L | CleanHistoryCount: {_fuelHistory.Count}");
+                                $"Lap {_lastEvaluatedLap} | Used: {fuelUsed:F2}L | Avg: {Calculations.AverageFuelPerLap:F2}L | Accepted: {acceptedNow.Count}/{_recentLaps.Count}");
                         }
                         else
                         {
                             log?.Log(LogModule.FUEL, LogType.EVENT, "Lap Fuel Outlier Rejected (IQR)",
-                                $"Lap {_lastEvaluatedLap} | Used: {fuelUsed:F2}L | CleanHistoryAvg: {(_fuelHistory.Count > 0 ? _fuelHistory.Average() : 0):F2}L");
+                                $"Lap {_lastEvaluatedLap} | Used: {fuelUsed:F2}L | Avg: {(acceptedNow.Count > 0 ? acceptedNow.Average() : 0):F2}L | Accepted: {acceptedNow.Count}/{_recentLaps.Count}");
                         }
                     }
                     else
@@ -442,7 +489,7 @@ namespace SimRIG
 
         public void ResetSession()
         {
-            _fuelHistory.Clear();
+            _recentLaps.Clear();
             _lastEvaluatedLap = -1;
             _fuelAtLapStart = 0.0;
             _wasInPitLaneDuringLap = false;
