@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-09-03T21:50:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-09-04T09:00:00Z
+task:       Y-13 (ripiegamento del gap) + risoluzione timestamp microsettori 100 -> 400
+scope:      TargetStrategyManager.cs, OpponentTracker.cs, test. Non toccare gli array di velocita' (ZoneDrop).
+expires:    2026-09-04T12:00:00Z
 ```
 
 **Regole del lock**
