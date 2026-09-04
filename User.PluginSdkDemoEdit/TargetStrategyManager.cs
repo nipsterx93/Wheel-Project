@@ -314,6 +314,25 @@ namespace SimRIG
         }
 
         /// <summary>
+        /// Ripiega una differenza di posizione assoluta (giri interi + frazione) dentro
+        /// <c>[-0.5, +0.5)</c> giri. E' la stessa piega di <see cref="PhysicalGapSeconds"/>,
+        /// con periodo **un giro** invece di un tempo sul giro.
+        ///
+        /// Serve perche' al rollover dei contatori la differenza salta di **un giro esatto** per
+        /// un tick e torna indietro: nel replay <c>20260819_221922</c> un gapDelta di
+        /// <c>93.033 s</c> contro un p99 di <c>0.540</c> — a Misano, esattamente un giro (Y-13).
+        /// Il gap non e' una grandezza che possa saltare cosi': e' aritmetica, non ritmo.
+        ///
+        /// **Dove non va usata:** nella scelta del bersaglio, che minimizza <c>|posDiff|</c> in
+        /// spazio assoluto. Li' ripiegare farebbe scambiare un doppiato a un giro esatto per la
+        /// vettura piu' vicina.
+        /// </summary>
+        public static double WrapLapDifference(double posDiffLaps)
+        {
+            return PhysicalGapSeconds(posDiffLaps, 1.0);
+        }
+
+        /// <summary>
         /// Se una vettura a questo distacco fisico sta bloccando l'overcut (Y-2).
         /// Solo chi è davanti conta: chi mi segue non mi rallenta.
         /// </summary>
@@ -469,7 +488,10 @@ namespace SimRIG
 
 
 
-                double posDiff = (myLap + myPos) - (targetLatchedLap + oppPos);
+                // Y-13: ripiegato entro mezzo giro. Legittimo qui perche' il bersaglio e' scelto
+                // come minimo |posDiff| **assoluto** (piu' sotto), quindi in esercizio normale sta
+                // gia' entro mezzo giro: la piega cambia il risultato solo sull'artefatto.
+                double posDiff = WrapLapDifference((myLap + myPos) - (targetLatchedLap + oppPos));
                 double currentSessionClock = state.SessionTimeLeftSec;
                 double currentFluidGap = 0.0;
                 bool gapCalculated = false;
@@ -480,30 +502,30 @@ namespace SimRIG
                     
                     if (posDiff < 0) // Target davanti (Player dietro)
                     {
-                        double myPos100 = myPos * 100.0;
-                        int s1 = (int)Math.Floor(myPos100);
-                        int s2 = (s1 + 1) % 100;
+                        double myPosScaled = myPos * OpponentTracker.TimestampBucketCount;
+                        int s1 = OpponentTracker.TimestampBucketOf(myPos);
+                        int s2 = (s1 + 1) % OpponentTracker.TimestampBucketCount;
                         double t1 = oppData.MicrosectorTimestamps[s1];
                         double t2 = oppData.MicrosectorTimestamps[s2];
                         
                         if (t1 > 0.0 && t2 > 0.0 && Math.Abs(t2 - t1) < 10.0)
                         {
-                            double t_opp_at_myPos = t1 + (myPos100 - s1) * (t2 - t1);
+                            double t_opp_at_myPos = t1 + (myPosScaled - s1) * (t2 - t1);
                             currentFluidGap = Math.Abs(currentSessionClock - t_opp_at_myPos);
                             gapCalculated = true;
                         }
                     }
                     else // Target dietro (Player davanti)
                     {
-                        double oppPos100 = oppPos * 100.0;
-                        int s1 = (int)Math.Floor(oppPos100);
-                        int s2 = (s1 + 1) % 100;
+                        double oppPosScaled = oppPos * OpponentTracker.TimestampBucketCount;
+                        int s1 = OpponentTracker.TimestampBucketOf(oppPos);
+                        int s2 = (s1 + 1) % OpponentTracker.TimestampBucketCount;
                         double t1 = tracker.PlayerMicrosectorTimestamps[s1];
                         double t2 = tracker.PlayerMicrosectorTimestamps[s2];
                         
                         if (t1 > 0.0 && t2 > 0.0 && Math.Abs(t2 - t1) < 10.0)
                         {
-                            double t_player_at_oppPos = t1 + (oppPos100 - s1) * (t2 - t1);
+                            double t_player_at_oppPos = t1 + (oppPosScaled - s1) * (t2 - t1);
                             currentFluidGap = Math.Abs(currentSessionClock - t_player_at_oppPos);
                             gapCalculated = true;
                         }
@@ -1062,35 +1084,35 @@ namespace SimRIG
                         {
                             double logOppPos = logTargetOpp.TrackPositionPercent ?? 0.0;
                             int logLatchedLap = logOppData.HighestLapSeen;
-                            double logPosDiff = (myLap + myPos) - (logLatchedLap + logOppPos);
+                            double logPosDiff = WrapLapDifference((myLap + myPos) - (logLatchedLap + logOppPos));
                             double logSessionClock = state.SessionTimeLeftSec;
                             double logTargetFluidGap = 0.0;
                             bool gapFound = false;
 
                             if (logPosDiff < 0)
                             {
-                                double myPos100 = myPos * 100.0;
-                                int s1 = (int)Math.Floor(myPos100);
-                                int s2 = (s1 + 1) % 100;
+                                double myPosScaled = myPos * OpponentTracker.TimestampBucketCount;
+                                int s1 = OpponentTracker.TimestampBucketOf(myPos);
+                                int s2 = (s1 + 1) % OpponentTracker.TimestampBucketCount;
                                 double t1 = logOppData.MicrosectorTimestamps[s1];
                                 double t2 = logOppData.MicrosectorTimestamps[s2];
                                 if (t1 > 0.0 && t2 > 0.0 && Math.Abs(t2 - t1) < 10.0)
                                 {
-                                    double t_opp_at_myPos = t1 + (myPos100 - s1) * (t2 - t1);
+                                    double t_opp_at_myPos = t1 + (myPosScaled - s1) * (t2 - t1);
                                     logTargetFluidGap = Math.Abs(logSessionClock - t_opp_at_myPos);
                                     gapFound = true;
                                 }
                             }
                             else
                             {
-                                double oppPos100 = logOppPos * 100.0;
-                                int s1 = (int)Math.Floor(oppPos100);
-                                int s2 = (s1 + 1) % 100;
+                                double oppPosScaled = logOppPos * OpponentTracker.TimestampBucketCount;
+                                int s1 = OpponentTracker.TimestampBucketOf(logOppPos);
+                                int s2 = (s1 + 1) % OpponentTracker.TimestampBucketCount;
                                 double t1 = tracker.PlayerMicrosectorTimestamps[s1];
                                 double t2 = tracker.PlayerMicrosectorTimestamps[s2];
                                 if (t1 > 0.0 && t2 > 0.0 && Math.Abs(t2 - t1) < 10.0)
                                 {
-                                    double t_player_at_oppPos = t1 + (oppPos100 - s1) * (t2 - t1);
+                                    double t_player_at_oppPos = t1 + (oppPosScaled - s1) * (t2 - t1);
                                     logTargetFluidGap = Math.Abs(logSessionClock - t_player_at_oppPos);
                                     gapFound = true;
                                 }

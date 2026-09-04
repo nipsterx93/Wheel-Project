@@ -58,6 +58,14 @@ namespace SimRIG
 
         public int CurrentMicrosector { get; set; } = 0;
 
+        /// <summary>
+        /// Bucket del timestamp di passaggio, a risoluzione piu' fine del microsettore di
+        /// velocita'. Sono deliberatamente **separati**: i microsettori di velocita' alimentano
+        /// ZoneDrop (diagnosi gomme avversari) e la loro granularita' non va cambiata per un
+        /// motivo che riguarda solo la precisione del gap.
+        /// </summary>
+        public int CurrentTimestampBucket { get; set; } = -1;
+
 
 
         // Nuove variabili per calcolo media microsettore
@@ -181,7 +189,7 @@ namespace SimRIG
         public double LastPitInOutAccDecTimeSec { get; set; } = 0.0;
         public double LastOpponentStrictPitLaneTime { get; set; } = 0.0;
 
-        public double[] MicrosectorTimestamps { get; } = new double[100];
+        public double[] MicrosectorTimestamps { get; } = new double[OpponentTracker.TimestampBucketCount];
         public SectorTracker ExtendedSectorRacingZone { get; set; } = new SectorTracker { Name = "ExtendedSectorRacingZone" };
         public SectorTracker ExtendedPitZone { get; set; } = new SectorTracker { Name = "ExtendedPitZone" };
 
@@ -468,8 +476,38 @@ namespace SimRIG
             return lastLapBeforeChange != -1;
         }
 
-        public double[] PlayerMicrosectorTimestamps { get; } = new double[100];
+        /// <summary>
+        /// Quanti bucket per giro per i timestamp di passaggio. A 400, su un tracciato da 4.2 km
+        /// sono ~10 m l'uno: la stessa densita' del giro di riferimento di irdashies.
+        ///
+        /// **Misurato** su un profilo di velocita' con 12 curve (Misano, giro 91.3 s): l'errore
+        /// massimo nel ricostruire il tempo-alla-posizione passa da **141 ms a 9 ms** restando in
+        /// interpolazione lineare. Le bande di isteresi dei gate strategici (Y-12) valgono
+        /// 150-250 ms, quindi si passa da "sul bordo della banda" a "17 volte dentro".
+        /// La spline cubica di irdashies porterebbe a 0.9 ms: precisione spesa sotto il rumore
+        /// della decisione che alimenta, quindi non e' stata adottata.
+        ///
+        /// **Non e'** il microsettore di velocita', che resta a 100.
+        ///
+        /// Perche' 400 e' sicuro: per saltare un bucket servirebbe percorrerne piu' di uno fra
+        /// due tick, cioe' **458 km/h anche a soli 12 Hz** di aggiornamento. Un bucket saltato
+        /// resterebbe col timestamp del giro prima, farebbe fallire la guardia sui timestamp e
+        /// manderebbe nel fallback proprio dove volevamo piu' precisione.
+        /// </summary>
+        public const int TimestampBucketCount = 400;
+
+        /// <summary>Bucket del timestamp per una posizione in frazione di giro, con clamp.</summary>
+        public static int TimestampBucketOf(double trackPositionPercent)
+        {
+            int bucket = (int)(trackPositionPercent * TimestampBucketCount);
+            if (bucket < 0) return 0;
+            if (bucket > TimestampBucketCount - 1) return TimestampBucketCount - 1;
+            return bucket;
+        }
+
+        public double[] PlayerMicrosectorTimestamps { get; } = new double[TimestampBucketCount];
         private int _playerLastMicrosector = -1;
+        private int _playerLastTimestampBucket = -1;
         private int _playerLastCompletedLaps = -1;
         public OpponentTelemetryData PlayerData { get; } = new OpponentTelemetryData { Name = "PLAYER" };
         private HashSet<string> _loggedOpponentNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -659,11 +697,17 @@ namespace SimRIG
             }
 
             double myPos = state.TrackPositionPercent;
+            // Timestamp: risoluzione fine, indipendente dai microsettori di velocita'.
+            int myTimestampBucket = TimestampBucketOf(myPos);
+            if (myTimestampBucket != _playerLastTimestampBucket)
+            {
+                _playerLastTimestampBucket = myTimestampBucket;
+                PlayerMicrosectorTimestamps[myTimestampBucket] = currentSessionClock;
+            }
+
             int myMicrosector = Math.Max(0, Math.Min(99, (int)(myPos * 100)));
             if (myMicrosector != _playerLastMicrosector)
             {
-                PlayerMicrosectorTimestamps[myMicrosector] = currentSessionClock;
-
                 if (_playerLastMicrosector != -1 && PlayerData.MicrosectorCount > 0)
                 {
                     double avgSpeed = PlayerData.MicrosectorSumSpeed / PlayerData.MicrosectorCount;
@@ -1032,6 +1076,14 @@ namespace SimRIG
 
 
 
+                // Timestamp: risoluzione fine, indipendente dai microsettori di velocita'.
+                int oppTimestampBucket = TimestampBucketOf(currentPos);
+                if (oppTimestampBucket != tData.CurrentTimestampBucket)
+                {
+                    tData.CurrentTimestampBucket = oppTimestampBucket;
+                    tData.MicrosectorTimestamps[oppTimestampBucket] = currentSessionClock;
+                }
+
                 // Gestione transizione Microsettore (Calcolo Media)
 
                 if (newMicrosector != tData.CurrentMicrosector)
@@ -1060,7 +1112,6 @@ namespace SimRIG
 
 
                     tData.CurrentMicrosector = newMicrosector;
-                    tData.MicrosectorTimestamps[newMicrosector] = currentSessionClock;
 
                     tData.MicrosectorSumSpeed = 0.0;
 
@@ -2128,8 +2179,9 @@ namespace SimRIG
             ClassAverageSectorPaceDrop = 0.0;
             ClassAverageSectorPaceDropRaw = 0.0;
 
-            Array.Clear(PlayerMicrosectorTimestamps, 0, 100);
+            Array.Clear(PlayerMicrosectorTimestamps, 0, PlayerMicrosectorTimestamps.Length);
             _playerLastMicrosector = -1;
+            _playerLastTimestampBucket = -1;
             _playerLastCompletedLaps = -1;
 
             PlayerData.BestRawLapTime = 0.0;
