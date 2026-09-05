@@ -32,10 +32,12 @@ expires:    —
 
 Se devi **rivedere il lavoro** invece di continuarlo, questo è il percorso più corto.
 
-**Cosa è cambiato dal setup (2026-08-18) a oggi:** 51 punti aperti in tutto, di cui **39 chiusi**
-(conteggio risincronizzato il 2026-09-05 — la frase diceva ancora "30 di cui 26", ferma al 24 agosto).
-Restano aperti: Y-14, Y-15, Y-26 (parziale), Y-29, Y-33, Y-36, Y-38, Y-40, Y-52 (passo 1 di 4),
-più Y-53/54/55 registrati oggi da una review a freddo. Il filo
+**Cosa è cambiato dal setup (2026-08-18) a oggi:** una quarantina di punti chiusi e una decina
+aperti — l'elenco esatto è la tabella qui sotto, e **non** è ricopiato in questa frase di proposito:
+una cifra scritta a mano qui è rimasta sbagliata per due settimane ("30 di cui 26", e "186 test
+PASS" quando erano 295). Per il conto esatto:
+`grep -c '^| Y-' .ai/PROJECT_STATE.md` (aperti) e `grep -c '^| ~~' .ai/archive/CLOSED_POINTS.md`
+(chiusi). Il filo
 conduttore è uno solo, ed è più interessante dei singoli difetti: quasi tutti erano **un campione
 singolo non verificato che si cristallizza in un dato persistente**. Cambia solo quale campione
 vince — il primo (`PitExitPct` congelato a 0.1088 per settimane), l'ultimo (`PitLaneSpeedLimit`
