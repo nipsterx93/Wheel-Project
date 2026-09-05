@@ -1,4 +1,4 @@
-﻿// -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
 
 // FILE: RaceAnalyzer.cs
 
@@ -147,6 +147,14 @@ namespace SimRIG
         public double LeaderEstimatedPace { get; set; } = 0.0;
 
         public double RaceLifeTimeLeftSec { get; set; } = 0.0;
+
+        /// <summary>
+        /// Indica se la stima dei giri di gara (RaceTotalLaps, RaceLapsRemaining) e' affidabile (Y-52 passo 2).
+        /// E' true se la gara e' a giri fissi, oppure se in una gara a tempo e' noto almeno un passo
+        /// valido (misurato in pista, oppure stimato dai metadati di sessione YAML).
+        /// E' false se il calcolo sta usando solo ripieghi ciechi forfettari o se siamo fuori gara.
+        /// </summary>
+        public bool IsLapsPredictionValid { get; set; } = false;
 
 
 
@@ -675,72 +683,38 @@ namespace SimRIG
 
 
             if (!state.IsRaceSession || _isRaceFinished)
-
             {
-
                 Results.RaceLapsRemaining = 0.0;
-
                 Results.RaceTotalLaps = 0.0;
-
                 Results.ProjectedPosAtCheckered = 0.0;
                 Results.LeaderProjectedPosAtCheckered = 0.0;
-
                 Results.LeaderRaceLapsRemaining = 0.0;
-
                 Results.LeaderRaceTotalLaps = 0.0;
-
                 Results.RaceLifeTimeLeftSec = 0.0;
+                Results.IsLapsPredictionValid = false;
 
                 _isLatchedForPit = false;
-
                 return;
-
             }
 
+            double activePlayerPace = ResolvePlayerPace(
+                Results.NormalizedRaceStartPace,
+                state.BestLapTimeSec,
+                state.Metadata.PlayerEstimatedPaceSec,
+                state.Metadata.EstimatedPaceFor(null, state.CarClassId),
+                state.TrackLengthMeters);
 
+            var resolvedLeader = ResolveLeaderPace(
+                state.Position,
+                activePlayerPace,
+                state.Opponents,
+                tracker.TrackedOpponents,
+                state.Metadata,
+                state.BestLapTimeSec,
+                state.TrackLengthMeters);
 
-            double rawLeaderPace = 120.0;
-            // Identita' a cui appartiene il campione di passo: serve al filtro per accorgersi
-            // che il P1 assoluto sta sfarfallando fra piu' piloti (tipico del multiclasse).
-            string rawLeaderName = "PLAYER";
-
-            if (state.Position == 1)
-            {
-                if (Results.NormalizedRaceStartPace > 0)
-                {
-                    rawLeaderPace = Results.NormalizedRaceStartPace;
-                }
-                else if (state.BestLapTimeSec > 0)
-                {
-                    rawLeaderPace = state.BestLapTimeSec;
-                }
-            }
-            else
-            {
-                var overallLeader = state.Opponents.FirstOrDefault(o => o.Position == 1);
-                if (overallLeader != null) rawLeaderName = overallLeader.Name ?? "";
-                if (overallLeader != null && tracker.TrackedOpponents.TryGetValue(overallLeader.Name, out var leaderData))
-                {
-                    if (leaderData.NormalizedTimes.LapMovingAverage > 0.0)
-                    {
-                        rawLeaderPace = leaderData.NormalizedTimes.LapMovingAverage;
-                    }
-                    else if (leaderData.NormalizedTimes.BestLapTime > 0.0)
-                    {
-                        rawLeaderPace = leaderData.NormalizedTimes.BestLapTime;
-                    }
-                    else if (state.BestLapTimeSec > 0)
-                    {
-                        rawLeaderPace = state.BestLapTimeSec;
-                    }
-                }
-                else if (state.BestLapTimeSec > 0)
-                {
-                    rawLeaderPace = state.BestLapTimeSec + 0.5;
-                }
-            }
-
-
+            double rawLeaderPace = resolvedLeader.Pace;
+            string rawLeaderName = resolvedLeader.LeaderName;
 
             // La media mobile e' la stessa di prima (alpha 0.10): cambia quali campioni ci entrano.
             // Vengono scartati quelli fisicamente impossibili e quelli raccolti mentre l'identita'
@@ -749,10 +723,6 @@ namespace SimRIG
                                                            state.SessionTimeLeftSec, state.TrackLengthMeters);
 
             Results.LeaderEstimatedPace = _smoothedLeaderPace;
-
-
-
-            double activePlayerPace = Results.NormalizedRaceStartPace > 0 ? Results.NormalizedRaceStartPace : 120.0;
 
 
 
@@ -883,7 +853,9 @@ namespace SimRIG
                     bool isMultiClass = state.Opponents.Select(o => o.CarClass).Distinct().Count() > 1;
 
                     double leaderStintLaps = 0.0;
-                    double leaderPace = _smoothedLeaderPace > 0.0 ? _smoothedLeaderPace : (state.BestLapTimeSec > 0.0 ? state.BestLapTimeSec : 120.0);
+                    double defaultLeaderPace = state.TrackLengthMeters > 0.0 ? (state.TrackLengthMeters / 50.0) : 120.0;
+                    double fallbackLeaderPace = state.Metadata.EstimatedPaceFor(leaderName, leaderClass) ?? defaultLeaderPace;
+                    double leaderPace = _smoothedLeaderPace > 0.0 ? _smoothedLeaderPace : (state.BestLapTimeSec > 0.0 ? state.BestLapTimeSec : fallbackLeaderPace);
                     double leaderPitLoss = 0.0;
                     double leaderTankLapsRemaining = 99.0;
                     string leaderSource = "NONE";
@@ -1187,6 +1159,16 @@ namespace SimRIG
             Results.LeaderRaceLapsRemaining = Math.Truncate(leaderLapsRem * 100) / 100.0;
 
             Results.RaceTotalLaps = _latchedPlayerTotalReality;
+            Results.IsLapsPredictionValid = IsLapsPredictionValid(
+                state.IsRaceSession,
+                _isRaceFinished,
+                state.IsLapLimited,
+                state.IsTimeLimited,
+                state.TotalLaps,
+                Results.NormalizedRaceStartPace,
+                state.BestLapTimeSec,
+                state.Metadata.PlayerEstimatedPaceSec,
+                state.Metadata.EstimatedPaceFor(null, state.CarClassId));
 
             // --- La riga che scatta quando il totale CAMBIA ------------------------------
             // Serve a rendere osservabile l'ingresso che ha fatto scattare il filtro. La
@@ -1762,6 +1744,11 @@ namespace SimRIG
                 double pace = data.NormalizedTimes.LapMovingAverage > 0.0
                     ? data.NormalizedTimes.LapMovingAverage
                     : data.NormalizedTimes.BestLapTime;
+                if (pace <= 0.0)
+                {
+                    double? est = state.Metadata.EstimatedPaceFor(opponent.Name, opponent.CarClass);
+                    if (est.HasValue && est.Value > 0.0) pace = est.Value;
+                }
                 if (pace <= 0.0) continue;
 
                 // Stessa convenzione del conteggio giri del leader: CurrentLap e' il giro in corso,
@@ -2151,7 +2138,121 @@ namespace SimRIG
             return UpdateLatchedLaps(projected, currentLatched, allowDecrease);
         }
 
+        public struct ResolvedLeaderPace
+        {
+            public double Pace;
+            public string LeaderName;
 
+            public ResolvedLeaderPace(double pace, string leaderName)
+            {
+                Pace = pace;
+                LeaderName = leaderName;
+            }
+        }
+
+        /// <summary>
+        /// Risolve il passo da usare per la proiezione del Player (Y-52 passo 2).
+        ///
+        /// Gerarchia delle fonti:
+        /// 1. Baseline normalizzata (<paramref name="normalizedRaceStartPace"/>) — vince sempre appena disponibile (ADR-005).
+        /// 2. Miglior tempo sul giro (<paramref name="bestLapTimeSec"/>) — tempo reale registrato in sessione.
+        /// 3. Passo stimato del pilota da metadati YAML (<paramref name="playerEstimatedPaceSec"/>) — prior ufficiale di iRacing.
+        /// 4. Passo stimato della classe da metadati YAML (<paramref name="classEstimatedPaceSec"/>) — prior di classe.
+        /// 5. Ripiego fisico sulla lunghezza del tracciato (<paramref name="trackLengthMeters"/> / 50.0 m/s = 180 km/h).
+        /// 6. Ripiego forfettario finale (120.0 s).
+        /// </summary>
+        public static double ResolvePlayerPace(double normalizedRaceStartPace,
+                                               double bestLapTimeSec,
+                                               double? playerEstimatedPaceSec,
+                                               double? classEstimatedPaceSec,
+                                               double trackLengthMeters)
+        {
+            if (normalizedRaceStartPace > 0.0) return normalizedRaceStartPace;
+            if (bestLapTimeSec > 0.0) return bestLapTimeSec;
+            if (playerEstimatedPaceSec.HasValue && playerEstimatedPaceSec.Value > 0.0) return playerEstimatedPaceSec.Value;
+            if (classEstimatedPaceSec.HasValue && classEstimatedPaceSec.Value > 0.0) return classEstimatedPaceSec.Value;
+            if (trackLengthMeters > 0.0) return trackLengthMeters / 50.0;
+            return 120.0;
+        }
+
+        /// <summary>
+        /// Risolve il passo grezzo del leader assoluto e l'identita' a cui appartiene (Y-52 passo 2).
+        /// </summary>
+        public static ResolvedLeaderPace ResolveLeaderPace(
+            int playerPosition,
+            double playerResolvedPace,
+            System.Collections.Generic.IEnumerable<GameReaderCommon.Opponent> opponents,
+            System.Collections.Generic.IReadOnlyDictionary<string, OpponentTelemetryData> trackedOpponents,
+            SessionMetadata metadata,
+            double bestLapTimeSec,
+            double trackLengthMeters)
+        {
+            double defaultPace = trackLengthMeters > 0.0 ? (trackLengthMeters / 50.0) : 120.0;
+
+            if (playerPosition == 1)
+            {
+                return new ResolvedLeaderPace(playerResolvedPace, "PLAYER");
+            }
+
+            var overallLeader = opponents != null ? opponents.FirstOrDefault(o => o.Position == 1) : null;
+            string leaderName = overallLeader?.Name ?? "LEADER";
+            string leaderClass = overallLeader?.CarClass ?? "";
+
+            if (overallLeader != null && trackedOpponents != null && trackedOpponents.TryGetValue(leaderName, out var leaderData))
+            {
+                if (leaderData.NormalizedTimes.LapMovingAverage > 0.0)
+                    return new ResolvedLeaderPace(leaderData.NormalizedTimes.LapMovingAverage, leaderName);
+                if (leaderData.NormalizedTimes.BestLapTime > 0.0)
+                    return new ResolvedLeaderPace(leaderData.NormalizedTimes.BestLapTime, leaderName);
+            }
+
+            if (metadata != null)
+            {
+                double? est = metadata.EstimatedPaceFor(leaderName, leaderClass);
+                if (est.HasValue && est.Value > 0.0)
+                    return new ResolvedLeaderPace(est.Value, leaderName);
+            }
+
+            if (overallLeader != null && overallLeader.BestLapTime.TotalSeconds > 0.0)
+            {
+                return new ResolvedLeaderPace(overallLeader.BestLapTime.TotalSeconds, leaderName);
+            }
+
+            if (bestLapTimeSec > 0.0)
+            {
+                return new ResolvedLeaderPace(bestLapTimeSec + 0.5, leaderName);
+            }
+
+            if (metadata != null && metadata.PlayerEstimatedPaceSec.HasValue && metadata.PlayerEstimatedPaceSec.Value > 0.0)
+            {
+                return new ResolvedLeaderPace(metadata.PlayerEstimatedPaceSec.Value, leaderName);
+            }
+
+            return new ResolvedLeaderPace(defaultPace, leaderName);
+        }
+
+        /// <summary>
+        /// Determina se la stima dei giri di gara e' valida e affidabile (Y-52 passo 2).
+        /// </summary>
+        public static bool IsLapsPredictionValid(
+            bool isRaceSession,
+            bool isRaceFinished,
+            bool isLapLimited,
+            bool isTimeLimited,
+            int totalLaps,
+            double normalizedRaceStartPace,
+            double bestLapTimeSec,
+            double? playerEstimatedPaceSec,
+            double? classEstimatedPaceSec)
+        {
+            if (!isRaceSession || isRaceFinished) return false;
+            if (isLapLimited && !isTimeLimited && totalLaps > 0) return true;
+            if (normalizedRaceStartPace > 0.0) return true;
+            if (bestLapTimeSec > 0.0) return true;
+            if (playerEstimatedPaceSec.HasValue && playerEstimatedPaceSec.Value > 0.0) return true;
+            if (classEstimatedPaceSec.HasValue && classEstimatedPaceSec.Value > 0.0) return true;
+            return false;
+        }
 
         public void ResetSession()
 

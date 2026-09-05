@@ -89,6 +89,7 @@
     <Compile Include="UnitTests\GapWrapAndResolutionUnitTests.cs" />
     <Compile Include="UnitTests\FuelRoundingUnitTests.cs" />
     <Compile Include="UnitTests\SessionMetadataUnitTests.cs" />
+    <Compile Include="UnitTests\PredictedPaceUnitTests.cs" />
     <Compile Include="IntegrationTests\ReplayBacktestIntegrationTest.cs" />
     <Compile Include="IntegrationTests\MisanoHuracanGT3ReplayTest.cs" />
     <Compile Include="Replay\SimHubReplayRAMReader.cs" />

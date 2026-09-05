@@ -1,4 +1,4 @@
-﻿// -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
 // FILE VERSION: V0.11.58
 // -------------------------------------------------------------------------
 using GameReaderCommon;
@@ -338,6 +338,7 @@ namespace SimRIG
             // 0.0 finché non è stato imparato: la dash deve trattare lo zero come "non noto".
             pm.AddProperty("SimRIG.Session.PitLaneSpeedLimit", t, 0.0);
             pm.AddProperty("SimRIG.Session.PitLaneSpeedLimitKnown", t, false);
+            pm.AddProperty("SimRIG.Session.IsLapsPredictionValid", t, false);
 
             pm.AddProperty("SimRIG.Strategy.IsPredictionValid", t, false);
             pm.AddProperty("SimRIG.Strategy.LeaderPaceStr", t, "00:00.000");
@@ -1702,6 +1703,7 @@ namespace SimRIG
             PluginManager.SetPropertyValue("SimRIG.Session.RaceLapsCompleted", t, RaceAnalyzer.Results.RaceLapsCompleted);
             PluginManager.SetPropertyValue("SimRIG.Session.RaceLapsRemaining", t, RaceAnalyzer.Results.RaceLapsRemaining);
             PluginManager.SetPropertyValue("SimRIG.Session.IsLapped", t, RaceAnalyzer.Results.IsLapped);
+            PluginManager.SetPropertyValue("SimRIG.Session.IsLapsPredictionValid", t, RaceAnalyzer.Results.IsLapsPredictionValid);
             PluginManager.SetPropertyValue("SimRIG.Session.TimeLeftStr", t, FormatTime(CurrentState.SessionTimeLeftSec));
             PluginManager.SetPropertyValue("SimRIG.Session.RaceLifeTimeLeftStr", t, FormatTime(RaceAnalyzer.Results.RaceLifeTimeLeftSec));
             PluginManager.SetPropertyValue("SimRIG.Session.ClassTopSpeed", t, Math.Round(OpponentTracker.ClassTopSpeed, 1));
@@ -2482,6 +2484,10 @@ namespace SimRIG
                 lapPaceSec = data.NewData.LastLapTime.TotalSeconds;
             else if (player != null && player.BestLapTime.TotalSeconds > 30.0)
                 lapPaceSec = player.BestLapTime.TotalSeconds;
+            else if (CurrentState.Metadata != null && CurrentState.Metadata.PlayerEstimatedPaceSec.HasValue && CurrentState.Metadata.PlayerEstimatedPaceSec.Value > 10.0)
+                lapPaceSec = CurrentState.Metadata.PlayerEstimatedPaceSec.Value;
+            else if (CurrentState.Metadata != null && CurrentState.Metadata.EstimatedPaceFor(null, CurrentState.CarClassId).HasValue && CurrentState.Metadata.EstimatedPaceFor(null, CurrentState.CarClassId).Value > 10.0)
+                lapPaceSec = CurrentState.Metadata.EstimatedPaceFor(null, CurrentState.CarClassId).Value;
             else if (trackLen > 1000.0)
                 lapPaceSec = trackLen / 45.0;
 
