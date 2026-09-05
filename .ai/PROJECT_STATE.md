@@ -1,4 +1,4 @@
-﻿# PROJECT STATE — The Wheel Project / Antigravity 2.0
+# PROJECT STATE — The Wheel Project / Antigravity 2.0
 
 > Fonte di verità sullo stato corrente e sul **turno di scrittura**.
 > Ogni agente legge questo file **prima** di toccare il codice e lo aggiorna **prima** di iniziare a scrivere.
@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-09-05T15:10:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      antigravity
+since:      2026-09-05T13:06:00Z
+task:       Y-52 Passo 2: Seeding CarClassEstLapTime nei ripieghi di passo
+scope:      User.PluginSdkDemoEdit/ (RaceAnalyzer, TargetStrategyManager, DataPluginDemo, Tests)
+expires:    2026-09-05T15:06:00Z
 ```
 
 **Regole del lock**
