@@ -144,6 +144,56 @@ namespace SimRIG
         /// </summary>
         public const double MaxAchievableFuelSaving = 0.15;
 
+        /// <summary>
+        /// Margine fisso della modalita' Normal, in litri.
+        ///
+        /// Prima era <c>consumo * 0.3</c>, cioe' proporzionale. Il valore fisso e' una scelta
+        /// dell'utente e cambia il comportamento in due versi opposti: su una vettura da 4 L/giro
+        /// il vecchio margine valeva 1.2 L e ora ne vale 0.6 (**meno** cuscinetto), su una da
+        /// 1.5 L/giro valeva 0.45 e ora 0.6 (**piu'** cuscinetto). A Road Atlanta, dove il consumo
+        /// misurato e' 2.25 L/giro, i due quasi coincidono (0.675 contro 0.6).
+        /// </summary>
+        public const double NormalMarginLitres = 0.6;
+
+        /// <summary>
+        /// Margine di sicurezza da sommare al fabbisogno, in litri, per modalita'.
+        ///
+        /// <c>Aggressive</c> non ne ha: il cuscinetto glielo da' gia' l'arrotondamento per
+        /// eccesso, che vale fra 0 e 1 litro. <c>Safe</c> imbarca un giro intero.
+        /// </summary>
+        public static double MarginForMode(FuelStrategyMode mode, double consumption)
+        {
+            if (mode == FuelStrategyMode.Safe) return Math.Max(0.0, consumption);
+            if (mode == FuelStrategyMode.Normal) return NormalMarginLitres;
+            return 0.0;
+        }
+
+        /// <summary>
+        /// Porta i litri da imbarcare a un intero, **sempre per eccesso** (Y-34).
+        ///
+        /// iRacing non accetta decimali nel rifornimento: finora il plugin mandava
+        /// <c>#fuel 30.5l</c> e lasciava arrotondare al gioco, con una regola che non conosciamo.
+        /// Il verso non e' simmetrico — un litro di troppo costa una frazione di secondo di
+        /// sosta, un litro in meno significa restare a piedi — quindi si arrotonda sempre in su,
+        /// in **tutte** le modalita'. Con questo, la rete di sicurezza su
+        /// <see cref="MaxAchievableFuelSaving"/> prevista dallo schema originale di Y-34 non
+        /// serve piu': non esiste piu' un percorso che arrotondi in difetto.
+        ///
+        /// Il tetto del serbatoio si applica **dopo** l'arrotondamento e sul suo intero inferiore:
+        /// <c>MaxFuel</c> arriva dal gioco come frazionario (una GT3 puo' avere 63.7 L), e
+        /// limitare a 63.7 dopo aver arrotondato a 64 rimetterebbe in circolo un decimale.
+        /// </summary>
+        /// <param name="rawLitres">Fabbisogno gia' comprensivo di margine e offset utente.</param>
+        /// <param name="maxFuelCapacity">Capacita' del serbatoio, anche frazionaria.</param>
+        public static double RoundFuelToAdd(double rawLitres, double maxFuelCapacity)
+        {
+            if (double.IsNaN(rawLitres) || double.IsInfinity(rawLitres)) return 0.0;
+
+            double whole = Math.Ceiling(Math.Max(0.0, rawLitres));
+            double capacityLimit = Math.Floor(Math.Max(0.0, maxFuelCapacity));
+            return Math.Min(capacityLimit, whole);
+        }
+
         /// <summary>Esito del calcolo di fuel saving (Y-1).</summary>
         public struct FuelSavingPlan
         {
@@ -369,11 +419,7 @@ namespace SimRIG
 
                 {
 
-                    double margin = 0.0;
-
-                    if (Calculations.StrategyMode == FuelStrategyMode.Safe) margin = consumption;
-
-                    else if (Calculations.StrategyMode == FuelStrategyMode.Normal) margin = consumption * 0.3;
+                    double margin = MarginForMode(Calculations.StrategyMode, consumption);
 
 
 
@@ -397,9 +443,10 @@ namespace SimRIG
 
 
 
-                if (finalFuelToAdd < 0) finalFuelToAdd = 0;
-
-                Calculations.FuelToAdd = Math.Round(Math.Min(state.MaxFuelCapacity, finalFuelToAdd), 1);
+                // Y-34: intero, sempre per eccesso, in ogni modalita' — Manual compresa, perche'
+                // il vincolo e' del gioco e non della strategia. Con FuelStep a 0.1 L un colpo di
+                // encoder ora spesso non muove il risultato: e' il prezzo dichiarato dell'intero.
+                Calculations.FuelToAdd = RoundFuelToAdd(finalFuelToAdd, state.MaxFuelCapacity);
 
             }
 

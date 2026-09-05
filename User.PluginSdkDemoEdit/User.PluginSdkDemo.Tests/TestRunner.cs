@@ -26,6 +26,7 @@ namespace User.PluginSdkDemo.Tests
                 FuelSavingUnitTests.RunAllTests();
                 FuelOutlierFilterUnitTests.RunAllTests();
                 GapWrapAndResolutionUnitTests.RunAllTests();
+                FuelRoundingUnitTests.RunAllTests();
                 TrackPositionValidatorUnitTests.RunAllTests();
                 CalibrationConfidenceUnitTests.RunAllTests();
                 GeofenceCalibrationGateUnitTests.RunAllTests();

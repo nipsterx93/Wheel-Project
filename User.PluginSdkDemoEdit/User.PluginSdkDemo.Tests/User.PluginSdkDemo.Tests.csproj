@@ -87,6 +87,7 @@
     <Compile Include="UnitTests\FuelWeightAndPitLossUnitTests.cs" />
     <Compile Include="UnitTests\FuelOutlierFilterUnitTests.cs" />
     <Compile Include="UnitTests\GapWrapAndResolutionUnitTests.cs" />
+    <Compile Include="UnitTests\FuelRoundingUnitTests.cs" />
     <Compile Include="IntegrationTests\ReplayBacktestIntegrationTest.cs" />
     <Compile Include="IntegrationTests\MisanoHuracanGT3ReplayTest.cs" />
     <Compile Include="Replay\SimHubReplayRAMReader.cs" />
