@@ -74,7 +74,13 @@ $RECYCLE.BIN/
 *.swp
 *~
 
+# --- Cartelle di analisi e appunti locali ---
+Correzioni Post Test Pirpi/
+DeepSearch/
+Solo per analisi logiche/
+
 # --- Eccezioni: questi li vogliamo versionati ---
 !.ai/
 !.ai/**
 !CLAUDE.md
+
