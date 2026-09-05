@@ -30,6 +30,24 @@ Progetto principale: `User.PluginSdkDemoEdit/` → `User.PluginSdkDemo.dll` (.NE
 | `ProfileManager.cs` / `SimRigProfile.cs` | `ProfileManager` (static) | Profili di configurazione |
 | `LogManager.cs` | `LogManager` | Logging applicativo |
 
+### `Hardware/` — il volante vero ⛔ fuori scope per gli agenti
+
+Il nome del progetto viene da qui, ma è la parte che gli agenti AI **non toccano**: è territorio di
+**Andreas**, che la versiona sulla sua macchina. Il protocollo del lock in `.ai/` è nato per il
+plugin C# e non si estende a questa cartella — prima di modificarci qualsiasi cosa, si chiede.
+
+| Percorso | Cosa | Note |
+|---|---|---|
+| `Hardware/Firmware INPUT/V2_8_2/V2_8_2.ino` | Arduino **Leonardo + MCP23017** (I²C `0x20`): 80 pulsanti HID, encoder (`EncoderTool`), 3 rotary a 11 posizioni, paddle frizione con deadzone 2% e bite point, calibrazione persistita in EEPROM | ~465 righe. Include `PaddleClutch.h`, **assente dal repo** — vedi Y-53: atteso, lo versiona Andreas |
+| `Hardware/Firmware LED/V1_5_7_StartupLeds/V1_5_7_StartupLeds.ino` | Firmware LED (sequenza di avvio) | ~521 righe |
+| `Hardware/Firmware INPUT/compile_and_upload.py` | Script di compilazione/upload | — |
+
+**Il ponte con il plugin è `SimRigHardwareManager.cs`** (SharpDX.DirectInput): il volante è una
+periferica DirectInput come un'altra, e il plugin ne legge i pulsanti. ⚠️ **La mappatura
+pulsante → azione non è documentata da nessuna parte.** Si vede solo leggendo insieme lo sketch e
+il manager — e conta: Y-14 dipende da `TyreManager.CurrentScope`, che è *"pilotato solo dai tasti
+volante"* (`TyreManager.cs:89`) e non è derivabile dalla telemetria.
+
 ### Moduli di decisione, senza dipendenze SimHub
 
 Nati tutti dallo stesso vincolo: le classi principali ricevono `SessionState`, `PitRadar`,

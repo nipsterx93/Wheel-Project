@@ -9,6 +9,140 @@
 
 ---
 
+## [2026-09-02 16:00] claude -> utente (serve un replay di verifica)
+
+**Task:** Y-44 — il costo della sosta contava l'intera traversata della corsia box come tempo perso.
+**Commit:** `dcc04d8` (lock) - questo
+**Log analizzato:** `Logs/Road Atlanta/SimRIG_DebugLog_20260901_211532.csv` e `Logs/Misano/SimRIG_DebugLog_20260901_220037.csv`
+
+### Cosa ha aperto questo turno: Misano
+
+L'utente ha segnalato che a fine gara la proiezione del leader risultava **sotto** quella del Player,
+che gli sta dietro. Vero: 160 tick su 802, scarto massimo **0.098 giri**. Ma non e' un errore di
+calcolo — **e' un errore di nomenclatura mio**: le due proprieta' misurano istanti diversi.
+
+| | posizione **quando** |
+|---|---|
+| `ProjectedPosAtCheckered` (Player) | esce la bandiera |
+| `LeaderProjectedPosAtCheckered` | scade il cronometro |
+
+A Misano fra i due istanti passano **40.2 s** (il supplemento). Su un giro da 92.08 s il Player
+percorre **0.44 giri**, e il leader lo precede di **0.34**. Differenza **+0.10**; scarto massimo
+misurato **0.098**. La coincidenza chiude la questione. **Da rinominare.**
+
+### E ha smentito una risposta che avevo dato io
+
+Due turni fa avevo risposto che **non serviva** conoscere il tempo di sosta degli avversari. La
+misura dice il contrario. La proiezione del leader col criterio nuovo sta **+0.96 giri** sopra quella
+del vecchio (mediana su 495 campioni), perche' il vecchio **sottrae la sosta del leader** e il nuovo
+no — come avevo scritto io, deliberatamente. Contro la verita' di terreno (25.545):
+
+```
+criterio vecchio (sottrae la sosta)   25.03    errore  -0.51
+criterio nuovo   (non sottrae nulla)  25.98    errore  +0.44
+```
+
+Il vero sta in mezzo. Ignorare una sosta non puo' che sovrastimare: l'errore **ha** un segno, e io
+avevo detto di no. **Ed e' la causa del totale del leader a 27** (53.6% dei tick a Misano, contro un
+vero 26): la proiezione a 25.98 sta tre centesimi sopra la soglia sotto cui il filtro puo' scendere
+da 27. Non e' instabilita': e' un numero alto di mezzo giro.
+
+**Scoperta collaterale:** la formula che sottrae la sosta sul ramo del leader (`RaceAnalyzer.cs:992`)
+e' **la stessa che Y-42 aveva dichiarato sbagliata** — quella col termine `J` che altera il
+denominatore. Y-42 fu corretto **solo sul ramo del Player**. Sul leader e' ancora li'.
+
+### Y-44: la misura, e la prova della causa
+
+La perdita non e' stata stimata ma **misurata dai tempi sul giro**, che sono la definizione stessa
+della grandezza:
+
+```
+giri 14+15+16 (in-lap, out-lap, primo giro pieno)   268.20 s
+tre giri normali (77.45 s l'uno)                    232.35 s
+--------------------------------------------------------------
+perdita reale                                        35.85 s
+  di cui da fermo                                    14.75 s
+  quindi perdita non-ferma                           21.05 s
+
+il plugin ne contava                                 36.10 s   (26.38 + 9.72)
+eccesso                                              15.05 s
+```
+
+**La prova della causa e' una coincidenza numerica**: 15.05 s a 77.45 s/giro fanno **0.194 di giro**,
+ed e' esattamente quanto misura la zona box — 0.131 di corsia stretta (ingresso 0.957, uscita 0.088)
+piu' due volte il margine di esclusione. Attraversando la corsia si copre comunque tracciato, e quel
+tempo non e' perso.
+
+**Il secondo sospetto di Y-44 e' escluso**, non rimandato: `PitTransitTime` non contiene il tempo da
+fermo, `PitRadar.cs:1454` lo sottrae gia' (`num2 = num - _pitBoxTimeCache`).
+
+### Fatto
+
+- `RaceTimeProjection.PitLossSec` (nuova) — il costo e' il tempo nella zona **meno** l'equivalente
+  in pista, piu' il tempo da fermo.
+- `RaceTimeProjection.PitZoneLapFraction` (nuova) — gestisce lo **scavalco del traguardo**: a Road
+  Atlanta la corsia va da 0.957 a 0.088 e la sottrazione diretta darebbe un negativo, che farebbe
+  sparire la correzione **in silenzio**.
+- `RaceAnalyzer.cs:~1094` — collegata al posto della somma vecchia.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit code `0`, **260 `[PASS]`** (erano 253).
+
+### Stato
+
+- Compila - 0 errori. 260 test passano.
+- Regressione ADR-004, **tre neutralizzazioni**, tutte rosse:
+
+| cosa ho neutralizzato | valore ottenuto |
+|---|---|
+| la sottrazione dell'equivalente in pista | `ottenuto 50,85` (il valore vecchio) |
+| la gestione dello scavalco del traguardo | `ottenuto 50,85` (la correzione sparisce) |
+| il guard contro l'azzeramento del costo | `ottenuto -87,75` — una sosta che regala giri |
+
+⚠️ **Errore mio da non ripetere:** ho scritto i test nuovi in `PitLossUnitTests.cs`, che
+**esisteva gia'** con tre test su gomme e sosta, sovrascrivendolo. Accorto perche' il conteggio dei
+PASS e' salito di 4 invece che di 7. Ripristinato da git e spostati in
+`PitLossOnTrackEquivalentUnitTests.cs`. **Controllare che un file non esista prima di scriverlo**, e
+diffidare di un conteggio test che non torna.
+
+### Per chi entra
+
+**Prossimo passo: un replay di verifica, e c'e' una previsione falsificabile.** Sul log
+`20260901_211532`, all'ingresso ai box la proiezione del Player valeva **34.617** contro un vero
+**34.83** — bassa di 0.213. Questa correzione restituisce `15.05 / 76.5 =` **+0.197 giri**.
+**Attesa: la proiezione prima della sosta deve salire a ~34.81.** Se non succede, la diagnosi e'
+incompleta.
+
+Metro di sicurezza: tick con `RaceTotalLaps != 35` in gara. Migliore mai misurato **1.0%**; se sale
+sopra il 13% (la baseline) si torna indietro.
+
+**Poi, come concordato con l'utente, i punti 1 e 2 insieme:**
+1. Correggere Y-42 anche sul **ramo del leader** (`RaceAnalyzer.cs:992`): la funzione giusta esiste
+   gia' ed e' testata (`ProjectLapsLeftWithStops`), va solo collegata. **Quarta volta** che il
+   problema e' un collegamento mancante (Y-31, Y-46, Y-48, questo).
+2. Rimettere la sosta nella proiezione del punto 4, che avevo tolto sulla base di un ragionamento
+   che la misura ha smentito. **Solo dopo Y-44**, altrimenti si sottrae un tempo sovrastimato.
+
+Piu' la **rinomina** di `LeaderProjectedPosAtCheckered`, che dice "alla bandiera" e misura "allo
+scadere".
+
+**NON toccare:** `TimeUntilLeaderCheckered` (tre fonti concordi), `FuelWeightCoef` (`0.03`, s/kg), il
+limite di plausibilita' sul passo (portante col criterio del massimo).
+
+**Attenzione a:** il metodo che ha funzionato ogni volta in questo filone e' trovare una grandezza
+**misurabile senza il codice** e chiedersi se il numero e' possibile. Qui erano i tempi sul giro:
+la perdita di una sosta **e'** la differenza fra i giri con la sosta e i giri senza, e non serve
+sapere nulla del plugin per calcolarla.
+
+---
+
 ## [2026-09-02 10:00] claude -> utente (serve un replay di verifica)
 
 **Task:** Y-48 — collegare al punto 4 anche il **totale** e la **proiezione** del leader, che
