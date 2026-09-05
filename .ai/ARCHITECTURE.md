@@ -157,7 +157,12 @@ richiamati da `TestRunner.Main`, e il file va aggiunto al `<Compile>` del `.cspr
 - Nessuna dipendenza esterna da NUnit/xUnit: la build resta semplice.
 - L'exit code è verificabile da CLI → si integra bene con l'automazione.
 - **Limite:** il runner si ferma al primo fallimento, quindi non dà il quadro completo in un colpo solo.
-- Il progetto di test **non è nella solution**: va buildato esplicitamente (vedi `CLAUDE.md`).
+- ~~Il progetto di test **non è nella solution**: va buildato esplicitamente (vedi `CLAUDE.md`).~~
+
+> **Nota di aggiornamento (2026-09-05, claude).** Un ADR accettato non si modifica, ma questa
+> conseguenza ha smesso di essere vera e seguirla porterebbe fuori strada: `User.PluginSdkDemo.sln`
+> contiene **entrambi** i progetti, quindi il progetto di test viene compilato dalla build principale.
+> `CLAUDE.md` è già allineato. Verificato leggendo le voci `Project(...)` della solution.
 
 ---
 
