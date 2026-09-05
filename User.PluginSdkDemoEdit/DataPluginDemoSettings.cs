@@ -100,6 +100,16 @@ namespace SimRIG
 
         public bool EnableLogMergeGap { get; set; } = true;
 
+        /// <summary>
+        /// Dove scrivere <c>SimRigMetadata.json</c> e i dump YAML grezzi. Vuoto = accanto alla
+        /// DLL, cioe' la cartella di SimHub, dove vive gia' <c>SimRIG_Data.json</c>.
+        ///
+        /// E' un'impostazione e non una costante perche' il plugin gira dentro SimHub e non ha
+        /// modo di sapere dove stia il repository di sviluppo: quel percorso esiste solo sulla
+        /// macchina di chi lavora al progetto, e cablarlo romperebbe ovunque altro.
+        /// </summary>
+        public string MetadataDumpFolder { get; set; } = "";
+
     }
 
 }

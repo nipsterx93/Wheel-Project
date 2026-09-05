@@ -12,6 +12,22 @@ namespace SimRIG
     public class TelemetryReader
     {
         private PluginManager _pluginManager;
+
+        /// <summary>
+        /// Lo YAML gia' interpretato l'ultima volta. Serve a non rifare il lavoro a ogni tick:
+        /// un SessionInfo reale con 41 piloti pesa ~150 KB, e riscansionarlo 60 volte al secondo
+        /// significa ~8.7 MB/s di stringhe piu' una Dictionary nuova ogni frame.
+        /// </summary>
+        private string _lastParsedYaml = null;
+
+        /// <summary>Il dump su disco si tenta una volta per contenuto, non a ogni sessione.</summary>
+        private bool _metadataDumped = false;
+
+        /// <summary>Cartella configurata per il dump. Vuota = accanto alla DLL.</summary>
+        public string MetadataDumpFolder { get; set; } = "";
+
+        /// <summary>Il LogManager per la diagnostica del dump. Puo' restare null.</summary>
+        public LogManager Log { get; set; }
         private double _lastPressureSampleTime = 0.0;
         private System.Collections.Generic.List<Tuple<double, double>> _pressureHistory = new System.Collections.Generic.List<Tuple<double, double>>(); // list of Tuple<sessionTime, airPressure>
 
@@ -92,6 +108,7 @@ namespace SimRIG
             if (string.IsNullOrEmpty(yaml)) yaml = _pluginManager.GetPropertyValue("DataCorePlugin.GameRawData.SessionInfo.YAML") as string;
             if (string.IsNullOrEmpty(yaml)) yaml = _pluginManager.GetPropertyValue("DataCorePlugin.GameRawData.SessionInfo_YAML") as string;
             state.RawSessionInfoYaml = yaml ?? "";
+            RefreshSessionMetadata(state);
             var rawPlayerCarIdx = _pluginManager.GetPropertyValue("DataCorePlugin.GameRawData.Telemetry.PlayerCarIdx");
             if (rawPlayerCarIdx != null) state.PlayerCarIdx = Convert.ToInt32(rawPlayerCarIdx);
 
@@ -511,6 +528,88 @@ namespace SimRIG
             {
                 state.GlobalBaselineTemp = state.TrackTemperature;
             }
+        }
+
+        /// <summary>
+        /// Interpreta lo YAML **solo quando cambia**.
+        ///
+        /// <para>Il confronto e' a tre stadi, dal piu' economico al piu' caro: stessa istanza,
+        /// stessa lunghezza, e solo allora il confronto vero. Nel caso normale — SimHub che
+        /// restituisce la stessa stringa finche' la sessione non cambia — costa un confronto di
+        /// riferimenti e basta.</para>
+        ///
+        /// <para>La classe del Player arriva dalla telemetria, non dallo YAML: serve solo come
+        /// chiave del dump, e SimHub la espone gia'.</para>
+        /// </summary>
+        private void RefreshSessionMetadata(SessionState state)
+        {
+            string yaml = state.RawSessionInfoYaml;
+
+            if (string.IsNullOrEmpty(yaml))
+            {
+                if (_lastParsedYaml != null)
+                {
+                    state.Metadata.Clear();
+                    _lastParsedYaml = null;
+                    _metadataDumped = false;
+                }
+                return;
+            }
+
+            bool unchanged = _lastParsedYaml != null
+                             && (ReferenceEquals(_lastParsedYaml, yaml)
+                                 || (_lastParsedYaml.Length == yaml.Length
+                                     && string.Equals(_lastParsedYaml, yaml, StringComparison.Ordinal)));
+
+            if (unchanged)
+            {
+                // La classe puo' arrivare dopo lo YAML: si tiene allineata senza rifare il parsing.
+                if (state.Metadata.PlayerCarClass != state.CarClassId)
+                {
+                    state.Metadata.PlayerCarClass = state.CarClassId ?? "";
+                    _metadataDumped = false;
+                }
+            }
+            else
+            {
+                SessionMetadata parsed = SessionYamlParser.Parse(yaml);
+                CopyInto(parsed, state.Metadata);
+                state.Metadata.PlayerCarClass = state.CarClassId ?? "";
+                _lastParsedYaml = yaml;
+                _metadataDumped = false;
+            }
+
+            if (!_metadataDumped && state.Metadata.IsPopulated)
+            {
+                SessionMetadataDump.Write(state.Metadata, yaml, MetadataDumpFolder, Log);
+                _metadataDumped = true;
+            }
+        }
+
+        /// <summary>
+        /// Riversa il risultato del parsing nel contenitore che vive dentro <see cref="SessionState"/>,
+        /// invece di sostituirlo: chi tiene un riferimento a <c>state.Metadata</c> continua a
+        /// vedere lo stesso oggetto.
+        /// </summary>
+        private static void CopyInto(SessionMetadata from, SessionMetadata into)
+        {
+            into.Clear();
+            into.SourceName = from.SourceName;
+            into.TrackName = from.TrackName;
+
+            foreach (var kv in from.ClassEstimatedPaceSec) into.ClassEstimatedPaceSec[kv.Key] = kv.Value;
+            foreach (var kv in from.DriverEstimatedPaceSec) into.DriverEstimatedPaceSec[kv.Key] = kv.Value;
+            foreach (var kv in from.DriverMaxFuelPct) into.DriverMaxFuelPct[kv.Key] = kv.Value;
+
+            into.PlayerEstimatedPaceSec = from.PlayerEstimatedPaceSec;
+            into.FuelDensityKgPerLitre = from.FuelDensityKgPerLitre;
+            into.PlayerMaxFuelLitres = from.PlayerMaxFuelLitres;
+            into.PitSpeedLimitKmh = from.PitSpeedLimitKmh;
+            into.PlayerPitStallPct = from.PlayerPitStallPct;
+            into.IncidentLimit = from.IncidentLimit;
+            into.FastRepairsAvailable = from.FastRepairsAvailable;
+            into.DryTireSetLimit = from.DryTireSetLimit;
+            into.IsStandingStart = from.IsStandingStart;
         }
     }
 }

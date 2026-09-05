@@ -196,6 +196,8 @@ namespace SimRIG
             LogManager.EnableLogVoice = Settings.EnableLogVoice;
 
             TelemetryReader = new TelemetryReader(pluginManager);
+            TelemetryReader.MetadataDumpFolder = Settings.MetadataDumpFolder;
+            TelemetryReader.Log = LogManager;
             FuelManager = new FuelManager();
             RaceAnalyzer = new RaceAnalyzer();
             PitRadar = new PitRadar();

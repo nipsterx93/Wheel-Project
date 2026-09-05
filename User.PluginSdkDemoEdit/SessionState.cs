@@ -111,6 +111,13 @@ namespace SimRIG
         public string CrossoverAlertState { get; set; } = "NONE";
         public double CrossoverDeltaSeconds { get; set; } = 0.0;
         public string RawSessionInfoYaml { get; set; } = "";
+
+        /// <summary>
+        /// Cio' che il gioco dichiara su questa sessione, gia' interpretato. Popolato una volta
+        /// per sessione da <see cref="SessionYamlParser"/> su iRacing, vuoto altrove. I campi
+        /// assenti valgono **non lo so**, che non e' zero.
+        /// </summary>
+        public SessionMetadata Metadata { get; } = new SessionMetadata();
         public double DeducedStartingFuelLimit { get; set; } = 0.0;
 
         // -------------------------------------------------------------------------
@@ -160,6 +167,7 @@ namespace SimRIG
             CrossoverAlertState = "NONE";
             CrossoverDeltaSeconds = 0.0;
             RawSessionInfoYaml = "";
+            Metadata.Clear();
         }
     }
 }

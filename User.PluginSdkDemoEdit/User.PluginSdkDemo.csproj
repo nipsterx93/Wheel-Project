@@ -150,6 +150,9 @@
     <Compile Include="SectorTracker.cs" />
     <Compile Include="LapSectorTimeContainer.cs" />
     <Compile Include="SessionState.cs" />
+    <Compile Include="SessionMetadata.cs" />
+    <Compile Include="SessionYamlParser.cs" />
+    <Compile Include="SessionMetadataDump.cs" />
     <Compile Include="SettingsControlDemo.xaml.cs">
       <DependentUpon>SettingsControlDemo.xaml</DependentUpon>
     </Compile>

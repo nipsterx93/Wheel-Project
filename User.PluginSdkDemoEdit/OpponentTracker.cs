@@ -594,7 +594,9 @@ namespace SimRIG
                 }
             }
 
-            var bopDict = ParseOpponentMaxFuelPct(state.RawSessionInfoYaml);
+            // Y-52: il BoP arriva gia' interpretato. Prima si riscansionava l'intero
+            // SessionInfo YAML (~150 KB) a ogni tick, senza cache.
+            var bopDict = state.Metadata.DriverMaxFuelPct;
 
             // Calcoliamo la capienza di base del Player per dedurre il BoP della classe come fallback
             double playerBaseCap = 120.0;
@@ -2213,67 +2215,6 @@ namespace SimRIG
             _liveFuelAvgLogged = false;
             OpponentPittedInWet = false;
             LastOpponentPittedInWetName = "";
-        }
-
-        private Dictionary<string, double> ParseOpponentMaxFuelPct(string yaml)
-        {
-            var dict = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-            if (string.IsNullOrEmpty(yaml)) return dict;
-
-            string[] lines = yaml.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            bool inDrivers = false;
-            string currentName = null;
-
-            foreach (var line in lines)
-            {
-                if (line.StartsWith("DriverInfo:"))
-                {
-                    inDrivers = false;
-                }
-                else if (line.Contains("Drivers:"))
-                {
-                    inDrivers = true;
-                }
-                else if (inDrivers)
-                {
-                    if (line.Length > 0 && !char.IsWhiteSpace(line[0]) && !line.TrimStart().StartsWith("-"))
-                    {
-                        inDrivers = false;
-                        continue;
-                    }
-
-                    string trimmed = line.Trim();
-                    if (trimmed.StartsWith("- UserName:") || trimmed.StartsWith("UserName:"))
-                    {
-                        int colonIdx = trimmed.IndexOf(':');
-                        if (colonIdx != -1)
-                        {
-                            currentName = trimmed.Substring(colonIdx + 1).Trim();
-                            if (currentName.StartsWith("\"") && currentName.EndsWith("\"") && currentName.Length > 1)
-                            {
-                                currentName = currentName.Substring(1, currentName.Length - 2);
-                            }
-                            else if (currentName.StartsWith("'") && currentName.EndsWith("'") && currentName.Length > 1)
-                            {
-                                currentName = currentName.Substring(1, currentName.Length - 2);
-                            }
-                        }
-                    }
-                    else if (trimmed.StartsWith("CarClassMaxFuelPct:"))
-                    {
-                        int colonIdx = trimmed.IndexOf(':');
-                        if (colonIdx != -1 && !string.IsNullOrEmpty(currentName))
-                        {
-                            string val = trimmed.Substring(colonIdx + 1).Trim().Replace('%', ' ').Trim();
-                            if (double.TryParse(val, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double pct))
-                            {
-                                dict[currentName] = pct;
-                            }
-                        }
-                    }
-                }
-            }
-            return dict;
         }
 
         private void CalculateCategoryAverages(double[] speeds, out double avgLow, out double avgMid, out double avgHigh)
