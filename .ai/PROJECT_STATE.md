@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-09-05T14:40:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-09-05T15:00:00Z
+task:       Y-53 riclassificato, Hardware/ nella mappa dei moduli, Y-56 (lock non pushato)
+scope:      .ai/**  — NESSUN file di codice, NESSUN file in Hardware/
+expires:    2026-09-05T17:30:00Z
 ```
 
 **Regole del lock**
