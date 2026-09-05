@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-09-05T09:45:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-09-05T11:00:00Z
+task:       Y-52 passo 1 — SessionMetadata + SessionYamlParser + cache di sessione + dump
+scope:      nuovi file SessionMetadata/SessionYamlParser/SessionMetadataDump, SessionState, TelemetryReader, OpponentTracker (solo il consumo del BoP), settings, csproj. NESSUN cambio di comportamento.
+expires:    2026-09-05T15:00:00Z
 ```
 
 **Regole del lock**
