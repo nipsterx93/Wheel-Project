@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE          # NONE | antigravity | claude | codex | human
-since:      2026-09-04T10:40:00Z
-task:       —
-scope:      —
-expires:    —
+owner:      claude        # NONE | antigravity | claude | codex | human
+since:      2026-09-05T09:00:00Z
+task:       Y-34 — FuelToAdd all'intero, per eccesso in tutte le modalita'
+scope:      FuelManager.cs + test. Niente broadcast: si resta sulle macro.
+expires:    2026-09-05T12:00:00Z
 ```
 
 **Regole del lock**
