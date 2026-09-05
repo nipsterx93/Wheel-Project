@@ -184,7 +184,8 @@ precisa a cui rispondere. Nessun agente deve toccarli prima.
 Una sessione nuova **non ricorda niente** delle precedenti. Quello che sopravvive è solo il
 repository. Per ripartire, chiedi all'agente di leggere in quest'ordine:
 
-1. `CLAUDE.md` — regole operative, comandi di build e test
+1. `AGENTS.md` — regole operative, comandi di build e test (vale per ogni agente;
+   `CLAUDE.md` e `GEMINI.md` sono puntatori a quello)
 2. `.ai/PROJECT_STATE.md` — lock, debiti noti, punti congelati
 3. `.ai/HANDOFF_LOG.md` — cosa è successo negli ultimi turni
 4. **questo file** — il quadro d'insieme

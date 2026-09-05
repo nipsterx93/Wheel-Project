@@ -162,7 +162,7 @@ richiamati da `TestRunner.Main`, e il file va aggiunto al `<Compile>` del `.cspr
 > **Nota di aggiornamento (2026-09-05, claude).** Un ADR accettato non si modifica, ma questa
 > conseguenza ha smesso di essere vera e seguirla porterebbe fuori strada: `User.PluginSdkDemo.sln`
 > contiene **entrambi** i progetti, quindi il progetto di test viene compilato dalla build principale.
-> `CLAUDE.md` è già allineato. Verificato leggendo le voci `Project(...)` della solution.
+> `AGENTS.md` è già allineato. Verificato leggendo le voci `Project(...)` della solution.
 
 ---
 
@@ -243,6 +243,39 @@ temporale è aggirabile e non si trasferisce fra circuiti.
 - *Media invece di mediana*: un solo campione fuori scala la trascina, ed è il caso da cui ci si difende.
 - *Prendere sempre l'ultimo valore*: è il difetto che ha lasciato passare gli 80 km/h di Misano.
 - *Prendere sempre il primo*: è il difetto opposto, che ha congelato `PitExitPct` a 0.1088 per settimane.
+
+---
+
+### ADR-006 — Le regole di progetto stanno in un file neutro, non nel file di un vendor
+
+- **Data:** 2026-09-05
+- **Stato:** Accettato
+- **Deciso da:** umano + claude
+
+**Contesto**
+Il protocollo (lock, build, trappole, convenzioni, regole di review) viveva in `CLAUDE.md`.
+Claude Code carica quel file da solo a ogni sessione; Gemini/Antigravity e Codex **no**. Il
+risultato è un'asimmetria misurabile: dei 22 handoff archiviati al 2026-09-05, **21 sono firmati
+`claude` e uno `antigravity`**. Un protocollo che raggiunge automaticamente un agente su tre non è
+un protocollo condiviso, è una convenzione di uno solo.
+
+**Decisione**
+Il contenuto sta in **`AGENTS.md`** alla radice — nome neutro, già convenzionale per diversi
+strumenti. `CLAUDE.md` e `GEMINI.md` restano come **puntatori di poche righe** al file neutro:
+esistono solo perché ciascuno strumento carica il proprio, e non contengono regole proprie.
+Una regola si cambia in `AGENTS.md` e basta.
+
+**Conseguenze**
+- Aggiungere un agente domani costa un puntatore di sei righe, non una copia da tenere allineata.
+- I puntatori ripetono **due** cose sole (leggi il lock prima di scrivere; handoff e rilascio a
+  fine turno): sono le uniche il cui costo, se ignorate, è una sovrascrittura silenziosa.
+- Chi cerca le regole in `CLAUDE.md` per abitudine ci trova il rimando, non un vicolo cieco.
+
+**Alternative scartate**
+- *Duplicare il contenuto in `GEMINI.md`*: due copie vanno fuori sincrono. Questo repo ne ha già la
+  prova — "186 test PASS" è rimasto in `PROJECT_STATE.md` mentre erano 295, per la stessa ragione.
+- *Lasciare tutto in `CLAUDE.md` e incollarlo a mano agli altri*: dipende dal fatto che qualcuno se
+  ne ricordi, cioè esattamente ciò che ADR-001 dice non sopravvivere a un cambio di sessione.
 
 ---
 

@@ -9,6 +9,244 @@
 
 ---
 
+## [2026-09-02 10:00] claude -> utente (serve un replay di verifica)
+
+**Task:** Y-48 — collegare al punto 4 anche il **totale** e la **proiezione** del leader, che
+seguivano ancora il P1 istantaneo. Piu' la correzione della validazione a orizzonti fissi.
+**Commit:** `954ec57` (lock) - questo
+**Log analizzato:** `Logs/Road Atlanta/SimRIG_DebugLog_20260901_202537.csv`
+
+### La verita' di terreno e' arrivata, ed e' il risultato del progetto
+
+Primo dato **misurato** invece che riferito. Leader `Kalyann Mey4`, nell'istante in cui il cronometro
+e' andato a zero: **38 giri completati + 0.0615 di giro = 38.061**, quindi 39 giri.
+
+Verificato contro i tick adiacenti: l'ultimo col countdown positivo dava 38.055, il primo a zero
+38.073. La fotografia e' caduta esattamente in mezzo.
+
+**Validazione a orizzonti fissi, contro il vero 38.061:**
+
+| a | punto 4 (chi comanda) | criterio vecchio (P1) |
+|---|---|---|
+| -20 min | 38.845 (**+0.784**) | 38.705 (+0.644) |
+| -15 min | 38.148 (**+0.087**) | 29.028 (**-9.033**) |
+| -10 min | 38.074 (**+0.013**) | 38.074 (+0.013) |
+| -5 min | 38.027 (**-0.034**) | 37.918 (-0.143) |
+| -2 min | 38.031 (**-0.030**) | 38.029 (-0.032) |
+
+Il punto 4 cala in modo **monotono** — il criterio che il report esterno chiedeva e che non avevamo
+mai potuto applicare. Il vecchio no: a 15 minuti crolla a 29.028.
+
+**E non e' convergenza di fine gara.** La proiezione inchioda 38.06-38.10 **da 12 minuti dalla fine**,
+cioe' dieci giri del leader prima, e non se ne muove:
+
+```
+tl=717  (12.0 min)  proiettata=38.10   errore +0.039
+tl=535  ( 8.9 min)  proiettata=38.07   errore +0.009
+tl=444  ( 7.4 min)  proiettata=38.07   errore +0.009
+```
+
+⚠️ **Il 38.8 del software di riferimento non e' la verita' finale.** Il vero e' 38.061; il
+riferimento mostra 38.8-38.99 a meta' gara e il nostro punto 4 mostrava 38.845 a 20 minuti. Sono
+entrambi alti di ~0.78 e **concordano fra loro**. Il numero che trattavamo come metro esatto era una
+proiezione di meta' gara con il nostro stesso scostamento. Ipotesi sull'origine (non verificata): le
+soste che ai leader mancavano ancora.
+
+### Il difetto che l'utente ha visto, e perche' c'era
+
+Il totale del leader crollava ancora a 28-30 per **29 tick**. Nello stesso identico tick:
+
+```
+t=20:36:33  VECCHIO: P1=Alessandro Barbagallo  proiez=27.886  -> totale 30
+            PUNTO 4: comanda=Aleix Nogue  passo=68.18  proiez=38.27
+```
+
+**La risposta giusta era calcolata e non collegata.** Nel turno di accensione avevo cablato al punto 4
+solo il *tempo alla bandiera*, lasciando di proposito il totale del leader sul criterio vecchio per non
+spostare il numero che l'utente usava per i confronti. Svista di scoping, non un limite del criterio.
+
+### Fatto
+
+- `RaceAnalyzer.cs:ResolveLeaderPosAtZero` (nuovo, funzione pura) — la scelta fra la proiezione di
+  chi comanda e quella del P1 istantaneo. Estratta perche' **questo difetto era esattamente il
+  chiamante**: e' la lezione di Y-31 per la terza volta in questo repository.
+- Il calcolo del punto 4 e' stato **spostato piu' in alto**, prima del totale del leader: e' da li'
+  che discendono sia il totale sia il tempo alla bandiera.
+- `LeaderProjectedPosAtCheckered`, `LeaderRaceTotalLaps` e i giri rimanenti del leader vengono ora
+  tutti dalla vettura al comando. I giri rimanenti si contano sulla **sua** posizione: mescolare il
+  totale di una vettura con la posizione di un'altra darebbe un conteggio che non descrive nessuna
+  vettura reale.
+- La riga `Flag Moment` espone `totLeader=` e la proiezione del vecchio criterio, per il confronto.
+- **Corretta la strumentazione di ieri**: la riga di verita' di terreno confrontava la proiezione
+  **allo scadere**, quando il countdown vale zero e la proiezione coincide per costruzione con la
+  posizione misurata — i tre numeri leggevano tutti 38.061 e il confronto non dimostrava niente. Ora
+  `RecordValidationHorizons` fotografa la proiezione a 20/15/10/5/2 minuti e la riga
+  `Projection Validation` le stampa a fine gara con gli errori gia' calcolati.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit code `0`, **253 `[PASS]`** (erano 248).
+
+### Stato
+
+- Compila - 0 errori. 253 test passano.
+- Regressione ADR-004, **due neutralizzazioni**, entrambe rosse:
+
+| cosa ho neutralizzato | test rosso | valore ottenuto |
+|---|---|---|
+| il totale del leader torna a seguire il P1 istantaneo | deve vincere la proiezione di chi comanda | `ottenuto 27,886` |
+| via il ripiego quando non c'e' vettura al comando | e' dichiarato assente | `ottenuto 500` |
+
+### Per chi entra
+
+**Prossimo passo: un replay di verifica.** Road Atlanta, la solita gara a 3x. Tre cose:
+
+1. **Il crollo a 28 e' sparito?** Nelle righe `RaceProjectionsDiagnostics`, `LatchedTotal` del leader
+   non deve piu' scendere sotto 38. Era 29 tick su 882.
+2. **Il totale del Player e' rimasto buono?** E' il numero da cui esce il carburante e l'unico motivo
+   per tornare indietro. Il migliore mai misurato e' **1.2%** di tick sbagliati (`20260901_202537`);
+   la baseline era 13.3%. **Cautela:** i due run con codice attivo identico prima di questo hanno
+   dato 3.6% e 12.9%, quindi la variabilita' e' alta e un solo replay non basta a concludere.
+3. **La riga `Projection Validation`** a fine gara: gli errori devono calare in modo monotono. Ora e'
+   automatica, non serve piu' ricostruirla a mano dal log.
+
+**Poi:** **Y-44** (il tempo di sosta sovrastimato del 49%), che e' il difetto residuo sul numero del
+Player. Restano anche 3, 5, 7.
+
+**NON toccare:** `TimeUntilLeaderCheckered` (tre fonti concordi), `FuelWeightCoef` (`0.03`, s/kg), e
+il limite di plausibilita' sul passo, che col criterio del massimo e' **portante**.
+
+**Attenzione a:** in questo filone lo stesso schema si e' ripetuto tre volte — una formula corretta
+collegata al posto sbagliato (Y-31, Y-46, Y-48). Quando un valore sembra sbagliato, prima di
+sospettare la formula conviene controllare **da dove arriva**.
+
+---
+
+## [2026-09-02 01:00] claude -> utente (serve un replay di verifica)
+
+**Task:** accendere il punto 4 v3, e aggiungere la verita' di terreno sulla posizione del leader
+allo scadere del cronometro (Y-47, richiesta dell'utente).
+**Commit:** `b9e090a` (lock) - questo
+**Log che ha deciso l'accensione:** `Logs/Road Atlanta/SimRIG_DebugLog_20260901_184453.csv`
+
+### Perche' si e' acceso
+
+La prova era una sola: il **supplemento** di fine gara, cioe' di quanto la bandiera esce dopo lo
+scadere del cronometro. Allo scadere il leader e' a meta' giro in media, quindi su un giro da 69 s
+deve valere ~35 s e non puo' quasi mai essere zero. Su 758 campioni di gara:
+
+```
+criterio ATTUALE (P1 di adesso)     mediana 24.7 s
+criterio v3 (chi COMANDA)           mediana 53.7 s   <- plausibile
+criterio v2 (bocciato)              mediana  4.9 s   <- impossibile
+```
+
+v2 ha ridato 4.9 s dove il run precedente dava 5.2: il difetto si e' riprodotto identico.
+
+**La finestra Barbagallo, che e' il caso per cui il punto 4 esiste.** Con lui P1 istantaneo e passo
+registrato 278.60 s:
+
+```
+tl=876  USATO=1030.9 (P1=Barbagallo, suppl 154.7)  V3=927.3 (comanda Aleix Nogue, passo 68.22, suppl 51.1)
+tl=864  USATO= 982.4 (P1=Barbagallo, suppl 118.4)  V3=917.7 (comanda Aleix Nogue, passo 68.22, suppl 53.6)
+tl=851  USATO= 946.8 (P1=Barbagallo, suppl  94.9)  V3=903.9 (comanda Aleix Nogue, passo 68.22, suppl 52.0)
+```
+
+Un supplemento di 154.7 s e' piu' di due giri interi del leader: impossibile. v3 tiene ~50 s stabili
+e al comando non mette **mai** Barbagallo. **Y-38 sciolto, osservato e non dedotto.**
+
+Sul leader v3 da' mediana **38.840** contro il **38.8** del software di riferimento dell'utente; il
+criterio vecchio dava 38.549.
+
+### Costi, dichiarati prima del replay e non dopo
+
+- identita' del comando: **67 cambi** contro 3;
+- salti del valore oltre 10 s: **44** contro 16 — ma con massimo **68.6 s** (un giro del leader,
+  cioe' il giro fantasma, che e' fisico) contro i **132.8 s** del criterio vecchio, che non
+  corrisponde a niente;
+- impatto stimato sul totale del Player: **80.2% identico, 16.9% un giro in piu', 2.9% un giro in
+  meno**. La direzione prevalente e' quella sicura.
+
+Quel 16.9% e' calcolato sulla proiezione **grezza**: il totale esposto passa prima dal filtro di
+Y-45, che e' fatto apposta per assorbire picchi brevi, e i salti di v3 sono brevi. L'impatto vero
+sara' minore, ma quanto minore non e' misurabile senza accendere.
+
+### Y-47: smettere di trattare il 38.8 come verita' rivelata
+
+Richiesta dell'utente, e ha ragione: il 38.8 e' il numero di **un altro software**, mai verificato,
+che puo' avere una sua deviazione. Aggiunte, senza alcun cambio di comportamento:
+
+- `LeaderPosAtExpiry` - dove si trova il leader nell'**istante esatto** in cui il cronometro va a
+  zero: giri completati + frazione di giro. Fotografato una volta sola e mai piu' toccato.
+  `Math.Ceiling` di quel numero **e'** quanti giri il leader completera' davvero.
+- `LeaderNameAtExpiry`, `LeaderTrackPctAtExpiry` - chi era e a che punto del giro.
+- `LeaderTrackPct` - posizione grezza del leader **adesso**, che cambia vettura col leader.
+- `FlagLeaderName`, `FlagLeaderProjectedPos` - chi comanda secondo il punto 4 e dove sara'.
+- riga di log `Leader Position At Expiry`: allo scadere mette in fila verita' di terreno, proiezione
+  del punto 4, proiezione del criterio vecchio.
+
+### Come verificare
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit code `0`, **248 `[PASS]`** (erano 242).
+
+### Stato
+
+- Compila - 0 errori. 248 test passano.
+- Regressione ADR-004, **cinque neutralizzazioni**, tutte verificate rosse.
+
+| cosa ho neutralizzato | test rosso | valore ottenuto |
+|---|---|---|
+| il ripiego quando non c'e' vettura al comando | un risultato assente non si usa | `ottenuto 500` |
+| ritorno al P1 di questo istante | deve vincere la vettura al comando | `ottenuto 1030,9` |
+| il guard sul countdown positivo | in griglia non si fotografa | rosso |
+| il guard "una volta sola" | ma non una seconda volta | rosso |
+| il guard sul cronometro in corsa | a meta' gara no | rosso |
+
+**Una delle cinque ha trovato un buco nei miei stessi test, ed e' il motivo per cui il passo
+esiste.** La prima neutralizzazione non diventava rossa: il caso che avevo scritto per coprire il
+ripiego passava **anche** grazie a un secondo guard sullo zero, quindi il primo non era verificato da
+nulla. Aggiunto il caso con un valore non nullo, ora scatta.
+
+### Per chi entra
+
+**Prossimo passo: un replay di verifica.** Road Atlanta, la solita gara a 3x. Tre cose, in ordine:
+
+1. **Il totale del Player e' peggiorato?** E' il numero da cui esce il carburante e l'unico motivo
+   per tornare indietro. Metro: tick con `RaceTotalLaps != 35` in gara. Il migliore mai misurato e'
+   **3.6%** (`20260901_175019`); la baseline era 13.3%. Se sale sopra il 13%, si reverte: e' un solo
+   commit, e il punto di partenza e' il tag `baseline-proiezioni-2026-08-31`.
+2. **La verita' di terreno cosa dice?** Riga `Leader Position At Expiry`. Confronta `posAssoluta`
+   (misurata) con `noiAvevamoProiettato` e con `vecchioCriterio`. **E' la prima volta che possiamo
+   dire chi ha ragione senza dipendere da un altro software.**
+3. **Il supplemento resta plausibile?** Nelle righe `Flag Moment`, il campo `suppl=` di `USATO=` deve
+   stare intorno a 35-55 s.
+
+**Poi:** **Y-44** (il tempo di sosta sovrastimato del 49%), che e' il difetto visibile residuo sul
+numero del Player. Restano anche 3, 5, 7.
+
+**NON toccare:** `TimeUntilLeaderCheckered` (tre fonti concordi), `FuelWeightCoef` (`0.03`, s/kg), e
+il limite di plausibilita' sul passo — che ora e' **portante**, perche' col criterio del massimo un
+passo falsamente veloce va al comando.
+
+**Attenzione a:** il punto 4 e' stato riscritto tre volte, e ogni bocciatura e' arrivata dalla stessa
+mossa: trovare una grandezza **fisica**, controllabile senza sapere niente del codice, e chiedersi se
+il numero e' possibile. Prima il minimo che collassava sul countdown, poi il supplemento da 5
+secondi. Prima di accendere qualcosa, cercare quella grandezza.
+
+---
+
 ## [2026-09-01 21:30] claude -> utente (serve un replay)
 
 **Task:** punto 4, dal minimo del tempo di attraversamento al **massimo della posizione proiettata**.

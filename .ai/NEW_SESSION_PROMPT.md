@@ -15,15 +15,17 @@ Questa è una sessione nuova: non hai memoria delle precedenti, ma il progetto s
 
 LEGGI IN QUESTO ORDINE, SENZA SALTARE:
 
-1. CLAUDE.md
+1. AGENTS.md
    Regole operative, protocollo del lock, trappole del repo (file LEGACY non compilati, .csproj
    senza glob, file enormi da leggere a fette). Include la sezione "Sessioni di revisione" se il
    tuo compito è rivedere invece di implementare.
+   Valgono per ogni agente: CLAUDE.md e GEMINI.md sono solo puntatori a questo file.
 
 2. .ai/PROJECT_STATE.md
    Parti dal blocco LOCK (se owner non è NONE e non sei tu, NON tocchi codice), poi la sezione
-   "Da dove partire", poi la tabella dei punti Y-1…Y-30: è lo stato di ogni questione aperta e
-   chiusa, con commit e numeri misurati.
+   "Da dove partire", poi la tabella dei punti APERTI, con commit e numeri misurati.
+   I punti già chiusi sono un indice di una riga ciascuno: il testo integrale sta in
+   .ai/archive/CLOSED_POINTS.md e si apre solo quando serve quel punto preciso.
 
 3. .ai/plans/2026-08-30-formule-corrette-fine-gara.md
    LE FORMULE CORRETTE per la proiezione di fine gara, trascritte da una revisione esterna.

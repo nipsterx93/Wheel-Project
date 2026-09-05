@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      claude        # NONE | antigravity | claude | codex | human
-since:      2026-09-05T14:20:00Z
-task:       Regole di progetto in un file neutro (AGENTS.md), CLAUDE.md e GEMINI.md a puntatore
-scope:      AGENTS.md, CLAUDE.md, GEMINI.md, .ai/**  — NESSUN file di codice
-expires:    2026-09-05T17:00:00Z
+owner:      NONE          # NONE | antigravity | claude | codex | human
+since:      2026-09-05T14:40:00Z
+task:       —
+scope:      —
+expires:    —
 ```
 
 **Regole del lock**
