@@ -42,6 +42,70 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-05 09:40] claude → chiunque entri dopo
+
+**Task:** Y-34 — `FuelToAdd` all'intero, sempre per eccesso, in tutte le modalità
+**Piano:** —
+**Commit:** `0355676`
+
+### Fatto
+- `FuelManager.cs` — estratte due funzioni pure: `MarginForMode(mode, consumption)` e
+  `RoundFuelToAdd(rawLitres, maxFuelCapacity)`.
+- `NormalMarginLitres = 0.6` sostituisce `consumption * 0.3`.
+- L'arrotondamento avviene **in fondo a tutti i percorsi**, Sync/anti-zavorra e Manual comprese.
+- `FuelRoundingUnitTests.cs` — file nuovo, registrato **sia** nel `.csproj` **sia** in
+  `TestRunner.cs`.
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/User.PluginSdkDemo.Tests.csproj" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit `0`, **289 PASS** (erano 283).
+
+**Regressione neutralizzata (ADR-004):** rimettendo `Math.Round(..., 1)` in `RoundFuelToAdd` il
+test del caso reale fallisce con `da' 30,5` — il numero che il plugin mandava davvero.
+
+### Lo schema, e perché è cambiato
+⚠️ **Diverso da quello approvato il 2026-08-29.** Non più AGGR per difetto / NORM al più
+vicino / SAFE per eccesso, ma **per eccesso ovunque**, per decisione dell'utente.
+
+| modalità | margine | note |
+|---|---|---|
+| AGGR | nessuno | il cuscinetto glielo dà il Ceiling, fra 0 e 1 L |
+| NORM | `0.6 L` fissi | prima `consumo * 0.3`, cioè proporzionale |
+| SAFE | un giro intero | invariato, era già `= consumption` |
+
+Caso reale che lo chiude (`Correzioni Post Test Pirpi/Test.txt`, Road Atlanta): il software di
+riferimento chiedeva **31 L**, noi ne mandavamo **30.5**. Col Ceiling coincidono.
+
+### Attenzione per chi entra
+- ⚠️ **NORM cambia comportamento in due versi opposti.** Da proporzionale a fisso: su una
+  vettura da 4 L/giro il margine scende da 1.2 a 0.6 L, su una da 1.5 L/giro sale da 0.45 a 0.6.
+  A Road Atlanta (2.25 L/giro misurati) i due quasi coincidono, quindi un replay lì **non**
+  mostrerebbe la differenza. Serve una vettura con consumo molto diverso per vederla.
+- ⚠️ **`FuelStep` parte da `0.1` L** e `UserFuelOffset` entra in *tutte* le modalità, non solo
+  Manual. Con l'intero, un colpo di encoder da 0.1 spesso non muove più il risultato: il default
+  andrebbe forse portato a `1.0`. È una **decisione di prodotto** e non è stata presa qui.
+- ⚠️ **La rete di sicurezza su `MaxAchievableFuelSaving` non serve più** per l'arrotondamento.
+  `ComputeFuelSaving` resta per `IsFuelSavingAchievable`, e il suo `0.15` resta un valore **scritto
+  nel codice, non misurato su un replay**.
+- La macro **non** è stata toccata: `string.Format("{0}", val)` su un double intero rende `31`,
+  non `31.0`. Se un domani si passasse a un formato esplicito tipo `F1`, il fix di Y-34 si
+  perderebbe silenziosamente.
+- Il tetto del serbatoio si applica **dopo** l'arrotondamento e sul suo **intero inferiore**:
+  `MaxFuel` è frazionario e limitare a 63.7 dopo aver arrotondato a 64 rimetterebbe un decimale.
+
+### Stato dei lavori nati dall'analisi irdashies
+Fatti: Y-50 (valvola di sfogo dell'IQR), Y-13 (piega del gap), Y-51 (timestamp a 400), Y-34.
+Rimasti sul tavolo, mai iniziati: distanza metrica dalla piazzola box, e punto cieco sui LED della
+corona (il canale d'uscita `_serialLeds` esiste già, manca solo leggere `CarLeftRight`).
+**Escluso per decisione dell'utente:** il broadcast nativo iRacing — si resta sulle macro.
+
+---
+
 ## [2026-09-04 10:30] claude → chiunque entri dopo
 
 **Task:** Y-13 (il gap saltava di un giro al rollover) + Y-51 (risoluzione dei timestamp 100 → 400)
