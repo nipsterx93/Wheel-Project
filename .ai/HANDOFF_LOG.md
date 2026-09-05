@@ -1,4 +1,4 @@
-﻿# HANDOFF LOG
+# HANDOFF LOG
 
 > Diario dei passaggi di consegne. **Append in cima** (il più recente per primo).
 > Si tengono solo gli **ultimi 10** handoff.
@@ -44,6 +44,45 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 **NON toccare:** <file/aree fuori scope>
 **Attenzione a:** <insidie, assunzioni, cose lasciate a metà>
 ```
+
+---
+
+## [2026-09-05 13:15] antigravity → chiunque entri dopo
+
+**Task:** Y-52 Passo 2 di 4 — Seeding `DriverCarEstLapTime` e `CarClassEstLapTime` nei ripieghi di passo e introduzione flag `IsLapsPredictionValid`
+**Piano:** —
+**Commit:** questo
+
+### Fatto
+- `User.PluginSdkDemoEdit/RaceAnalyzer.cs`:
+  - Aggiunto `public bool IsLapsPredictionValid { get; set; } = false;` in `RaceAnalysisResult`.
+  - Introdotti helper puri `ResolvePlayerPace`, `ResolveLeaderPace`, `IsLapsPredictionValid`.
+  - Sostituito il vecchio ripiego cablato `120.0s` con la cascata gerarchica: baseline normalizzata > best lap registrato in sessione > `DriverCarEstLapTime` (prior pilota) > `CarClassEstLapTime` (prior classe) > fisica del tracciato (`trackLength / 50.0`) > `120.0s`.
+  - In `ComputeFlagMoment`, seminato il passo degli avversari non ancora cronometrati da `Metadata.EstimatedPaceFor`, garantendo fin dal via l'identificazione corretta della vettura al comando.
+  - Connesso `Results.IsLapsPredictionValid` allo stato di gara e al ciclo di vita della sessione.
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs`:
+  - `refLapTime` ripiega su `state.Metadata.PlayerEstimatedPaceSec` e `state.Metadata.EstimatedPaceFor` prima di `trackLength / 50.0`.
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs`:
+  - Registrata e pubblicata la proprietà SimHub `SimRIG.Session.IsLapsPredictionValid`.
+  - Leaderboard laterale (`lapPaceSec`) ripiega sui metadati stimati prima di `trackLen / 45.0`.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/PredictedPaceUnitTests.cs`:
+  - 15 unit test che verificano gerarchia fonti (ADR-005), risoluzione leader, transizioni flag di validità e regressione Road Atlanta GT3 (36 giri proiettati al semaforo verde, risolvendo il buco nero dei 23 giri causato dal fallback a 120s).
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit code `0`, tutti i 311 test passano (100%).
+
+### Stato
+- ✅ Compila — 0 errori
+- ✅ Test passano (100% PASS, 311/311 unit test)
+
+### Per chi entra
+**Prossimo passo:** Y-52 Passo 3 di 4 — radar piazzola box metrica (`DriverPitTrkPct` per indicare la distanza in metri allo stallo assegnato).
+**NON toccare:** `Hardware/` (territorio di Andreas).
+**Attenzione a:** la semina è valida al semaforo verde (`SessionTimeLeft > 0`). In griglia con tempo `-1` `TimeUntilLeaderCheckered` restituisce 0 come da design.
 
 ---
 
@@ -534,120 +573,6 @@ Atteso: 0 errori di build, `[TEST SUCCESS] All Fuel Outlier Filter Tests Passed!
 **Attenzione a:** I flag di latch in `FuelManager.cs` mantengono il reset separato dopo la valutazione del giro per evitare corruzione al traguardo.
 
 ---
-
-## [2026-09-03 18:00] claude -> utente
-
-**Task:** inventario di passo e perdita ai box (nessun codice), poi **Y-49** — l'ancora del passo che
-non riusciva mai a correggersi.
-**Commit:** `f033a78` (inventario) · `bc03c45` (lock) · questo
-**Documento:** `.ai/plans/2026-09-03-inventario-passo-e-sosta.md`
-
-### Perche' un inventario
-
-Lo stesso schema — *un calcolo corretto che esiste gia', collegato al posto sbagliato* — si era
-ripetuto cinque volte in una settimana. L'utente ha chiesto una mappa prima di continuare a
-correggere. Ne sono usciti **sette scollegamenti** non ancora noti, oltre ai quattro gia' chiusi.
-
-I due che contano di piu':
-
-- **`EstimatedCurrentPace`** (baseline + degrado + peso carburante + temperatura) e' calcolato,
-  esposto come proprieta' SimHub e loggato a ogni giro. La proiezione usa la baseline nuda: **77.24
-  contro 76.524**, cioe' **0.94%**, cioe' **0.33 giri su 35**. *(L'utente ha poi chiarito che quel
-  valore e' teorico e non lo vuole usare: la decisione resta sua, il dato resta misurato.)*
-- **`IsSequential`** e' letto da due formule su tre. La proiezione del carburante usa sempre
-  `max(benzina, gomme)`: su una Porsche Cup sono **18 s di errore per sosta**.
-
-### La correzione dell'utente, e il difetto vero
-
-Nell'inventario avevo scritto che la baseline del passo e' "il primo giro valido", e avevo proposto
-come lavoro nuovo di ancorarla al giro piu' veloce. **L'utente ha corretto: l'ancora sul giro
-migliore esiste gia'** (`OpponentTracker.cs:1506-1520`, la abbassa a ogni giro piu' veloce). Aveva
-ragione, e il documento e' stato corretto.
-
-Ma allora il **278.563** di Barbagallo non doveva sopravvivere. Non sopravviveva per caso: e'
-l'**ordine dei controlli**. La finestra di validita' gira *prima* dell'aggiornamento e scarta i giri
-che deviano oltre il **-2.0%** dalla baseline — quindi un giro molto piu' veloce viene giudicato dal
-numero che dovrebbe correggere.
-
-```
-Baseline Established           48 volte
-Baseline Updated (Better)      55 volte
-Baseline Reset (Improvement)    0 volte     <- non e' sfortuna
-
-Alessandro Barbagallo   ancora 278.563 s al giro 7, mai piu' aggiornata
-finestra che ne deriva  [273.0 , 288.3]
-i suoi giri veri        ~69 s    ->  204 s sotto il limite, tutti rifiutati
-```
-
-**E c'era un secondo blocco, aritmetico.** Il ramo `Reset (Improvement)` pretendeva un miglioramento
-superiore a **1.5 s**, ma la finestra ne concedeva al massimo il **2%** della baseline. Sotto i 75 s
-di giro le due condizioni sono incompatibili: su una GTP a 69 s la finestra concede 1.38 s e il ramo
-ne chiede 1.5. **Non poteva scattare mai.** Gli zero casi contati lo confermano.
-
-### Fatto
-
-- `OpponentTracker.UpdatePaceAnchor` (nuova, funzione pura) — il lato veloce dell'ancora. Un
-  miglioramento ordinario si prende subito; uno **grande** resta in attesa finche' un secondo giro
-  non lo conferma, e finche' e' in attesa **il giro non entra nella storia**.
-- La finestra di validita' giudica ora **solo il lato lento** (+3.5%).
-- `OpponentTelemetryData.PendingPaceAnchor` — il valore in attesa.
-- Riga di log `Baseline Improvement Pending`, per vedere le attese invece di dedurle.
-
-**Perche' la conferma e non l'accettazione immediata:** col criterio del massimo (punto 4) un passo
-falsamente **veloce** e' la direzione pericolosa, perche' porta quella vettura al comando e anticipa
-la bandiera per tutti. Due giri consecutivi d'accordo non sono un errore di misura.
-
-### Come verificare
-
-```bash
-"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
-```
-```bash
-"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: exit code `0`, **268 `[PASS]`** (erano 260).
-
-### Stato
-
-- Compila - 0 errori. 268 test passano.
-- Regressione ADR-004, **due neutralizzazioni**, entrambe rosse:
-
-| cosa ho neutralizzato | test rosso |
-|---|---|
-| il miglioramento grande non viene mai confermato | `il secondo giro conferma e va accettato` |
-| un miglioramento grande viene preso subito, senza conferma | `il primo giro vero va tenuto in attesa` |
-
-Un test non esercita codice di produzione ed e' deliberato: fissa per iscritto che il vecchio ramo
-era **aritmeticamente irraggiungibile** sotto i 75 s di giro. Senza, la prossima sessione potrebbe
-rimettere una soglia fissa e rifare l'errore.
-
-### Per chi entra
-
-**Prossimo passo: un replay.** Le due cose da guardare:
-
-1. **Barbagallo si corregge?** Nelle righe `Baseline Established` / `Baseline Updated (Better)` /
-   `Baseline Improvement Pending`, la sua ancora deve scendere dai ~278 s ai ~69 in due giri. Se
-   resta a 278, il rimedio non basta.
-2. **Il totale del Player e' rimasto buono?** Migliore mai misurato **1.0%**; sopra il 13% si torna
-   indietro.
-
-**Poi, dall'inventario, in ordine di valore:**
-- collegare `IsSequential` al ramo carburante (banale, 18 s per sosta su alcune classi);
-- la cascata della perdita ai box: misurato per la classe del Player, geometrico per le altre,
-  **eliminando** il livello che usa la velocita' di punta;
-- decidere se il passo dei candidati del punto 4 debba essere filtrato (scelta di prodotto).
-
-**Decisioni dell'utente da rispettare:** `EstimatedCurrentPace` e' considerato **teorico** e non va
-usato nella proiezione. Il passo resta il normalizzato con media mobile. Resta aperta la sua
-proposta di usare i tempi **grezzi** per tutti — va misurata prima, non adottata: il bias della
-normalizzazione era GT3 0.7%, GTP 2.2%, LMP2 2.9% prima di Y-43.
-
-**Attenzione a:** questo turno ha prodotto un inventario che ha commesso l'errore che denuncia — ho
-dato per assente un calcolo che c'era. Un inventario va **verificato leggendo il codice**, non
-ricordando.
-
----
-
 
 ## Handoff più vecchi
 
