@@ -138,3 +138,25 @@ di chi implementa, non uno più leggero — cambia solo cosa succede quando trov
 - `.ai/HANDOFF_LOG.md` — passaggi di consegne (ultimi 10)
 - `.ai/ARCHITECTURE.md` — ADR, mappa dei moduli, convenzioni
 - `.ai/plans/` — piani di implementazione
+- `.ai/archive/` — **storia consultabile a richiesta, non da caricare a ogni sessione.**
+  `CLOSED_POINTS.md` (il ragionamento completo dei 40 punti chiusi, con i numeri e i commit) e
+  `HANDOFF_LOG_archive.md` (gli handoff oltre i 10 tenuti). Ci si va quando serve contestare una
+  conclusione o ricostruire un turno vecchio — non all'apertura.
+
+---
+
+## Cosa si può concludere da quale macchina
+
+Il progetto è **Windows-only**: build (MSBuild/VS2022 + `SIMHUB_INSTALL_PATH`), test e replay
+girano solo lì. Ma si lavora anche da **macOS**, e la differenza va dichiarata invece che lasciata
+intendere — una sessione su Mac che scrive "compila" sta inventando.
+
+| Da Windows (con SimHub) | Da macOS / senza SimHub |
+|---|---|
+| build, test, conteggio PASS reale | lettura, analisi, review del codice |
+| replay e verifica dei numeri in `Logs/` | documentazione, piani, ADR |
+| chiudere un punto secondo ADR-004 | **proporre** un fix, non dichiararlo chiuso |
+
+`Logs/` è gitignored: esiste solo sulla macchina dell'utente. Chi non ce l'ha **lo dice** invece di
+dare per buono un numero che non può verificare, e chiede i file se gli servono (regola già in
+"Sessioni di revisione", qui estesa a chi implementa).
