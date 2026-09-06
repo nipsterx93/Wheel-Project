@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      —
-task:       —
-scope:      —
-expires:    —
+owner:      antigravity
+since:      2026-09-06T16:35:00+02:00
+task:       Affinamento seeding al via (silenzio in griglia) e freeze fuel giro 1
+scope:      User.PluginSdkDemoEdit/RaceAnalyzer.cs, User.PluginSdkDemoEdit/FuelCalculator.cs, User.PluginSdkDemoEdit/DataPluginDemo.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/
+expires:    2026-09-06T18:35:00+02:00
 ```
 
 **Regole del lock**
