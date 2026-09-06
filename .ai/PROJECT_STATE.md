@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      null
-task:       null
-scope:      null
-expires:    null
+owner:      antigravity
+since:      2026-09-06 14:18
+task:       Y-52 sblocco dump SimRigMetadata.json — estrazione SessionData reale da SimHub e allineamento roadmap
+scope:      .ai/plans/2026-08-24-roadmap.md, .ai/PROJECT_STATE.md, User.PluginSdkDemoEdit/
+expires:    2026-09-06 16:18
 ```
 
 **Regole del lock**
