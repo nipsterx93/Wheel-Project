@@ -3,6 +3,10 @@ description: Bootstrap di una sessione nuova su questo repository — legge i fi
 argument-hint: [tema di lavoro in corso, opzionale — es. "proiezioni fine gara"]
 ---
 
+Equivalente Claude Code di `/new-session` in Antigravity (`.agent/workflows/new-session.md`).
+Stesso contenuto, formato diverso: se una delle due versioni cambia, aggiorna anche l'altra o
+segnalalo in `AGENTS.md` — non devono andare fuori sincrono.
+
 Sei un agente AI su The Wheel Project / Antigravity 2.0 (plugin SimHub, C#/.NET 4.8). Questa
 potrebbe essere una sessione nuova senza memoria delle precedenti: il contesto è nei file, non
 nella chat. Se hai già letto questi file in questa stessa sessione, non rileggerli — usa quanto

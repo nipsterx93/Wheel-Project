@@ -3,6 +3,10 @@ description: Chiude il turno — scrive la voce in HANDOFF_LOG.md dal template, 
 argument-hint: [riassunto in una riga di cosa è stato fatto, opzionale]
 ---
 
+Equivalente Claude Code di `/handoff` in Antigravity (`.agent/workflows/handoff.md`). Stesso
+contenuto, formato diverso: se una delle due versioni cambia, aggiorna anche l'altra o segnalalo
+in `AGENTS.md` — non devono andare fuori sincrono.
+
 Stai chiudendo il turno su The Wheel Project / Antigravity 2.0. Segui questi passi nell'ordine,
 senza saltarne nessuno.
 
