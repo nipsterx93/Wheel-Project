@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      null
-task:       null
-scope:      null
-expires:    null
+owner:      antigravity
+since:      2026-09-06T13:48:00+02:00
+task:       migrazione comandi /new-session e /handoff in .agent/skills/ per Antigravity
+scope:      .agent/skills/
+expires:    2026-09-06T14:48:00+02:00
 ```
 
 **Regole del lock**
