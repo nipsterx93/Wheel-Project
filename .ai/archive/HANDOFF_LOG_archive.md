@@ -9,6 +9,79 @@
 
 ---
 
+## [2026-09-04 10:30] claude → chiunque entri dopo
+
+**Task:** Y-13 (il gap saltava di un giro al rollover) + Y-51 (risoluzione dei timestamp 100 → 400)
+**Piano:** — (decisi dopo un confronto **misurato** con irdashies, non per impressione)
+**Commit:** `96915ef`
+
+### Fatto
+- `TargetStrategyManager.cs:306` — aggiunta `WrapLapDifference`, che **riusa**
+  `PhysicalGapSeconds` con periodo un giro. La primitiva esisteva già (aggiunta per Y-2):
+  mancava solo di applicarla al gap.
+- `TargetStrategyManager.cs:494` e `:1087` — `posDiff` ripiegato entro mezzo giro.
+- **Non toccati di proposito:** `:798` (passa già da `PhysicalGapSeconds`) e `:1296`
+  (**scelta del bersaglio**: minimizza `|posDiff|` in spazio assoluto, ripiegare lì farebbe
+  scambiare un doppiato a un giro esatto per la vettura più vicina).
+- `OpponentTracker.cs` — `TimestampBucketCount = 400` e `TimestampBucketOf` con clamp.
+  Il tracciamento dei timestamp è stato **separato** da quello dei microsettori di velocità.
+- `GapWrapAndResolutionUnitTests.cs` — file nuovo, registrato **sia** nel `.csproj` **sia** in
+  `TestRunner.cs` (la trappola di CLAUDE.md).
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/User.PluginSdkDemo.Tests.csproj" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit `0`, **283 PASS** (erano 277).
+
+**Regressioni neutralizzate (ADR-004), una per fix:**
+- `WrapLapDifference` resa un passante (`return posDiffLaps;`) → il test Y-13 fallisce con
+  `vale 93,033 s`, cioè **il numero reale del replay `20260819_221922`**, non uno inventato.
+- `TimestampBucketCount` riportato a `100` → il test sulla risoluzione fallisce.
+
+### Numeri misurati (profilo di velocità con 12 curve, Misano, giro 91.3 s)
+Errore massimo nel ricostruire il tempo-alla-posizione:
+
+| schema | max | rms |
+|---|---|---|
+| 100 campioni, lineare (prima) | 140.8 ms | 33.5 ms |
+| 100 campioni, Hermite | 76.4 ms | 12.5 ms |
+| **400 campioni, lineare (ora)** | **8.9 ms** | 1.9 ms |
+| 423 campioni, Hermite (irdashies) | 0.9 ms | 0.1 ms |
+
+Il vantaggio di irdashies **non era la spline**: campionano ogni 10 m, noi ogni 42. A parità di
+risoluzione la lineare recupera il 94% del divario. Le bande di isteresi (Y-12) valgono
+150-250 ms: si passava da *sul bordo* a **17 volte dentro**.
+
+Il loro modello **non** è stato adottato: converte una distanza in tempo col passo di un giro
+*veloce*, quindi sottostima il gap e l'errore **cresce col gap** — al +3.3% misurato nei nostri
+log sono 96 ms su 3 s e 319 ms su 10 s. Il nostro misura il tempo vero.
+
+### Attenzione per chi entra
+- ⚠️ **Y-13 era intermittente** (race fra il campione macrosettoriale e il rollover, finestra di
+  pochi millisecondi). L'assenza di `GapJump` in un singolo replay **non** è la prova che sia
+  chiuso: serve confrontare `20260819_221922` (dove si vedeva) con `20260819_230109` (dove no).
+- ⚠️ `ZoneDrop` **non è stato toccato**: i microsettori di velocità restano a 100 perché l'indice
+  era condiviso e cambiarlo avrebbe spostato la classificazione Low/Mid/High del degrado gomme.
+  Se qualcuno in futuro alza *quella* risoluzione, va rivalidato `ZoneDrop`, non solo il gap.
+- ⚠️ La guardia `|t2 - t1| < 10.0` sui timestamp è rimasta a 10 s. Con 400 bucket il delta normale
+  fra bucket adiacenti è ~0.23 s invece di ~0.91 s, quindi la guardia è ora più permissiva in
+  proporzione. Continua a fare il suo mestiere (isolare il salto da un giro intero), ma se si
+  volesse stringerla serve un numero **misurato**, non scelto a occhio.
+
+### Prossimo passo concordato con l'utente
+`FuelToAdd` arrotondato all'intero (Y-34), **senza** broadcast nativo — si resta sulle macro.
+Schema deciso: **AGGR** zero margine + `Ceiling`; **NORM** 0.6 L fissi (oggi è `consumption * 0.3`,
+cioè proporzionale: su una vettura da 4 L/giro il fisso dà **meno** margine, su una parca **più**);
+**SAFE** invariato, già `= consumption`, cioè un giro esatto. Con `Ceiling` ovunque la rete di
+sicurezza su `MaxAchievableFuelSaving` prevista dallo schema Y-34 originale diventa superflua:
+non si può più arrotondare in difetto.
+
+---
+
 ## [2026-09-03 21:15] claude → chiunque entri dopo
 
 **Task:** Y-50 — il filtro IQR del carburante si chiudeva sui rifiuti e non si riapriva più
