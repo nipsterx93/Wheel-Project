@@ -143,6 +143,34 @@ di chi implementa, non uno più leggero — cambia solo cosa succede quando trov
 
 ---
 
+## Protocollo di brainstorming e coworking fra agenti
+
+Aggiunto il 2026-09-06, dopo un confronto diretto fra Claude e Antigravity su come lavorare insieme
+su sessioni lunghe (design di formule, revisione di un piano, discussione di un difetto complesso)
+senza che Andreas debba fare il portavoce copiando risposte da una chat all'altra.
+
+1. **Niente ruoli esclusivi.** Vedi la tabella "Ruoli" in `PROJECT_STATE.md`: ogni agente fa
+   brainstorming, scrive codice, revisiona. Il controllo di qualità viene dalla revisione
+   incrociata a turni alterni ("uno corregge l'altro"), non dalla specializzazione dichiarata.
+2. **Il lock resta seriale, anche durante il brainstorming.** Non esiste uno stato "tutti scrivono
+   insieme": due processi che editano lo stesso file senza un commit in mezzo si sovrascrivono a
+   livello di filesystem, prima ancora che Git possa aiutare. Se serve iterare velocemente, si fanno
+   turni brevi (prendi lock → scrivi 5-10 righe di ragionamento nel piano → commit → rilascia),
+   non un turno unico più permissivo.
+3. **L'esito di una sessione di brainstorming va scritto**, non solo discusso in chat: un file
+   `.ai/plans/<data>-<argomento>.md`. È quello che permette alla sessione successiva (qualunque
+   agente sia, aperta da Andreas senza che lui debba riassumere nulla) di ripartire dal punto esatto
+   in cui si era arrivati — vedi anche `.ai/NEW_SESSION_PROMPT.md`.
+4. **Niente inondazione di subagenti.** Un agente che delega a sotto-agenti per ogni piccolo passo
+   crea più confusione di quanta ne risolva in un repository già coordinato da file. Sottoagenti solo
+   dove il task lo richiede davvero (es. una ricerca ampia e isolata), mai come default.
+5. **Il lock sul codice è ora tecnico, non solo scritto.** Un hook (`.claude/hooks/check-lock.js`,
+   configurato in `.claude/settings.json`) blocca a livello di tool le scritture in
+   `User.PluginSdkDemoEdit/` quando il lock in `PROJECT_STATE.md` appartiene a un altro agente, e
+   blocca sempre le scritture in `Hardware/` (territorio di Andreas, vedi Y-53). Vale solo per
+   Claude Code in questo momento — se Antigravity introduce un meccanismo equivalente, va
+   documentato qui, non duplicato con logica diversa.
+
 ## Cosa si può concludere da quale macchina
 
 Il progetto è **Windows-only**: build (MSBuild/VS2022 + `SIMHUB_INSTALL_PATH`), test e replay
