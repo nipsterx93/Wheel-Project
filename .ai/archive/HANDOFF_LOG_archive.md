@@ -9,7 +9,55 @@
 
 ---
 
-## [2026-09-05 13:20] claude (review a freddo, senza lock) → chiunque entri dopo
+## [2026-09-05 14:10] claude → chiunque entri dopo
+
+**Task:** potatura del contesto — separare la storia chiusa dallo stato attivo
+**Piano:** — (deciso con l'utente dopo la review a freddo di stamattina)
+**Commit:** `7204135` (lock) + questo
+
+### Perché
+`.ai/` pesava **226 KB** letti a ogni ingresso di sessione, prima di aprire una riga di codice —
+con `DataPluginDemo.cs` a 155 KB, un agente consumava buona parte della finestra in sola lettura.
+Due cause misurate: `HANDOFF_LOG.md` dichiarava 10 voci e ne conteneva **22** (112 KB), e il **66%**
+di `PROJECT_STATE.md` (47,6 KB su 72) era storia di punti già chiusi.
+
+### Fatto
+- `.ai/archive/HANDOFF_LOG_archive.md` (nuovo) — le 12 voci oltre le 10 tenute (24/08 → 01/09).
+- `.ai/archive/CLOSED_POINTS.md` (nuovo) — i 40 punti chiusi col testo **integrale**.
+- `.ai/PROJECT_STATE.md` — al posto delle voci chiuse un **indice** di 40 righe (ID · titolo ·
+  esito · commit) e un riquadro che dice dove trovare il resto. **72 KB → 25 KB.**
+- `.ai/HANDOFF_LOG.md` — testata che spiega *come* si pota (togli l'undicesima, spostala in
+  archivio), perché la regola c'era ma nessuno la applicava. **112 KB → 48 KB.**
+- `CLAUDE.md` — `.ai/archive/` nei riferimenti + sezione nuova **"Cosa si può concludere da quale
+  macchina"**: il progetto è Windows-only, ma si lavora anche da macOS e la differenza va
+  dichiarata invece che lasciata intendere.
+
+**Niente è stato riassunto o cancellato: solo spostato.** Verificato con `diff` che il testo
+spostato sia identico byte a byte (`Y-32`: 4066 byte, e la prima voce archiviata dell'handoff).
+
+### Come verificare
+```bash
+wc -c CLAUDE.md .ai/PROJECT_STATE.md .ai/HANDOFF_LOG.md .ai/ARCHITECTURE.md
+grep -c '^## \[20' .ai/HANDOFF_LOG.md          # atteso: 10
+grep -c '^| ~~' .ai/archive/CLOSED_POINTS.md   # atteso: 40
+git show 7204135:.ai/PROJECT_STATE.md | grep '^| ~~Y-32~~' | diff - <(grep '^| ~~Y-32~~' .ai/archive/CLOSED_POINTS.md)
+```
+Atteso: da **226 KB a ~95 KB** letti per ingresso, ultima riga senza output (identici).
+
+### Stato
+- ⏭️ Build e test **non eseguiti**: sessione macOS, e comunque **nessun file di codice toccato**
+  (scope del lock: `.ai/**`). Il codice è esattamente com'era a `bd00979`.
+
+### Per chi entra
+**Prossimo passo:** invariato — Y-52 passo 2 di 4 (vedi handoff del 12:30). La potatura non tocca
+il lavoro in corso.
+**NON toccare:** nulla lasciato a metà.
+**Attenzione a:** ora la regola dei 10 va **applicata**, non solo dichiarata: quando aggiungi la
+tua voce, sposta l'undicesima in `.ai/archive/HANDOFF_LOG_archive.md`. Se torna a 22 voci fra un
+mese, questo turno è stato inutile. Stessa cosa per i punti: quando ne chiudi uno, il testo lungo
+va in `CLOSED_POINTS.md` e in `PROJECT_STATE.md` resta la riga d'indice.
+
+---
 
 **Task:** ingresso a freddo su richiesta dell'utente — analizzare progetto, codice e documenti,
 aggiornare la documentazione sullo stato attuale. **Nessun file di codice toccato.**

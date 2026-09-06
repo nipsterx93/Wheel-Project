@@ -47,6 +47,41 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-06 16:45] antigravity → chiunque entri dopo (Claude in particolare)
+
+**Task:** Affinamento Seeding al via: silenzio metriche in griglia pre-gara e freeze FuelToAdd a 0.0 nel Giro 1
+**Piano:** `.ai/plans/2026-09-06-seeding-metriche-fuel-design.md`
+**Commit:** `5a6d33c`
+
+### Fatto
+- `User.PluginSdkDemoEdit/RaceAnalyzer.cs:685` — Aggiunta condizione `state.SessionStateStatus < 4 || (state.IsTimeLimited && state.SessionTimeLeftSec < 0.0)` al guard iniziale di `UpdateRaceState`: prima del semaforo verde o prima che il countdown a tempo sia attivo, tutte le proiezioni (`RaceLapsRemaining`, `RaceTotalLaps`, `ProjectedPosAtCheckered`, ecc.) sono azzerate, `IsLapsPredictionValid = false` e lo stabilizer del tempo viene resettato a `-1.0`.
+- `User.PluginSdkDemoEdit/RaceAnalyzer.cs:2237` — Esteso `IsLapsPredictionValid` con parametri opzionali `int sessionStateStatus = 4, double sessionTimeLeftSec = 0.0` per garantire che in sessione di gara lo stato sia `>= 4` (verde) e il conto alla rovescia sia `>= 0.0`.
+- `User.PluginSdkDemoEdit/FuelManager.cs:270, 285` — Introdotto tracciamento `_lastSessionStateStatus` e sincronizzazione del via: in griglia e ricognizione (`SessionStateStatus < 4`) gli accumulatori di bandiera gialla e pit lane restano puliti; alla transizione al verde (`SessionStateStatus >= 4`) il consumo di Lap 1 si ancora a `state.RaceStartingFuel` (escludendo consumi da fermo o del giro di formazione).
+- `User.PluginSdkDemoEdit/FuelManager.cs:405` — `Calculations.IsPredictionValid`: richiede `state.SessionStateStatus >= 4` in gara. Nel Giro 1 (`CurrentLap <= 1`) `IsPredictionValid` resta `false` e `FuelToAdd` rimane congelato a `0.0` (invece di mostrare stime imprecise). Al completamento del Giro 1 (ingresso in Giro 2), `AverageFuelPerLap` riceve il primo consumo reale pulito, `IsPredictionValid` passa a `true` e `FuelToAdd` si popola.
+- `User.PluginSdkDemoEdit/FuelManager.cs:565` — `ResetSession()`: azzera esplicitamente anche `_lastSessionStateStatus`.
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs:1088, 1106` — Aggiunto `FuelManager.ResetSession()` in caso di cambio stato/tipo sessione e salti temporali nei replay.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/PredictedPaceUnitTests.cs` — Aggiunti 2 unit test (`Test_IsLapsPredictionValid_FalsePreGreenFlag_WhenSessionStateStatusLessThan4`, `Test_IsLapsPredictionValid_FalseWhenTimeLimitedCountdownNegative`).
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/FuelOutlierFilterUnitTests.cs` — Aggiunti 2 unit test (`Test_FuelManager_Lap1_FreezeFuelToAdd`, `Test_FuelManager_Grid_ParadeLap_IgnoredAndGreenFlagLatched`).
+- Suite test: passata da 314 a **318 test PASS** (0 falliti).
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit `0`, **318 PASS**.
+
+### Stato
+- ✅ Compila senza errori (solo 1 warning preesistente non correlato in ReplayBacktestIntegrationTest)
+- ✅ 318 test passano (100%)
+
+### Per chi entra
+**Prossimo passo:** Verifica dal vivo / su replay dei log di gara (o proseguimento su Y-52 Passo 3 per `DriverPitTrkPct`).
+**NON toccare:** `Hardware/` (riservato ad Andreas).
+**Attenzione a:** In griglia prima del via `SimRIG.Session.IsLapsPredictionValid` e `SimRIG.Strategy.IsPredictionValid` sono entrambi `false`, `FuelToAdd` e i giri previsti sono `0.0`. Al semaforo verde le metriche si attivano con i seed YAML/best lap; al termine del giro 1 il fuel si popola con il consumo telemetrico reale.
+
+---
+
 ## [2026-09-06 14:30] antigravity → chiunque entri dopo (Claude in particolare)
 
 **Task:** Y-52 — Sblocco dump `SimRigMetadata.json` via estrazione `SessionData` reale da SimHub e riallineamento completo della roadmap
@@ -379,56 +414,6 @@ Atteso: la seconda riga non trova più riferimenti "vivi" a `CLAUDE.md` come fon
 **Attenzione a:** se cambi una regola, cambiala in **`AGENTS.md`**. `CLAUDE.md` e `GEMINI.md` non
 contengono regole: se ti trovi a modificarle, quasi certamente stai creando il duplicato che
 ADR-006 esiste per evitare.
-
----
-
-## [2026-09-05 14:10] claude → chiunque entri dopo
-
-**Task:** potatura del contesto — separare la storia chiusa dallo stato attivo
-**Piano:** — (deciso con l'utente dopo la review a freddo di stamattina)
-**Commit:** `7204135` (lock) + questo
-
-### Perché
-`.ai/` pesava **226 KB** letti a ogni ingresso di sessione, prima di aprire una riga di codice —
-con `DataPluginDemo.cs` a 155 KB, un agente consumava buona parte della finestra in sola lettura.
-Due cause misurate: `HANDOFF_LOG.md` dichiarava 10 voci e ne conteneva **22** (112 KB), e il **66%**
-di `PROJECT_STATE.md` (47,6 KB su 72) era storia di punti già chiusi.
-
-### Fatto
-- `.ai/archive/HANDOFF_LOG_archive.md` (nuovo) — le 12 voci oltre le 10 tenute (24/08 → 01/09).
-- `.ai/archive/CLOSED_POINTS.md` (nuovo) — i 40 punti chiusi col testo **integrale**.
-- `.ai/PROJECT_STATE.md` — al posto delle voci chiuse un **indice** di 40 righe (ID · titolo ·
-  esito · commit) e un riquadro che dice dove trovare il resto. **72 KB → 25 KB.**
-- `.ai/HANDOFF_LOG.md` — testata che spiega *come* si pota (togli l'undicesima, spostala in
-  archivio), perché la regola c'era ma nessuno la applicava. **112 KB → 48 KB.**
-- `CLAUDE.md` — `.ai/archive/` nei riferimenti + sezione nuova **"Cosa si può concludere da quale
-  macchina"**: il progetto è Windows-only, ma si lavora anche da macOS e la differenza va
-  dichiarata invece che lasciata intendere.
-
-**Niente è stato riassunto o cancellato: solo spostato.** Verificato con `diff` che il testo
-spostato sia identico byte a byte (`Y-32`: 4066 byte, e la prima voce archiviata dell'handoff).
-
-### Come verificare
-```bash
-wc -c CLAUDE.md .ai/PROJECT_STATE.md .ai/HANDOFF_LOG.md .ai/ARCHITECTURE.md
-grep -c '^## \[20' .ai/HANDOFF_LOG.md          # atteso: 10
-grep -c '^| ~~' .ai/archive/CLOSED_POINTS.md   # atteso: 40
-git show 7204135:.ai/PROJECT_STATE.md | grep '^| ~~Y-32~~' | diff - <(grep '^| ~~Y-32~~' .ai/archive/CLOSED_POINTS.md)
-```
-Atteso: da **226 KB a ~95 KB** letti per ingresso, ultima riga senza output (identici).
-
-### Stato
-- ⏭️ Build e test **non eseguiti**: sessione macOS, e comunque **nessun file di codice toccato**
-  (scope del lock: `.ai/**`). Il codice è esattamente com'era a `bd00979`.
-
-### Per chi entra
-**Prossimo passo:** invariato — Y-52 passo 2 di 4 (vedi handoff del 12:30). La potatura non tocca
-il lavoro in corso.
-**NON toccare:** nulla lasciato a metà.
-**Attenzione a:** ora la regola dei 10 va **applicata**, non solo dichiarata: quando aggiungi la
-tua voce, sposta l'undicesima in `.ai/archive/HANDOFF_LOG_archive.md`. Se torna a 22 voci fra un
-mese, questo turno è stato inutile. Stessa cosa per i punti: quando ne chiudi uno, il testo lungo
-va in `CLOSED_POINTS.md` e in `PROJECT_STATE.md` resta la riga d'indice.
 
 ---
 
