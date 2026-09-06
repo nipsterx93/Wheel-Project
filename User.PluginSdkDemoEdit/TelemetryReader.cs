@@ -19,6 +19,7 @@ namespace SimRIG
         /// significa ~8.7 MB/s di stringhe piu' una Dictionary nuova ogni frame.
         /// </summary>
         private string _lastParsedYaml = null;
+        private string _lastTrackId = null;
 
         /// <summary>Il dump su disco si tenta una volta per contenuto, non a ogni sessione.</summary>
         private bool _metadataDumped = false;
@@ -108,7 +109,7 @@ namespace SimRIG
             if (string.IsNullOrEmpty(yaml)) yaml = _pluginManager.GetPropertyValue("DataCorePlugin.GameRawData.SessionInfo.YAML") as string;
             if (string.IsNullOrEmpty(yaml)) yaml = _pluginManager.GetPropertyValue("DataCorePlugin.GameRawData.SessionInfo_YAML") as string;
             state.RawSessionInfoYaml = yaml ?? "";
-            RefreshSessionMetadata(state);
+            RefreshSessionMetadata(data, state);
             var rawPlayerCarIdx = _pluginManager.GetPropertyValue("DataCorePlugin.GameRawData.Telemetry.PlayerCarIdx");
             if (rawPlayerCarIdx != null) state.PlayerCarIdx = Convert.ToInt32(rawPlayerCarIdx);
 
@@ -526,42 +527,40 @@ namespace SimRIG
         {
             if (state.IsSessionActive && state.GlobalBaselineTemp == 0.0 && state.TrackTemperature > 0.0)
             {
-                state.GlobalBaselineTemp = state.TrackTemperature;
+            state.GlobalBaselineTemp = state.TrackTemperature;
             }
         }
 
         /// <summary>
-        /// Interpreta lo YAML **solo quando cambia**.
+        /// Interpreta lo YAML o l'oggetto nativo iRacing (SessionData) **solo quando cambia**.
         ///
-        /// <para>Il confronto e' a tre stadi, dal piu' economico al piu' caro: stessa istanza,
-        /// stessa lunghezza, e solo allora il confronto vero. Nel caso normale — SimHub che
-        /// restituisce la stessa stringa finche' la sessione non cambia — costa un confronto di
-        /// riferimenti e basta.</para>
+        /// <para>Se SimHub espone la stringa YAML grezza, usa il parser SessionYamlParser.
+        /// Se SimHub non espone la stringa YAML ma l'oggetto parsato internamente da iRacingSDK,
+        /// estrae i metadati tramite SessionDataReader (da GameData.GetRawDataObject o da PluginManager).</para>
         ///
         /// <para>La classe del Player arriva dalla telemetria, non dallo YAML: serve solo come
         /// chiave del dump, e SimHub la espone gia'.</para>
         /// </summary>
-        private void RefreshSessionMetadata(SessionState state)
+        private void RefreshSessionMetadata(GameData data, SessionState state)
         {
+            string currentTrack = data?.NewData?.TrackId ?? "";
+            if (_lastTrackId != null && _lastTrackId != currentTrack)
+            {
+                state.Metadata.Clear();
+                _lastParsedYaml = null;
+                _metadataDumped = false;
+            }
+            _lastTrackId = currentTrack;
+
             string yaml = state.RawSessionInfoYaml;
 
-            if (string.IsNullOrEmpty(yaml))
-            {
-                if (_lastParsedYaml != null)
-                {
-                    state.Metadata.Clear();
-                    _lastParsedYaml = null;
-                    _metadataDumped = false;
-                }
-                return;
-            }
+            // 1. Se lo YAML raw e' presente ed e' identico all'ultimo parsato
+            bool yamlUnchanged = _lastParsedYaml != null
+                                 && (ReferenceEquals(_lastParsedYaml, yaml)
+                                     || (_lastParsedYaml.Length == yaml.Length
+                                         && string.Equals(_lastParsedYaml, yaml, StringComparison.Ordinal)));
 
-            bool unchanged = _lastParsedYaml != null
-                             && (ReferenceEquals(_lastParsedYaml, yaml)
-                                 || (_lastParsedYaml.Length == yaml.Length
-                                     && string.Equals(_lastParsedYaml, yaml, StringComparison.Ordinal)));
-
-            if (unchanged)
+            if (yamlUnchanged)
             {
                 // La classe puo' arrivare dopo lo YAML: si tiene allineata senza rifare il parsing.
                 if (state.Metadata.PlayerCarClass != state.CarClassId)
@@ -569,21 +568,82 @@ namespace SimRIG
                     state.Metadata.PlayerCarClass = state.CarClassId ?? "";
                     _metadataDumped = false;
                 }
-            }
-            else
-            {
-                SessionMetadata parsed = SessionYamlParser.Parse(yaml);
-                CopyInto(parsed, state.Metadata);
-                state.Metadata.PlayerCarClass = state.CarClassId ?? "";
-                _lastParsedYaml = yaml;
-                _metadataDumped = false;
+
+                if (!_metadataDumped && state.Metadata.IsPopulated)
+                {
+                    DumpMetadata(state.Metadata, yaml);
+                }
+                return;
             }
 
-            if (!_metadataDumped && state.Metadata.IsPopulated)
+            // 2. Se abbiamo una stringa YAML raw valida, proviamo a interpretarla
+            if (!string.IsNullOrEmpty(yaml))
             {
-                SessionMetadataDump.Write(state.Metadata, yaml, MetadataDumpFolder, Log);
-                _metadataDumped = true;
+                SessionMetadata parsed = SessionYamlParser.Parse(yaml);
+                if (parsed != null && parsed.IsPopulated)
+                {
+                    CopyInto(parsed, state.Metadata);
+                    state.Metadata.PlayerCarClass = state.CarClassId ?? "";
+                    _lastParsedYaml = yaml;
+                    _metadataDumped = false;
+                    DumpMetadata(state.Metadata, yaml);
+                    return;
+                }
             }
+
+            // 3. Se i metadati sono gia' popolati (es. da SessionDataReader in un frame precedente)
+            if (state.Metadata.IsPopulated)
+            {
+                if (state.Metadata.PlayerCarClass != state.CarClassId)
+                {
+                    state.Metadata.PlayerCarClass = state.CarClassId ?? "";
+                    _metadataDumped = false;
+                }
+
+                if (!_metadataDumped)
+                {
+                    DumpMetadata(state.Metadata, yaml);
+                }
+                return;
+            }
+
+            // 4. Fallback SessionDataReader: SimHub non espone la stringa YAML grezza ma l'oggetto
+            // SessionData (via GameData.NewData.GetRawDataObject() o proprieta' DataCorePlugin.GameRawData.*)
+            SessionMetadata parsedObj = null;
+            try
+            {
+                object rawData = data?.NewData?.GetRawDataObject();
+                if (rawData != null)
+                {
+                    parsedObj = SessionDataReader.ReadFromRawObject(rawData);
+                }
+            }
+            catch { }
+
+            if (parsedObj == null || !parsedObj.IsPopulated)
+            {
+                parsedObj = SessionDataReader.ReadFromPluginManager(_pluginManager);
+            }
+
+            if (parsedObj != null && parsedObj.IsPopulated)
+            {
+                CopyInto(parsedObj, state.Metadata);
+                state.Metadata.PlayerCarClass = state.CarClassId ?? "";
+                _metadataDumped = false;
+                DumpMetadata(state.Metadata, yaml);
+            }
+        }
+
+        private void DumpMetadata(SessionMetadata meta, string yaml)
+        {
+            if (_metadataDumped || !meta.IsPopulated) return;
+
+            string payload = !string.IsNullOrEmpty(yaml)
+                ? yaml
+                : Newtonsoft.Json.JsonConvert.SerializeObject(meta, Newtonsoft.Json.Formatting.Indented);
+
+            SessionMetadataDump.Write(meta, payload, MetadataDumpFolder, Log);
+            _metadataDumped = true;
         }
 
         /// <summary>

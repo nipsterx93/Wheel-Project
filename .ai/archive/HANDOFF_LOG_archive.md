@@ -9,6 +9,45 @@
 
 ---
 
+## [2026-09-05 13:20] claude (review a freddo, senza lock) → chiunque entri dopo
+
+**Task:** ingresso a freddo su richiesta dell'utente — analizzare progetto, codice e documenti,
+aggiornare la documentazione sullo stato attuale. **Nessun file di codice toccato.**
+**Piano:** — (review, non implementazione)
+**Commit:** — (non committato al momento della scrittura)
+
+### Fatto
+- `.ai/reviews/2026-09-05-inventario-stato-progetto.md` (nuovo) — inventario misurato del repo e
+  cinque discrepanze (R-1…R-5), con il metodo di misura accanto a ogni numero.
+- `.ai/PROJECT_STATE.md` — registrati **Y-53** (`PaddleClutch.h` mancante), **Y-54** (backtest che
+  si auto-salta + path assoluto), **Y-55** (`CustomDialog.xaml.cs` non compilato né documentato).
+  Risincronizzati due numeri fermi al 24 agosto nel cappello "Da dove partire": `30/26` → `51/39`,
+  `186 test PASS` → `295`.
+- `.ai/ARCHITECTURE.md` — nota di aggiornamento su ADR-003: la conseguenza "il progetto di test non
+  è nella solution" non è più vera. ADR non modificato, solo annotato.
+
+### Come verificare
+```bash
+find Hardware -type f                      # Y-53: manca PaddleClutch.h
+grep -n 'replayPath' User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/IntegrationTests/MisanoHuracanGT3ReplayTest.cs   # Y-54
+grep -c CustomDialog User.PluginSdkDemoEdit/User.PluginSdkDemo.csproj   # Y-55: attesa 0
+```
+
+### Stato
+- ⏭️ Build **non eseguita** e ⏭️ test **non eseguiti**: sessione su **macOS**, niente MSBuild.
+  Nessuna conclusione di questo turno dipende da una build.
+- ⏭️ `Logs/` non accessibile: **nessun numero dei replay è stato verificato né contestato.**
+
+### Per chi entra
+**Prossimo passo:** Y-53 è il più urgente ma è bloccato su una domanda all'utente (il file esiste in
+locale? è suo o di terzi?). Y-54 e Y-55 sono correggibili subito, prendendo il lock.
+**NON toccare:** niente è stato lasciato a metà. Y-52 resta al passo 1 di 4, come l'ha lasciato
+l'handoff precedente.
+**Attenzione a:** Y-54 significa che "295 PASS" su una macchina senza i replay non è lo stesso
+"295 PASS" della macchina dell'utente. Finché non è corretto, il conteggio va letto sapendolo.
+
+---
+
 ## [2026-09-05 12:30] claude → chiunque entri dopo
 
 **Task:** Y-52 passo 1 di 4 — `SessionMetadata`, `SessionYamlParser`, cache di sessione, dump

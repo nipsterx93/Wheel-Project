@@ -68,6 +68,9 @@ namespace User.PluginSdkDemo.Tests
             Test_SpeedUnitsAreConverted();
             Test_EstimatedPaceFallsBackFromDriverToClass();
             Test_DumpKeyAndDedup();
+            Test_SessionDataReader_ParsePercentage();
+            Test_SessionDataReader_SpeedKmh();
+            Test_SessionDataReader_ReadFromRawObject();
 
             Console.WriteLine("[TEST SUCCESS] All Session Metadata Tests Passed!");
         }
@@ -219,6 +222,101 @@ namespace User.PluginSdkDemo.Tests
                    "il nome del file non deve contenere caratteri illegali");
 
             Pass("il dump si deduplica per traccia+classe e ignora l'orario");
+        }
+
+        private static void Test_SessionDataReader_ParsePercentage()
+        {
+            Assert(SessionDataReader.ParsePercentage(null) == null, "null da' null");
+            Assert(SessionDataReader.ParsePercentage("") == null, "stringa vuota da' null");
+            Assert(Math.Abs(SessionDataReader.ParsePercentage(0.5).Value - 0.5) < 1e-9, "double 0.5");
+            Assert(Math.Abs(SessionDataReader.ParsePercentage(100.0).Value - 1.0) < 1e-9, "double 100.0 diventa 1.0");
+            Assert(Math.Abs(SessionDataReader.ParsePercentage("0.500 %").Value - 0.5) < 1e-9, "0.500 % diventa 0.5");
+            Assert(Math.Abs(SessionDataReader.ParsePercentage("1.000 %").Value - 1.0) < 1e-9, "1.000 % diventa 1.0");
+            Assert(Math.Abs(SessionDataReader.ParsePercentage("50 %").Value - 0.5) < 1e-9, "50 % diventa 0.5");
+            Assert(Math.Abs(SessionDataReader.ParsePercentage("100 %").Value - 1.0) < 1e-9, "100 % diventa 1.0");
+            Pass("SessionDataReader.ParsePercentage gestisce sia scala 0-1 che 0-100");
+        }
+
+        private static void Test_SessionDataReader_SpeedKmh()
+        {
+            Assert(SessionDataReader.SpeedKmh(null) == null, "null da' null");
+            Assert(SessionDataReader.SpeedKmh("") == null, "stringa vuota da' null");
+            Assert(SessionDataReader.SpeedKmh("0 kmh") == null, "zero da' null");
+            Assert(Math.Abs(SessionDataReader.SpeedKmh("60.00 kph").Value - 60.0) < 1e-9, "60.00 kph");
+            Assert(Math.Abs(SessionDataReader.SpeedKmh("37.28 mph").Value - 60.0) < 0.05, "37.28 mph convertito in kmh");
+            Pass("SessionDataReader.SpeedKmh converte correttamente velocita' con unita'");
+        }
+
+        private static void Test_SessionDataReader_ReadFromRawObject()
+        {
+            var mockRaw = new
+            {
+                SessionData = new
+                {
+                    WeekendInfo = new
+                    {
+                        TrackDisplayName = "Road Atlanta",
+                        TrackPitSpeedLimit = "60.00 kph",
+                        WeekendOptions = new
+                        {
+                            StandingStart = 1L,
+                            IncidentLimit = 17L,
+                            FastRepairsLimit = 1L
+                        }
+                    },
+                    DriverInfo = new
+                    {
+                        DriverCarIdx = 7L,
+                        DriverCarEstLapTime = 76.524,
+                        DriverPitTrkPct = 0.029294,
+                        DriverCarFuelKgPerLtr = 0.78,
+                        DriverCarFuelMaxLtr = 62.0,
+                        Drivers = new object[]
+                        {
+                            new
+                            {
+                                CarIdx = 3L,
+                                UserName = "Sven Neiss",
+                                CarClassShortName = "GTP",
+                                CarClassEstLapTime = 68.443,
+                                CarClassMaxFuelPct = "1.000 %",
+                                CarClassDryTireSetLimit = 3L
+                            },
+                            new
+                            {
+                                CarIdx = 7L,
+                                UserName = "Sara Tolotti",
+                                CarClassShortName = "GT3",
+                                CarClassEstLapTime = 76.524,
+                                CarClassMaxFuelPct = "0.500 %"
+                            }
+                        }
+                    }
+                }
+            };
+
+            SessionMetadata m = SessionDataReader.ReadFromRawObject(mockRaw);
+            Assert(m.IsPopulated, "oggetto raw interpretato con successo");
+            Assert(m.SourceName == SessionDataReader.SourceLabelObject, "fonte impostata su oggetto nativo");
+            Assert(m.TrackName == "Road Atlanta", "TrackName estratto");
+            Assert(m.IncidentLimit == 17, "IncidentLimit estratto");
+            Assert(m.FastRepairsAvailable == 1, "FastRepairsAvailable estratto");
+            Assert(m.IsStandingStart == true, "IsStandingStart estratto");
+            Assert(m.DryTireSetLimit == 3, "DryTireSetLimit estratto");
+            Assert(m.PlayerPitStallPct.HasValue && Math.Abs(m.PlayerPitStallPct.Value - 0.029294) < 1e-9, "PlayerPitStallPct");
+            Assert(m.FuelDensityKgPerLitre.HasValue && Math.Abs(m.FuelDensityKgPerLitre.Value - 0.78) < 1e-9, "FuelDensityKgPerLitre");
+            Assert(m.PlayerMaxFuelLitres.HasValue && Math.Abs(m.PlayerMaxFuelLitres.Value - 62.0) < 1e-9, "PlayerMaxFuelLitres");
+            Assert(m.PlayerEstimatedPaceSec.HasValue && Math.Abs(m.PlayerEstimatedPaceSec.Value - 76.524) < 1e-9, "PlayerEstimatedPaceSec");
+            Assert(m.DriverEstimatedPaceSec.Count == 2, "2 piloti estratti");
+            Assert(Math.Abs(m.DriverEstimatedPaceSec["Sven Neiss"] - 68.443) < 1e-9, "passo Sven Neiss");
+            Assert(Math.Abs(m.DriverEstimatedPaceSec["Sara Tolotti"] - 76.524) < 1e-9, "passo Sara Tolotti");
+            Assert(m.ClassEstimatedPaceSec.Count == 2, "2 classi estratte");
+            Assert(Math.Abs(m.ClassEstimatedPaceSec["GTP"] - 68.443) < 1e-9, "passo classe GTP");
+            Assert(Math.Abs(m.ClassEstimatedPaceSec["GT3"] - 76.524) < 1e-9, "passo classe GT3");
+            Assert(Math.Abs(m.DriverMaxFuelPct["Sara Tolotti"] - 0.5) < 1e-9, "BoP Sara Tolotti");
+            Assert(Math.Abs(m.DriverMaxFuelPct["Sven Neiss"] - 1.0) < 1e-9, "BoP Sven Neiss");
+
+            Pass("SessionDataReader.ReadFromRawObject estrae tutti i campi dall'oggetto nativo iRacingSDK");
         }
     }
 }
