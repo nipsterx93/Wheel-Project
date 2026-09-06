@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      —
-task:       —
-scope:      —
-expires:    —
+owner:      antigravity
+since:      2026-09-06 17:25
+task:       fix fuel lap 1, pace plausibility, target cascade, opponent seeding
+scope:      User.PluginSdkDemoEdit/FuelManager.cs, User.PluginSdkDemoEdit/RaceAnalyzer.cs, User.PluginSdkDemoEdit/TargetStrategyManager.cs, User.PluginSdkDemoEdit/OpponentTracker.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/
+expires:    2026-09-06 19:00
 ```
 
 **Regole del lock**
