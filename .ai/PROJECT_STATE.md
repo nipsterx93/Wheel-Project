@@ -204,8 +204,20 @@ Rilevati durante il setup e la verifica:
 
 ## 👥 Ruoli
 
-| Agente | Punto di forza | Responsabilità primaria |
-|--------|----------------|--------------------------|
-| **Antigravity** (Google/Gemini) | Contesto globale, ambiente Windows/VS/MSBuild | Architettura di sistema, planning artifacts, integrazione toolchain |
-| **Claude Code** (Anthropic) | Modifiche chirurgiche, CLI, esecuzione | Implementazione, refactoring, script, build e test |
-| **Codex/ChatGPT** (OpenAI) | Analisi algoritmica | Code review, ottimizzazione, validazione logico-matematica, second opinion |
+> **Aggiornato 2026-09-06** (decisione Andreas, discussa con Claude e Antigravity): **niente più
+> compiti esclusivi per agente.** La versione precedente di questa tabella assegnava
+> un'area a testa (Antigravity=architettura, Claude=implementazione, Codex=review). Si è deciso di
+> abbandonarla: ogni agente può fare brainstorming, scrivere codice, revisionare — **il controllo
+> di qualità viene dal fatto che un agente diverso da chi ha scritto rilegge**, non dalla divisione
+> del lavoro per competenza dichiarata. Vale ancora il protocollo del lock (un solo scrittore alla
+> volta, vedi sopra): cambia solo *chi* può prendere in mano un task, non *come* si passa il turno.
+
+| Agente | Cosa può fare | Nota |
+|--------|----------------|------|
+| **Antigravity** (Google/Gemini) | Tutto: brainstorming, planning, codice, review | Ambiente Windows/VS/MSBuild nativo |
+| **Claude Code** (Anthropic) | Tutto: brainstorming, planning, codice, review | CLI, esecuzione build/test |
+| **Codex/ChatGPT** (OpenAI) | Tutto: brainstorming, planning, codice, review | Nessun accesso diretto al filesystem del progetto in questo setup — tipicamente usato per second opinion su un lavoro già fatto |
+
+**Principio guida:** *uno corregge l'altro*. Chi finisce un turno non è l'ultima parola — la sessione
+successiva (qualunque agente sia) rilegge con occhio critico invece di dare per buono il lavoro
+precedente, come già previsto dalla sezione "Sessioni di revisione" in `AGENTS.md`.
