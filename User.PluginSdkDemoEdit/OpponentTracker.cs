@@ -1,4 +1,4 @@
-﻿// -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
 
 // FILE: OpponentTracker.cs
 
@@ -659,8 +659,10 @@ namespace SimRIG
 
             // Auto-apprendimento del serbatoio di base del Player (solo se leggiamo il BoP reale dallo YAML)
             string playerName = state.Opponents.FirstOrDefault(o => o.IsPlayer)?.Name ?? "";
-            if (!string.IsNullOrEmpty(playerName) && bopDict.TryGetValue(playerName, out double playerPct))
+            double? playerBopPct = state.Metadata?.MaxFuelPctFor(playerName);
+            if (!string.IsNullOrEmpty(playerName) && (playerBopPct.HasValue || (bopDict != null && bopDict.TryGetValue(playerName, out _))))
             {
+                double playerPct = playerBopPct ?? bopDict[playerName];
                 if (state.MaxFuelCapacity > 0.0 && playerPct > 0.0 && !string.IsNullOrEmpty(state.CarModel) && state.CarModel != "DEFAULT")
                 {
                     double calculatedBase = Math.Round(state.MaxFuelCapacity / playerPct, 2);
@@ -806,7 +808,13 @@ namespace SimRIG
                 // Calcolo della capienza massima nativa del serbatoio per marchio / BoP
                 double bopPct = 1.0;
                 bool bopFound = false;
-                if (!string.IsNullOrEmpty(opp.Name) && bopDict.TryGetValue(opp.Name, out double pct))
+                double? oppBopPct = state.Metadata?.MaxFuelPctFor(opp.Name);
+                if (oppBopPct.HasValue)
+                {
+                    bopPct = oppBopPct.Value;
+                    bopFound = true;
+                }
+                else if (!string.IsNullOrEmpty(opp.Name) && bopDict != null && bopDict.TryGetValue(opp.Name, out double pct))
                 {
                     bopPct = pct;
                     bopFound = true;

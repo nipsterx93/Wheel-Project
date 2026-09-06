@@ -71,6 +71,7 @@ namespace User.PluginSdkDemo.Tests
             Test_SessionDataReader_ParsePercentage();
             Test_SessionDataReader_SpeedKmh();
             Test_SessionDataReader_ReadFromRawObject();
+            Test_EstimatedPaceAndBop_DriverNormalizationAndNumericClassId();
 
             Console.WriteLine("[TEST SUCCESS] All Session Metadata Tests Passed!");
         }
@@ -317,6 +318,59 @@ namespace User.PluginSdkDemo.Tests
             Assert(Math.Abs(m.DriverMaxFuelPct["Sven Neiss"] - 1.0) < 1e-9, "BoP Sven Neiss");
 
             Pass("SessionDataReader.ReadFromRawObject estrae tutti i campi dall'oggetto nativo iRacingSDK");
+        }
+
+        private static void Test_EstimatedPaceAndBop_DriverNormalizationAndNumericClassId()
+        {
+            const string YamlWithNumericClass =
+                "DriverInfo:\n" +
+                " Drivers:\n" +
+                " - CarIdx: 0\n" +
+                "   UserName: Kalyann Mey\n" +
+                "   CarClassShortName: GTP\n" +
+                "   CarClassID: 4029\n" +
+                "   CarClassEstLapTime: 68.0077\n" +
+                "   CarClassMaxFuelPct: 0.950 %\n" +
+                " - CarIdx: 1\n" +
+                "   UserName: Sara Tolotti\n" +
+                "   CarClassShortName: GT3\n" +
+                "   CarClassID: 4011\n" +
+                "   CarClassEstLapTime: 77.0470\n" +
+                "   CarClassMaxFuelPct: 0.500 %\n";
+
+            SessionMetadata m = SessionYamlParser.Parse(YamlWithNumericClass);
+
+            // 1. Verifica che la classe sia indicizzata sia per nome che per CarClassID numerico (stringa)
+            Assert(m.ClassEstimatedPaceSec.ContainsKey("GTP"), "chiave GTP presente");
+            Assert(m.ClassEstimatedPaceSec.ContainsKey("4029"), "chiave 4029 presente");
+            Assert(Math.Abs(m.ClassEstimatedPaceSec["4029"] - 68.0077) < 1e-6, "passo classe 4029");
+            Assert(m.ClassEstimatedPaceSec.ContainsKey("4011"), "chiave 4011 presente");
+            Assert(Math.Abs(m.ClassEstimatedPaceSec["4011"] - 77.0470) < 1e-6, "passo classe 4011");
+
+            // 2. Risoluzione passo tramite CarClassID numerico da SimHub (senza nome o con nome sconosciuto)
+            double? paceByNumericClass = m.EstimatedPaceFor(null, "4029");
+            Assert(paceByNumericClass.HasValue && Math.Abs(paceByNumericClass.Value - 68.0077) < 1e-6,
+                   "risoluzione passo leader solo con CarClassID numerico 4029");
+
+            // 3. Normalizzazione nome pilota SimHub con suffisso duplicato (es. Kalyann Mey4 -> Kalyann Mey)
+            Assert(SessionMetadata.NormalizeDriverName("Kalyann Mey4") == "Kalyann Mey", "normalizzazione Kalyann Mey4");
+            Assert(SessionMetadata.NormalizeDriverName("Kalyann Mey12") == "Kalyann Mey", "normalizzazione Kalyann Mey12");
+            Assert(SessionMetadata.NormalizeDriverName("Sara Tolotti") == "Sara Tolotti", "nome senza cifre invariato");
+
+            double? paceNormalized = m.EstimatedPaceFor("Kalyann Mey4", "CLASSE_SCONOSCIUTA");
+            Assert(paceNormalized.HasValue && Math.Abs(paceNormalized.Value - 68.0077) < 1e-6,
+                   "passo risolto via normalizzazione pilota");
+
+            // 4. Normalizzazione BoP con suffisso numerico SimHub
+            double? bopNormalized = m.MaxFuelPctFor("Kalyann Mey4");
+            Assert(bopNormalized.HasValue && Math.Abs(bopNormalized.Value - 0.95) < 1e-6,
+                   "BoP risolto via normalizzazione pilota");
+
+            double? bopPlayer = m.MaxFuelPctFor("Sara Tolotti");
+            Assert(bopPlayer.HasValue && Math.Abs(bopPlayer.Value - 0.50) < 1e-6,
+                   "BoP risolto per nome esatto");
+
+            Pass("indicizzazione CarClassID e normalizzazione suffisso numerico pilota validati");
         }
     }
 }

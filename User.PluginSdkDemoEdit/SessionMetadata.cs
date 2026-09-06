@@ -130,21 +130,66 @@ namespace SimRIG
         }
 
         /// <summary>
+        /// Rimuove eventuali suffissi numerici aggiunti da SimHub per deduplicare piloti o istanze
+        /// (ad es. "Kalyann Mey4" -> "Kalyann Mey"), consentendo il matching con i dizionari YAML.
+        /// </summary>
+        public static string NormalizeDriverName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return "";
+            int i = name.Length - 1;
+            while (i >= 0 && char.IsDigit(name[i]))
+            {
+                i--;
+            }
+            if (i < name.Length - 1 && i >= 0)
+            {
+                return name.Substring(0, i + 1).TrimEnd();
+            }
+            return name;
+        }
+
+        /// <summary>
         /// Passo stimato per un pilota: prima il suo, poi quello della sua classe. Null se non
         /// se ne sa nulla — e chi chiama deve trattare il null come "non lo so", non come zero.
         /// </summary>
         public double? EstimatedPaceFor(string driverName, string carClass)
         {
             double pace;
-            if (!string.IsNullOrEmpty(driverName) &&
-                DriverEstimatedPaceSec.TryGetValue(driverName, out pace) && pace > 0.0)
+            if (!string.IsNullOrEmpty(driverName))
             {
-                return pace;
+                if (DriverEstimatedPaceSec.TryGetValue(driverName, out pace) && pace > 0.0)
+                {
+                    return pace;
+                }
+                string norm = NormalizeDriverName(driverName);
+                if (norm != driverName && DriverEstimatedPaceSec.TryGetValue(norm, out pace) && pace > 0.0)
+                {
+                    return pace;
+                }
             }
             if (!string.IsNullOrEmpty(carClass) &&
                 ClassEstimatedPaceSec.TryGetValue(carClass, out pace) && pace > 0.0)
             {
                 return pace;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Percentuale massima del serbatoio (BoP) per pilota, con supporto alla normalizzazione
+        /// del nome (es. "Kalyann Mey4" -> "Kalyann Mey"). Null se non specificata.
+        /// </summary>
+        public double? MaxFuelPctFor(string driverName)
+        {
+            if (string.IsNullOrEmpty(driverName)) return null;
+            if (DriverMaxFuelPct.TryGetValue(driverName, out double pct) && pct > 0.0)
+            {
+                return pct;
+            }
+            string norm = NormalizeDriverName(driverName);
+            if (norm != driverName && DriverMaxFuelPct.TryGetValue(norm, out pct) && pct > 0.0)
+            {
+                return pct;
             }
             return null;
         }

@@ -359,7 +359,9 @@ namespace User.PluginSdkDemo.Tests
 
         /// <summary>
         /// Nel Giro 1 (partenza di gara): FuelToAdd deve rimanere 0.0 e IsPredictionValid false.
-        /// Al termine del Giro 1 (ingresso in Giro 2), il consumo del Giro 1 viene registrato,
+        /// Al termine del Giro 1 (ingresso in Giro 2), il consumo del Giro 1 viene registrato in LastLapFuelUsed,
+        /// ma escluso dalla cronologia media (giro di lancio/partenza anomalo).
+        /// Al termine del Giro 2 (ingresso in Giro 3), il primo giro lanciato entra in cronologia,
         /// IsPredictionValid diventa true e FuelToAdd si calcola regolarmente.
         /// </summary>
         private static void Test_FuelManager_Lap1_FreezeFuelToAdd()
@@ -385,17 +387,27 @@ namespace User.PluginSdkDemo.Tests
             Assert(fm.Calculations.FuelToAdd == 0.0, "Nel Giro 1 FuelToAdd deve essere congelato a 0.0");
             Assert(fm.Calculations.AverageFuelPerLap == 0.0, "Nel Giro 1 non c'e' ancora consumo medio");
 
-            // Fine giro 1 -> ingresso giro 2 (consumati 2.5 L)
+            // Fine giro 1 -> ingresso giro 2 (consumati 2.5 L al via)
             state.CurrentLap = 2;
             state.CurrentFuelLevel = 47.5;
             fm.Update(state, 19.0, 0.0, null);
 
-            Assert(fm.Calculations.IsPredictionValid, "All'ingresso del Giro 2 IsPredictionValid deve essere true");
-            Assert(Math.Abs(fm.Calculations.AverageFuelPerLap - 2.5) < 1e-6, "AverageFuelPerLap deve essere 2.5L");
-            // Con 25 giri mancanti: 25 * 2.5 = 62.5 L necessari. A bordo 47.5 L -> rawFuelToAdd = 15.0 L.
+            Assert(Math.Abs(fm.Calculations.LastLapFuelUsed - 2.5) < 1e-6, "LastLapFuelUsed misura il consumo del giro 1 (2.5L)");
+            Assert(fm.FuelHistory.Count == 0, "Il Giro 1 di gara non deve entrare in cronologia");
+            Assert(!fm.Calculations.IsPredictionValid, "All'ingresso del Giro 2 IsPredictionValid e' ancora false senza giri lanciati");
+            Assert(fm.Calculations.FuelToAdd == 0.0, "All'ingresso del Giro 2 FuelToAdd resta 0.0");
+
+            // Fine giro 2 -> ingresso giro 3 (consumati 2.4 L nel primo giro lanciato)
+            state.CurrentLap = 3;
+            state.CurrentFuelLevel = 45.1;
+            fm.Update(state, 18.0, 0.0, null);
+
+            Assert(fm.Calculations.IsPredictionValid, "All'ingresso del Giro 3 IsPredictionValid deve essere true");
+            Assert(Math.Abs(fm.Calculations.AverageFuelPerLap - 2.4) < 1e-6, "AverageFuelPerLap deve essere 2.4L");
+            // Con 25 giri mancanti: 25 * 2.4 = 60.0 L necessari. A bordo 45.1 L -> rawFuelToAdd = 14.9 L.
             fm.Update(state, 25.0, 0.0, null);
             Assert(fm.Calculations.FuelToAdd > 0.0, "Con fabbisogno superiore al serbatoio FuelToAdd deve essere > 0");
-            Pass("Giro 1 congelato a 0.0 L; al giro 2 IsPredictionValid e' true e FuelToAdd si popola");
+            Pass("Giro 1 congelato a 0.0 L; al giro 2 il via non entra nella media; al giro 3 il primo giro lanciato popola FuelToAdd");
         }
 
         /// <summary>

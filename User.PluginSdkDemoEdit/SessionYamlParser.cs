@@ -55,6 +55,7 @@ namespace SimRIG
             string curName = null;
             int curCarIdx = -1;
             string curClass = null;
+            string curClassId = null;
             double curClassPace = 0.0;
             double curMaxFuelPct = 0.0;
             bool curHasAny = false;
@@ -76,12 +77,17 @@ namespace SimRIG
                     if (curCarIdx >= 0)
                         byCarIdx[curCarIdx] = curName;
                 }
-                if (!string.IsNullOrEmpty(curClass) && curClassPace >= MinPlausiblePaceSec)
-                    meta.ClassEstimatedPaceSec[curClass] = curClassPace;
+                if (curClassPace >= MinPlausiblePaceSec)
+                {
+                    if (!string.IsNullOrEmpty(curClass))
+                        meta.ClassEstimatedPaceSec[curClass] = curClassPace;
+                    if (!string.IsNullOrEmpty(curClassId))
+                        meta.ClassEstimatedPaceSec[curClassId] = curClassPace;
+                }
                 if (curCarIdx >= 0 && curClassPace >= MinPlausiblePaceSec)
                     paceByCarIdx[curCarIdx] = curClassPace;
 
-                curName = null; curCarIdx = -1; curClass = null;
+                curName = null; curCarIdx = -1; curClass = null; curClassId = null;
                 curClassPace = 0.0; curMaxFuelPct = 0.0; curHasAny = false;
             };
 
@@ -181,6 +187,11 @@ namespace SimRIG
                 else if (Field(trimmed, "CarClassShortName:"))
                 {
                     curClass = Text(trimmed); curHasAny = true;
+                }
+                else if (Field(trimmed, "CarClassID:"))
+                {
+                    int? v = Integer(Text(trimmed));
+                    if (v.HasValue) { curClassId = v.Value.ToString(); curHasAny = true; }
                 }
                 else if (Field(trimmed, "CarClassEstLapTime:"))
                 {

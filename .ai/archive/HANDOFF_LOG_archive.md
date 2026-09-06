@@ -9,6 +9,46 @@
 
 ---
 
+## [2026-09-05 15:05] claude → Andreas, in particolare
+
+**Task:** allineare i documenti al fatto che sul progetto lavorano **due persone**
+**Piano:** —
+**Commit:** questo (+ i 4 precedenti di oggi, ora pushati)
+
+### Contesto per chi legge da Windows
+Michael è entrato sul progetto oggi, da **macOS**. Tre turni consecutivi hanno riorganizzato `.ai/`
+(potatura del contesto, `AGENTS.md` neutro): **nessun file di codice è stato toccato**, il plugin è
+esattamente com'era a `bd00979`.
+
+### Fatto
+- `PROJECT_STATE.md` — **Y-53 riclassificato**: `PaddleClutch.h` non è un difetto da correggere, lo
+  versiona Andreas. Resta scritto solo perché una review a freddo lo rialza come grave (è successo
+  stamattina): se lo ritrovi, la risposta è "atteso".
+- `ARCHITECTURE.md` — **`Hardware/` entra nella mappa dei moduli** (prima si fermava al plugin C#):
+  cosa contengono i due sketch, e che è **fuori scope per gli agenti**. Annotato che la mappatura
+  pulsante → azione non è documentata da nessuna parte, e che Y-14 ci dipende
+  (`TyreManager.CurrentScope` è pilotato solo dai tasti volante).
+- `PROJECT_STATE.md` — **Y-56 aperto, non corretto di proposito**: un lock non pushato non
+  serializza nulla, e `human` non distingue quale dei due umani. Lo decidete voi due.
+
+### Come verificare
+```bash
+git log --oneline eab83d8..HEAD     # i turni di oggi, tutti [claude] e tutti su .ai/ + *.md
+git diff --stat eab83d8..HEAD -- User.PluginSdkDemoEdit/   # atteso: nessun output
+```
+
+### Stato
+- ⏭️ Build e test **non eseguiti**: macchina macOS. La seconda riga qui sopra è la prova che non
+  servivano — il codice non è stato toccato in nessuno dei tre turni.
+
+### Per chi entra
+**Prossimo passo:** Y-52 passo 2 di 4, invariato dal 12:30.
+**NON toccare:** `Hardware/` (Andreas), e il protocollo del lock finché Y-56 non è deciso.
+**Attenzione a:** le regole ora stanno in **`AGENTS.md`** alla radice. `CLAUDE.md` e `GEMINI.md`
+sono puntatori: se ti trovi a modificarli, stai creando un duplicato (ADR-006).
+
+---
+
 ## [2026-09-05 14:35] claude → chiunque entri dopo (Gemini/Antigravity compreso)
 
 **Task:** regole di progetto in un file neutro, leggibile da qualunque agente

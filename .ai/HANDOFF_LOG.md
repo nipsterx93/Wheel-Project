@@ -47,6 +47,40 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-06 18:55] antigravity → chiunque entri dopo (Claude in particolare)
+
+**Task:** Risoluzione mancato seeding passo leader da YAML e contaminazione media consumo al via (esclusione assoluta Giro 1)
+**Piano:** —
+**Commit:** `<sha>`
+
+### Fatto
+- `User.PluginSdkDemoEdit/SessionDataReader.cs:98, 116, 228, 235` — Aggiunta lettura di `CarClassID` sia da oggetto raw (`GetLongProp(d, "CarClassID")`) che da PluginManager, registrando `ClassEstimatedPaceSec[carClassId.ToString()] = classEstLap.Value`. Prima la chiave era solo `CarClassShortName` (es. "GTP"), mentre SimHub popola `Opponent.CarClass` con l'ID numerico di classe (es. "4029").
+- `User.PluginSdkDemoEdit/SessionYamlParser.cs:57, 80, 191` — Aggiunta gestione del campo `CarClassID:` nel parser YAML. Il passo di classe viene memorizzato sia sotto il nome breve ("GTP") sia sotto l'identificativo numerico ("4029").
+- `User.PluginSdkDemoEdit/SessionMetadata.cs:132, 145, 160` — Introdotto metodo di normalizzazione `NormalizeDriverName(string name)` che rimuove eventuali suffissi numerici aggiunti da SimHub per deduplicare piloti o istanze (ad es. "Kalyann Mey4" -> "Kalyann Mey"). Integrato in `EstimatedPaceFor` e nel nuovo metodo `MaxFuelPctFor` per garantire che passo e BoP vengano risolti correttamente anche con suffissi di SimHub.
+- `User.PluginSdkDemoEdit/OpponentTracker.cs:662, 809` — Utilizzato `state.Metadata.MaxFuelPctFor` per player e avversari, risolvendo correttamente il BoP anche in presenza di suffissi numerici nel nome pilota.
+- `User.PluginSdkDemoEdit/FuelManager.cs:326` — Semplificata la condizione del giro di partenza in: `bool isRaceStartLap = state.IsRaceSession && _lastEvaluatedLap <= 1;`. In qualunque sessione di gara, il Giro 1 (sia partenza da fermo che lanciata) viene tassativamente escluso da `_recentLaps` e da `AverageFuelPerLap` (registrato solo in `LastLapFuelUsed`). Questo impedisce a consumi anomali del via (come i 2.97 L del replay) di inquinare la finestra mobile dei 5 giri.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/SessionMetadataUnitTests.cs:74, 323` — Aggiunto test `Test_EstimatedPaceAndBop_DriverNormalizationAndNumericClassId` che valida l'indicizzazione per CarClassID numerico e la normalizzazione dei nomi duplicati.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/FuelOutlierFilterUnitTests.cs:365` — Aggiornato `Test_FuelManager_Lap1_FreezeFuelToAdd` per verificare che al giro 1 di gara il consumo non entri nella media e che la media pulita inizi al primo giro lanciato (giro 2).
+- Suite test: passata da 320 a **321 test PASS** (100% verdi, 0 falliti).
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build 0 errori, 321 PASS, exit code 0.
+
+### Stato
+- ✅ Compila
+- ✅ Test passano (321 PASS su 321)
+
+### Per chi entra
+**Prossimo passo:** Verifica su replay reale con Andreas a Road Atlanta.
+**NON toccare:** `Hardware/` (territorio di Andreas).
+**Attenzione a:** In gara (`IsRaceSession`), il primo giro lanciato valido che entra in media è il completamento del Giro 2.
+
+---
+
 ## [2026-09-06 17:35] antigravity → chiunque entri dopo (Claude in particolare)
 
 **Task:** Risoluzione contaminazione consumo medio al via e protezione baseline passo da outlap/formazione
@@ -359,47 +393,6 @@ Atteso: exit code `0`, tutti i 311 test passano (100%).
 **Prossimo passo:** Y-52 Passo 3 di 4 — radar piazzola box metrica (`DriverPitTrkPct` per indicare la distanza in metri allo stallo assegnato).
 **NON toccare:** `Hardware/` (territorio di Andreas).
 **Attenzione a:** la semina è valida al semaforo verde (`SessionTimeLeft > 0`). In griglia con tempo `-1` `TimeUntilLeaderCheckered` restituisce 0 come da design.
-
----
-
-## [2026-09-05 15:05] claude → Andreas, in particolare
-
-**Task:** allineare i documenti al fatto che sul progetto lavorano **due persone**
-**Piano:** —
-**Commit:** questo (+ i 4 precedenti di oggi, ora pushati)
-
-### Contesto per chi legge da Windows
-Michael è entrato sul progetto oggi, da **macOS**. Tre turni consecutivi hanno riorganizzato `.ai/`
-(potatura del contesto, `AGENTS.md` neutro): **nessun file di codice è stato toccato**, il plugin è
-esattamente com'era a `bd00979`.
-
-### Fatto
-- `PROJECT_STATE.md` — **Y-53 riclassificato**: `PaddleClutch.h` non è un difetto da correggere, lo
-  versiona Andreas. Resta scritto solo perché una review a freddo lo rialza come grave (è successo
-  stamattina): se lo ritrovi, la risposta è "atteso".
-- `ARCHITECTURE.md` — **`Hardware/` entra nella mappa dei moduli** (prima si fermava al plugin C#):
-  cosa contengono i due sketch, e che è **fuori scope per gli agenti**. Annotato che la mappatura
-  pulsante → azione non è documentata da nessuna parte, e che Y-14 ci dipende
-  (`TyreManager.CurrentScope` è pilotato solo dai tasti volante).
-- `PROJECT_STATE.md` — **Y-56 aperto, non corretto di proposito**: un lock non pushato non
-  serializza nulla, e `human` non distingue quale dei due umani. Lo decidete voi due.
-
-### Come verificare
-```bash
-git log --oneline eab83d8..HEAD     # i turni di oggi, tutti [claude] e tutti su .ai/ + *.md
-git diff --stat eab83d8..HEAD -- User.PluginSdkDemoEdit/   # atteso: nessun output
-```
-
-### Stato
-- ⏭️ Build e test **non eseguiti**: macchina macOS. La seconda riga qui sopra è la prova che non
-  servivano — il codice non è stato toccato in nessuno dei tre turni.
-
-### Per chi entra
-**Prossimo passo:** Y-52 passo 2 di 4, invariato dal 12:30.
-**NON toccare:** `Hardware/` (Andreas), e il protocollo del lock finché Y-56 non è deciso.
-**Attenzione a:** le regole ora stanno in **`AGENTS.md`** alla radice. `CLAUDE.md` e `GEMINI.md`
-sono puntatori: se ti trovi a modificarli, stai creando un duplicato (ADR-006).
-
 
 ---
 

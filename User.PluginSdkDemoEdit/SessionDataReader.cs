@@ -98,6 +98,7 @@ namespace SimRIG
                             long? carIdx = GetLongProp(d, "CarIdx");
                             string userName = GetStringProp(d, "UserName");
                             string carClass = GetStringProp(d, "CarClassShortName");
+                            long? carClassId = GetLongProp(d, "CarClassID");
                             double? classEstLap = GetDoubleProp(d, "CarClassEstLapTime");
                             object bopObj = GetPropValue(d, "CarClassMaxFuelPct");
                             double? bopPct = ParsePercentage(bopObj);
@@ -113,9 +114,12 @@ namespace SimRIG
                                     meta.DriverMaxFuelPct[userName] = bopPct.Value;
                             }
 
-                            if (!string.IsNullOrEmpty(carClass) && classEstLap.HasValue && classEstLap.Value >= 10.0)
+                            if (classEstLap.HasValue && classEstLap.Value >= 10.0)
                             {
-                                meta.ClassEstimatedPaceSec[carClass] = classEstLap.Value;
+                                if (!string.IsNullOrEmpty(carClass))
+                                    meta.ClassEstimatedPaceSec[carClass] = classEstLap.Value;
+                                if (carClassId.HasValue)
+                                    meta.ClassEstimatedPaceSec[carClassId.Value.ToString()] = classEstLap.Value;
                             }
 
                             if (cIdx >= 0 && classEstLap.HasValue && classEstLap.Value >= 10.0)
@@ -222,6 +226,7 @@ namespace SimRIG
                     if (string.IsNullOrEmpty(name)) continue;
 
                     var carClass = pm.GetPropertyValue(prefix + "CarClassShortName")?.ToString();
+                    var carClassIdObj = pm.GetPropertyValue(prefix + "CarClassID");
                     var cIdxObj = pm.GetPropertyValue(prefix + "CarIdx");
                     int cIdx = (cIdxObj != null && int.TryParse(cIdxObj.ToString(), out int ci)) ? ci : -1;
 
@@ -230,6 +235,8 @@ namespace SimRIG
                     {
                         meta.DriverEstimatedPaceSec[name] = cp;
                         if (!string.IsNullOrEmpty(carClass)) meta.ClassEstimatedPaceSec[carClass] = cp;
+                        if (carClassIdObj != null && long.TryParse(carClassIdObj.ToString(), out long ccId))
+                            meta.ClassEstimatedPaceSec[ccId.ToString()] = cp;
                         if (cIdx >= 0) paceByCarIdx[cIdx] = cp;
                     }
 

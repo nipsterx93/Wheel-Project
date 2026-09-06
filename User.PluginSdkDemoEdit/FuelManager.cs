@@ -323,7 +323,7 @@ namespace SimRIG
                     bool isOutLap = _wasPreviousLapPit;
                     bool isInLap = _wasInPitLaneDuringLap;
                     bool isGreen = _isLapFullyGreen;
-                    bool isRaceStartLap = state.IsRaceSession && _lastEvaluatedLap <= 1 && _lapStartedBeforeGreen;
+                    bool isRaceStartLap = state.IsRaceSession && _lastEvaluatedLap <= 1;
 
                     bool isSanityOk = fuelUsed > 0.1 && fuelUsed < state.MaxFuelCapacity && state.Flag_Black == 0;
 
