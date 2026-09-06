@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      —
-task:       —
-scope:      —
-expires:    —
+owner:      antigravity
+since:      2026-09-06 18:45
+task:       fix yaml class/driver pace seeding, unpolluted 5-lap fuel history with IQR
+scope:      User.PluginSdkDemoEdit/SessionDataReader.cs, User.PluginSdkDemoEdit/SessionMetadata.cs, User.PluginSdkDemoEdit/FuelManager.cs, User.PluginSdkDemoEdit/RaceAnalyzer.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/
+expires:    2026-09-06 20:00
 ```
 
 **Regole del lock**
