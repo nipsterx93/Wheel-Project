@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      2026-09-06 18:55
-task:       NONE
-scope:      NONE
-expires:    NONE
+owner:      antigravity
+since:      2026-09-07 00:20
+task:       Race start line crossing fuel latch & lap sync
+scope:      TelemetryReader.cs, FuelManager.cs, RaceAnalyzer.cs, DataPluginDemo.cs, Tests
+expires:    2026-09-07 02:20
 ```
 
 **Regole del lock**
