@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      null
-task:       null
-scope:      null
-expires:    null
+owner:      claude
+since:      2026-09-06T00:00
+task:       Setup coworking Claude/Antigravity -- hook lock enforcement, permessi, tabella Ruoli, protocollo brainstorming
+scope:      .claude/, .ai/PROJECT_STATE.md, AGENTS.md
+expires:    2026-09-06T06:00
 ```
 
 **Regole del lock**
