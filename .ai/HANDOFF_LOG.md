@@ -47,6 +47,51 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-06 10:05] claude → chiunque entri dopo
+
+**Task:** Comandi custom `/new-session` e `/handoff`, per ridurre la dipendenza da Andreas come "portavoce" fra sessioni di agenti diversi. Nessun punto Y toccato: turno di infrastruttura.
+**Piano:** continuazione diretta del turno precedente (setup coworking Claude/Antigravity).
+**Commit:** `375d7c6`, `118b24a`
+
+### Fatto
+- `.claude/commands/new-session.md`: comando che, invocato con `/new-session [tema opzionale]`,
+  fa leggere `AGENTS.md` → `PROJECT_STATE.md` (lock + punti aperti) → `HANDOFF_LOG.md` (ultime
+  voci) → `STRATEGY_ENGINE_GUIDE.md`, nello stesso ordine già fissato da `NEW_SESSION_PROMPT.md`,
+  poi chiede il report standard (fase/roadmap, prossimo passo, decisioni in sospeso, incoerenze).
+  Se viene passato un tema, aggancia anche il piano pertinente in `.ai/plans/`.
+- `.claude/commands/handoff.md`: comando che guida la chiusura turno — voce in `HANDOFF_LOG.md`
+  dal template esistente, controllo del conteggio voci con potatura dell'undicesima in
+  `archive/HANDOFF_LOG_archive.md` se serve, rilascio del lock in `PROJECT_STATE.md`, promemoria
+  esplicito di controllare eventuali numeri scritti a mano rimasti disallineati altrove nello
+  stesso file, commit separato per l'handoff.
+- Ho **dogfoodato** `/handoff` a mano in questo stesso turno per chiuderlo (non ho potuto invocarlo
+  come slash command vero perché appena creato in questa sessione — verosimilmente serve un
+  reload, come già osservato per l'hook del turno precedente): spostata la voce più vecchia
+  (2026-09-03 21:15) in `archive/HANDOFF_LOG_archive.md`, aggiunta questa in cima.
+
+### Come verificare
+Non c'è build/test da eseguire (nessun file di codice toccato). Per verificare che i comandi siano
+riconosciuti: aprire una sessione Claude Code nuova su questo repo e digitare `/new-session` —
+deve comparire nell'elenco degli slash command con la descrizione scritta sopra.
+
+### Stato
+- ✅ Compila (nessun file di codice C# toccato in questo turno)
+- ⏭️ Test non eseguiti (nessuna modifica alla logica del plugin)
+
+### Per chi entra
+**Prossimo passo (proposto, non deciso):** verificare in una sessione fresca che `/new-session` e
+`/handoff` siano effettivamente invocabili (il reload dei comandi custom non è stato confermato in
+questo turno, solo dedotto per analogia con l'hook). Poi, quando Andreas installa Superpowers
+(`/plugin install superpowers@claude-plugins-official`), controllare dove scrive di default la sua
+skill di brainstorming e agganciarla a `.ai/plans/`. In coda, la skill di dominio motorsport.
+**NON toccare:** nessuna area di codice interessata da questo turno.
+**Attenzione a:** questi due comandi sono specifici di Claude Code — se Antigravity vuole
+l'equivalente, va scritto nel suo formato di comandi custom (vedi Gemini CLI: `.gemini/commands/*.toml`
+per Gemini CLI standalone; Antigravity ha un proprio meccanismo di "custom slash workflows" ancora
+da verificare in dettaglio), non copiato alla lettera.
+
+---
+
 ## [2026-09-06 09:10] claude → chiunque entri dopo (Andreas, Antigravity, Codex)
 
 **Task:** Setup coworking Claude/Antigravity — hook di lock-enforcement, permessi progetto, tabella Ruoli senza divisione per compiti, protocollo di brainstorming in AGENTS.md. Nessun punto Y toccato: turno di infrastruttura, non di correzione.
@@ -496,74 +541,6 @@ cioè proporzionale: su una vettura da 4 L/giro il fisso dà **meno** margine, s
 **SAFE** invariato, già `= consumption`, cioè un giro esatto. Con `Ceiling` ovunque la rete di
 sicurezza su `MaxAchievableFuelSaving` prevista dallo schema Y-34 originale diventa superflua:
 non si può più arrotondare in difetto.
-
----
-
-## [2026-09-03 21:15] claude → chiunque entri dopo
-
-**Task:** Y-50 — il filtro IQR del carburante si chiudeva sui rifiuti e non si riapriva più
-**Piano:** — (difetto trovato in review di `c0be69d`, non un lavoro pianificato)
-**Commit:** `3ad938f`
-
-### Fatto
-- `FuelManager.cs:182-215` — `_fuelHistory` (soli accettati, mai accorciata sui rifiuti) sostituita
-  da `_recentLaps`, **finestra cronologica** di 10 campioni `{FuelUsed, Accepted}`. È l'accumularsi
-  dei rifiuti che espelle i vecchi accettati e fa scendere i validi sotto tre, riaprendo il filtro.
-  `FuelHistory` resta esposta come i **soli accettati**: i test preesistenti non cambiano semantica.
-- `FuelManager.cs:100` — `ValidateFuelConsumptionIQR` **non toccata**. Riceveva già la lista
-  filtrata: il difetto era nel **chiamante**. Un test sulla sola aritmetica restava verde, come in
-  Y-31 e Y-48.
-- `FuelManager.cs:~218` — `LastLapFuelUsed` è una **misura**, non una statistica: torna ad
-  aggiornarsi sui giri con gialla e sugli out-lap, resta esclusa sul solo **in-lap** (rifornimento
-  parziale → il delta di serbatoio sottostima il consumo). Alimenta `FUEL_TARGET_ALERT`
-  (`DataPluginDemo.cs:1152`), che altrimenti giudicava il pilota su un giro vecchio di due.
-- `FuelManager.cs:1` — ripristinato il BOM UTF-8 rimosso da `c0be69d`. Il file ha commenti accentati.
-- `FuelOutlierFilterUnitTests.cs` — due test nuovi (il file era già nel `<Compile>`, nessuna
-  modifica al `.csproj`).
-
-### Come verificare
-```bash
-"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/User.PluginSdkDemo.Tests.csproj" -p:Configuration=Debug -v:minimal -nologo
-```
-```bash
-"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: exit `0`, **277 PASS** (erano 275). Fra questi:
-`[PASS] Y-50: un cambio reale di consumo oltre il 15% riapre il filtro invece di bloccarlo`
-
-**Regressione neutralizzata (ADR-004):** aggiungendo `if (!accepted) return;` in cima a
-`FuelManager.RecordLap` si riproduce il comportamento pre-fix; il test Y-50 diventa rosso con
-`media 2,509` invece di `3,10`. Verificato, non dedotto.
-
-### Numeri misurati
-Storico di 10 giri a ~2.51 L, poi 15 giri al nuovo consumo reale, prima del fix:
-
-| consumo reale | accettati (noi) | media finale | accettati (irdashies) |
-|---|---|---|---|
-| 2.10 L | 0/15 | 2.51 | 7/15 → 2.10 |
-| 3.10 L | 0/15 | 2.51 | 7/15 → 3.10 |
-| 3.50 L | 0/15 | 2.51 | 7/15 → 3.50 |
-
-La riga pericolosa è l'ultima: `FuelToAdd` su 2.51 mentre si consuma 3.50, fino alla bandiera.
-
-### Attenzione per chi entra
-- ⚠️ **Latenza di rientro: 8 giri** (10 slot, soglia a 3 validi). È il comportamento di
-  irdashies, riprodotto di proposito. Stringerlo richiede un numero **misurato su un replay**,
-  non scelto a occhio (ADR-005). Da valutare un'**asimmetria**: rifiutare un consumo in *salita*
-  è pericoloso, in *discesa* no.
-- ⚠️ `Flag_Yellow` ora scarta l'**intero giro** se compare in un solo tick. La semantica è
-  coerente con l'uso esistente (`OpponentTracker.cs:954` lo tratta come stato di gara globale),
-  ma la conseguenza è nuova e più severa. In una gara molto neutralizzata lo storico pulito può
-  restare affamato. **Da osservare sul primo replay con safety car**, non c'è ancora una misura.
-- Il conteggio "186 test" fermo in `PROJECT_STATE.md` è **stantio**: il valore reale delle righe
-  `[PASS]` era 275 prima di questo turno, 277 dopo.
-
-### Contesto
-Il turno nasce da un'analisi comparativa con `irdashies` (progetto MIT, iRacing-only, Electron/TS,
-in `Solo per analisi logiche/`). Il filtro IQR è stato portato da `antigravity` in `c0be69d`; questa
-è la correzione del pezzo che era rimasto fuori dal port. Restano da valutare, dalla stessa analisi:
-il ripiegamento di `posDiff` entro ±0.5 giro per Y-13, il broadcast nativo iRacing per Y-34,
-e la distanza metrica dalla piazzola box.
 
 ---
 

@@ -9,6 +9,74 @@
 
 ---
 
+## [2026-09-03 21:15] claude → chiunque entri dopo
+
+**Task:** Y-50 — il filtro IQR del carburante si chiudeva sui rifiuti e non si riapriva più
+**Piano:** — (difetto trovato in review di `c0be69d`, non un lavoro pianificato)
+**Commit:** `3ad938f`
+
+### Fatto
+- `FuelManager.cs:182-215` — `_fuelHistory` (soli accettati, mai accorciata sui rifiuti) sostituita
+  da `_recentLaps`, **finestra cronologica** di 10 campioni `{FuelUsed, Accepted}`. È l'accumularsi
+  dei rifiuti che espelle i vecchi accettati e fa scendere i validi sotto tre, riaprendo il filtro.
+  `FuelHistory` resta esposta come i **soli accettati**: i test preesistenti non cambiano semantica.
+- `FuelManager.cs:100` — `ValidateFuelConsumptionIQR` **non toccata**. Riceveva già la lista
+  filtrata: il difetto era nel **chiamante**. Un test sulla sola aritmetica restava verde, come in
+  Y-31 e Y-48.
+- `FuelManager.cs:~218` — `LastLapFuelUsed` è una **misura**, non una statistica: torna ad
+  aggiornarsi sui giri con gialla e sugli out-lap, resta esclusa sul solo **in-lap** (rifornimento
+  parziale → il delta di serbatoio sottostima il consumo). Alimenta `FUEL_TARGET_ALERT`
+  (`DataPluginDemo.cs:1152`), che altrimenti giudicava il pilota su un giro vecchio di due.
+- `FuelManager.cs:1` — ripristinato il BOM UTF-8 rimosso da `c0be69d`. Il file ha commenti accentati.
+- `FuelOutlierFilterUnitTests.cs` — due test nuovi (il file era già nel `<Compile>`, nessuna
+  modifica al `.csproj`).
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/User.PluginSdkDemo.Tests.csproj" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit `0`, **277 PASS** (erano 275). Fra questi:
+`[PASS] Y-50: un cambio reale di consumo oltre il 15% riapre il filtro invece di bloccarlo`
+
+**Regressione neutralizzata (ADR-004):** aggiungendo `if (!accepted) return;` in cima a
+`FuelManager.RecordLap` si riproduce il comportamento pre-fix; il test Y-50 diventa rosso con
+`media 2,509` invece di `3,10`. Verificato, non dedotto.
+
+### Numeri misurati
+Storico di 10 giri a ~2.51 L, poi 15 giri al nuovo consumo reale, prima del fix:
+
+| consumo reale | accettati (noi) | media finale | accettati (irdashies) |
+|---|---|---|---|
+| 2.10 L | 0/15 | 2.51 | 7/15 → 2.10 |
+| 3.10 L | 0/15 | 2.51 | 7/15 → 3.10 |
+| 3.50 L | 0/15 | 2.51 | 7/15 → 3.50 |
+
+La riga pericolosa è l'ultima: `FuelToAdd` su 2.51 mentre si consuma 3.50, fino alla bandiera.
+
+### Attenzione per chi entra
+- ⚠️ **Latenza di rientro: 8 giri** (10 slot, soglia a 3 validi). È il comportamento di
+  irdashies, riprodotto di proposito. Stringerlo richiede un numero **misurato su un replay**,
+  non scelto a occhio (ADR-005). Da valutare un'**asimmetria**: rifiutare un consumo in *salita*
+  è pericoloso, in *discesa* no.
+- ⚠️ `Flag_Yellow` ora scarta l'**intero giro** se compare in un solo tick. La semantica è
+  coerente con l'uso esistente (`OpponentTracker.cs:954` lo tratta come stato di gara globale),
+  ma la conseguenza è nuova e più severa. In una gara molto neutralizzata lo storico pulito può
+  restare affamato. **Da osservare sul primo replay con safety car**, non c'è ancora una misura.
+- Il conteggio "186 test" fermo in `PROJECT_STATE.md` è **stantio**: il valore reale delle righe
+  `[PASS]` era 275 prima di questo turno, 277 dopo.
+
+### Contesto
+Il turno nasce da un'analisi comparativa con `irdashies` (progetto MIT, iRacing-only, Electron/TS,
+in `Solo per analisi logiche/`). Il filtro IQR è stato portato da `antigravity` in `c0be69d`; questa
+è la correzione del pezzo che era rimasto fuori dal port. Restano da valutare, dalla stessa analisi:
+il ripiegamento di `posDiff` entro ±0.5 giro per Y-13, il broadcast nativo iRacing per Y-34,
+e la distanza metrica dalla piazzola box.
+
+---
+
 ## [2026-09-03 22:45] antigravity -> claude / utente
 
 **Task:** Passo 1: Filtro IQR Carburante, latch giro verde/pit lane e buffer a 10 giri (allineamento irdashies).

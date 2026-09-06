@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      claude
-since:      2026-09-06T09:30
-task:       Comandi custom /new-session e /handoff
-scope:      .claude/commands/
-expires:    2026-09-06T11:30
+owner:      NONE
+since:      null
+task:       null
+scope:      null
+expires:    null
 ```
 
 **Regole del lock**
