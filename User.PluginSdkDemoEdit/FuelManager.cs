@@ -270,6 +270,7 @@ namespace SimRIG
         private int _lastEvaluatedLap = -1;
         private double _fuelAtLapStart = 0.0;
         private int _lastSessionStateStatus = -1;
+        private bool _lastRaceStartLineCrossed = false;
 
         private bool _wasInPitLaneDuringLap = false;
         private bool _wasPreviousLapPit = false;
@@ -290,30 +291,34 @@ namespace SimRIG
         {
             if (!state.IsGameRunning) return;
 
-            // In gara: gestione della griglia pre-via e transizione al semaforo verde
+            // In gara: gestione della griglia pre-via e transizione al traguardo di inizio gara
             if (state.IsRaceSession)
             {
-                if (state.SessionStateStatus < 4)
+                if (state.SessionStateStatus < 4 || !state.RaceStartLineCrossed)
                 {
                     _lapStartedBeforeGreen = true;
-                    // In griglia o giro di ricognizione: ripuliamo accumulatori e sincronizziamo il fuel
+                    // In griglia, formazione o sprint pre-traguardo: sincronizziamo il fuel
                     _fuelAtLapStart = state.CurrentFuelLevel;
                     _isLapFullyGreen = false;
                     _wasInPitLaneDuringLap = false;
                     _wasPreviousLapPit = false;
+                    _lastEvaluatedLap = state.CurrentLap;
                 }
-                else if (_lastSessionStateStatus < 4 && state.SessionStateStatus >= 4)
+                else if (_lastSessionStateStatus < 4 || !_lastRaceStartLineCrossed)
                 {
-                    // Semaforo verde! Latch del carburante di inizio gara (esclude idle e formazione).
-                    // _lapStartedBeforeGreen rimane true perche' questo giro e' iniziato prima del verde.
+                    // Taglio del traguardo di inizio gara! Latch del carburante di inizio gara sul traguardo
                     _fuelAtLapStart = state.RaceStartingFuel > 0.0 ? state.RaceStartingFuel : state.CurrentFuelLevel;
+                    _lapStartedBeforeGreen = false;
+                    _isLapFullyGreen = true;
                     _wasInPitLaneDuringLap = false;
                     _wasPreviousLapPit = false;
-                    log?.Log(LogModule.FUEL, LogType.EVENT, "Race Start Green Flag (Fuel Latch)",
+                    _lastEvaluatedLap = state.CurrentLap;
+                    log?.Log(LogModule.FUEL, LogType.EVENT, "Race Start Line Crossed (Fuel Latch)",
                         $"Lap: {state.CurrentLap} | StartFuel: {_fuelAtLapStart:F2}L");
                 }
             }
             _lastSessionStateStatus = state.SessionStateStatus;
+            _lastRaceStartLineCrossed = state.RaceStartLineCrossed;
 
             if (state.CurrentLap != _lastEvaluatedLap)
             {
@@ -323,7 +328,6 @@ namespace SimRIG
                     bool isOutLap = _wasPreviousLapPit;
                     bool isInLap = _wasInPitLaneDuringLap;
                     bool isGreen = _isLapFullyGreen;
-                    bool isRaceStartLap = state.IsRaceSession && _lastEvaluatedLap <= 1;
 
                     bool isSanityOk = fuelUsed > 0.1 && fuelUsed < state.MaxFuelCapacity && state.Flag_Black == 0;
 
@@ -334,7 +338,7 @@ namespace SimRIG
                         Calculations.LastLapFuelUsed = fuelUsed;
                     }
 
-                    if (isSanityOk && !isInLap && !isOutLap && isGreen && !isRaceStartLap)
+                    if (isSanityOk && !isInLap && !isOutLap && isGreen)
                     {
                         // La baseline sono i soli accettati **dentro la finestra**, non tutti gli
                         // accettati di sempre: quando il consumo reale cambia, i rifiuti riempiono
@@ -355,24 +359,26 @@ namespace SimRIG
                                 Calculations.FuelPerLapTarget = Calculations.AverageFuelPerLap;
                             }
 
+                            int raceLap = state.RaceStartLap > 0 ? (_lastEvaluatedLap - state.RaceStartLap + 1) : _lastEvaluatedLap;
                             log?.Log(LogModule.FUEL, LogType.EVENT, "Lap Fuel Consumption (Accepted)",
-                                $"Lap {_lastEvaluatedLap} | Used: {fuelUsed:F2}L | Avg: {Calculations.AverageFuelPerLap:F2}L | Accepted: {acceptedNow.Count}/{_recentLaps.Count}");
+                                $"Lap {raceLap} (Raw: {_lastEvaluatedLap}) | Used: {fuelUsed:F2}L | Avg: {Calculations.AverageFuelPerLap:F2}L | Accepted: {acceptedNow.Count}/{_recentLaps.Count}");
                         }
                         else
                         {
+                            int raceLap = state.RaceStartLap > 0 ? (_lastEvaluatedLap - state.RaceStartLap + 1) : _lastEvaluatedLap;
                             log?.Log(LogModule.FUEL, LogType.EVENT, "Lap Fuel Outlier Rejected (IQR)",
-                                $"Lap {_lastEvaluatedLap} | Used: {fuelUsed:F2}L | Avg: {(acceptedNow.Count > 0 ? acceptedNow.Average() : 0):F2}L | Accepted: {acceptedNow.Count}/{_recentLaps.Count}");
+                                $"Lap {raceLap} (Raw: {_lastEvaluatedLap}) | Used: {fuelUsed:F2}L | Avg: {(acceptedNow.Count > 0 ? acceptedNow.Average() : 0):F2}L | Accepted: {acceptedNow.Count}/{_recentLaps.Count}");
                         }
                     }
                     else
                     {
                         string reason = !isSanityOk ? "Sanity Failed" :
-                                        isRaceStartLap ? "Race Start / Formation Lap" :
                                         isInLap ? "In-Lap / Pit Active" :
                                         isOutLap ? "Out-Lap" : "!Green Flag";
 
+                        int raceLap = state.RaceStartLap > 0 ? (_lastEvaluatedLap - state.RaceStartLap + 1) : _lastEvaluatedLap;
                         log?.Log(LogModule.FUEL, LogType.EVENT, "Lap Fuel Ignored",
-                            $"Lap {_lastEvaluatedLap} | Used: {fuelUsed:F2}L | Reason: {reason}");
+                            $"Lap {raceLap} (Raw: {_lastEvaluatedLap}) | Used: {fuelUsed:F2}L | Reason: {reason}");
                     }
 
                     // Reset esplicito e pulito per il nuovo giro (come concordato con Claude)
@@ -572,6 +578,7 @@ namespace SimRIG
             _lastEvaluatedLap = -1;
             _fuelAtLapStart = 0.0;
             _lastSessionStateStatus = -1;
+            _lastRaceStartLineCrossed = false;
             _wasInPitLaneDuringLap = false;
             _wasPreviousLapPit = false;
             _isLapFullyGreen = true;

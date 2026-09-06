@@ -31,6 +31,9 @@ namespace SimRIG
         public LogManager Log { get; set; }
         private double _lastPressureSampleTime = 0.0;
         private System.Collections.Generic.List<Tuple<double, double>> _pressureHistory = new System.Collections.Generic.List<Tuple<double, double>>(); // list of Tuple<sessionTime, airPressure>
+        private int _lastSessionStatusForFuel = 0;
+        private double _lastTrackPosForFuel = 0.0;
+        private int _lastLapForFuel = 0;
 
         public TelemetryReader(PluginManager pluginManager)
         {
@@ -489,16 +492,46 @@ namespace SimRIG
 
         private void ManageStartingFuelLatch(GameData data, SessionState state)
         {
-            if (state.SessionStateStatus == 4 && state.IsRaceSession && !state.RaceStartingFuelLatched && data.NewData.Fuel > 0)
-            {
-                state.RaceStartingFuel = data.NewData.Fuel;
-                state.RaceStartingFuelLatched = true;
-            }
             if (!state.IsRaceSession || state.SessionStateStatus < 4)
             {
                 state.RaceStartingFuelLatched = false;
                 state.RaceStartingFuel = 0.0;
+                state.RaceStartLineCrossed = false;
+                state.RaceStartLap = 0;
+                _lastSessionStatusForFuel = state.SessionStateStatus;
+                _lastTrackPosForFuel = state.TrackPositionPercent;
+                _lastLapForFuel = state.CurrentLap;
+                return;
             }
+
+            // Gara attiva: SessionStateStatus >= 4
+            if (!state.RaceStartLineCrossed)
+            {
+                bool isStandingStart = state.Metadata.IsStandingStart == true ||
+                                       (_lastSessionStatusForFuel == 2 && state.SpeedKmh < 15.0);
+
+                bool crossedFinishLine = false;
+                if (_lastLapForFuel > 0 && state.CurrentLap > _lastLapForFuel)
+                {
+                    crossedFinishLine = true;
+                }
+                else if (_lastTrackPosForFuel > 0.80 && state.TrackPositionPercent < 0.20)
+                {
+                    crossedFinishLine = true;
+                }
+
+                if (isStandingStart || crossedFinishLine)
+                {
+                    state.RaceStartLineCrossed = true;
+                    state.RaceStartLap = state.CurrentLap;
+                    state.RaceStartingFuel = data.NewData.Fuel;
+                    state.RaceStartingFuelLatched = true;
+                }
+            }
+
+            _lastSessionStatusForFuel = state.SessionStateStatus;
+            _lastTrackPosForFuel = state.TrackPositionPercent;
+            _lastLapForFuel = state.CurrentLap;
         }
 
         private void ManageRaceStart(GameData data, SessionState state)

@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      antigravity
-since:      2026-09-07 00:20
-task:       Race start line crossing fuel latch & lap sync
-scope:      TelemetryReader.cs, FuelManager.cs, RaceAnalyzer.cs, DataPluginDemo.cs, Tests
-expires:    2026-09-07 02:20
+owner:      NONE
+since:      —
+task:       —
+scope:      —
+expires:    —
 ```
 
 **Regole del lock**
@@ -66,9 +66,9 @@ poteva più correggere). Il rimedio comune è in ADR-005.
 > L'indice dei punti chiusi resta più in basso in questo file: serve a sapere **che** un punto esiste
 > ed è chiuso, senza caricarne il testo. Quando ti serve il *perché*, apri l'archivio a quell'ID.
 
-**Come è stato verificato tutto:** build 0 errori, **314 test PASS** (erano 111 al setup, 186 al
-24 agosto, 295 dopo Y-52 passo 1, 311 dopo Y-52 passo 2, 314 dopo sblocco dump `SessionDataReader`
-il 2026-09-06; ⚠️ vedi Y-54: il backtest sul replay
+**Come è stato verificato tutto:** build 0 errori, **322 test PASS** (erano 111 al setup, 186 al
+24 agosto, 295 dopo Y-52 passo 1, 311 dopo Y-52 passo 2, 314 dopo sblocco dump `SessionDataReader`,
+321 dopo allineamento CarClassID/suffissi, 322 dopo sincronizzazione start line crossing latch; ⚠️ vedi Y-54: il backtest sul replay
 reale si salta in silenzio se il file non c'è, quindi il numero da solo non dice quanta copertura
 sia davvero girata), e per ogni
 correzione la **regressione neutralizzata** — si disattiva il fix e si controlla che il test diventi
@@ -169,7 +169,7 @@ sapere che un punto esiste ed è chiuso, senza caricarne 47 KB a ogni sessione.
 
 **Fase attiva della Roadmap:** **Fase Y-52 (Metadati di Sessione da iRacing / irdashies)** — vedi [roadmap.md](.ai/plans/2026-08-24-roadmap.md).
 - **Passi 1 e 2:** Completati e testati (contenitore agnostico `SessionMetadata`, seeding passo stimato e validità `IsLapsPredictionValid`).
-- **Stabilizzazione Fuel al via e Filtro Outlap (2026-09-06):** Risolta contaminazione `AverageFuelPerLap` dal giro di formazione/partenza (finestra media a 5 giri, Lap 1 escluso dalla media) e introdotto filtro plausibilità `RaceAnalyzer.IsPlausibleBaselineLap` che protegge la baseline dai tempi outlap/formazione. Allineata cascata `TargetStrategyManager` a `RaceAnalyzer.ResolvePlayerPace` (320 test PASS).
+- **Stabilizzazione Fuel al via e Start Line Crossing Latch (2026-09-07):** Sincronizzato con precisione il latch di `RaceStartingFuel` e l'avanzamento dei giri al primo attraversamento effettivo della linea del traguardo sotto bandiera verde (`RaceStartLineCrossed`). Lo sprint pre-traguardo della rolling start viene escluso dal calcolo dei litri; al completamento del primo giro di gara (Giro 1 -> 2 di gara) entra il consumo pulito e reale (2.21 L a Road Atlanta) nella finestra a 5 giri di `AverageFuelPerLap`, garantendo allineamento immediato con irdashies e con la realtà (322 test PASS).
 - **Prossimo lavoro tecnico:** Y-52 Passo 3 (`DriverPitTrkPct` → coordinata metrica piazzola box) e Passo 4 (densità carburante reale, opzioni gara).
 - **Prossima fase strategica:** Fase B (Verifica consigli undercut/overcut contro esito reale di gara su replay idoneo fornito dall'utente).
 

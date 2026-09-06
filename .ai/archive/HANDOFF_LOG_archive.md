@@ -9,6 +9,45 @@
 
 ---
 
+## [2026-09-05 13:15] antigravity → chiunque entri dopo
+
+**Task:** Y-52 Passo 2 di 4 — Seeding `DriverCarEstLapTime` e `CarClassEstLapTime` nei ripieghi di passo e introduzione flag `IsLapsPredictionValid`
+**Piano:** —
+**Commit:** questo
+
+### Fatto
+- `User.PluginSdkDemoEdit/RaceAnalyzer.cs`:
+  - Aggiunto `public bool IsLapsPredictionValid { get; set; } = false;` in `RaceAnalysisResult`.
+  - Introdotti helper puri `ResolvePlayerPace`, `ResolveLeaderPace`, `IsLapsPredictionValid`.
+  - Sostituito il vecchio ripiego cablato `120.0s` con la cascata gerarchica: baseline normalizzata > best lap registrato in sessione > `DriverCarEstLapTime` (prior pilota) > `CarClassEstLapTime` (prior classe) > fisica del tracciato (`trackLength / 50.0`) > `120.0s`.
+  - In `ComputeFlagMoment`, seminato il passo degli avversari non ancora cronometrati da `Metadata.EstimatedPaceFor`, garantendo fin dal via l'identificazione corretta della vettura al comando.
+  - Connesso `Results.IsLapsPredictionValid` allo stato di gara e al ciclo di vita della sessione.
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs`:
+  - `refLapTime` ripiega su `state.Metadata.PlayerEstimatedPaceSec` e `state.Metadata.EstimatedPaceFor` prima di `trackLength / 50.0`.
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs`:
+  - Registrata e pubblicata la proprietà SimHub `SimRIG.Session.IsLapsPredictionValid`.
+  - Leaderboard laterale (`lapPaceSec`) ripiega sui metadati stimati prima di `trackLen / 45.0`.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/PredictedPaceUnitTests.cs`:
+  - 15 unit test che verificano gerarchia fonti (ADR-005), risoluzione leader, transizioni flag di validità e regressione Road Atlanta GT3 (36 giri proiettati al semaforo verde, risolvendo il buco nero dei 23 giri causato dal fallback a 120s).
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit code `0`, tutti i 311 test passano (100%).
+
+### Stato
+- ✅ Compila — 0 errori
+- ✅ Test passano (100% PASS, 311/311 unit test)
+
+### Per chi entra
+**Prossimo passo:** Y-52 Passo 3 di 4 — radar piazzola box metrica (`DriverPitTrkPct` per indicare la distanza in metri allo stallo assegnato).
+**NON toccare:** `Hardware/` (territorio di Andreas).
+**Attenzione a:** la semina è valida al semaforo verde (`SessionTimeLeft > 0`). In griglia con tempo `-1` `TimeUntilLeaderCheckered` restituisce 0 come da design.
+
+---
+
 ## [2026-09-05 15:05] claude → Andreas, in particolare
 
 **Task:** allineare i documenti al fatto che sul progetto lavorano **due persone**

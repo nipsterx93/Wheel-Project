@@ -130,6 +130,8 @@ namespace SimRIG
         // -------------------------------------------------------------------------
         public double RaceStartingFuel { get; set; } = 0.0;
         public bool RaceStartingFuelLatched { get; set; } = false;
+        public bool RaceStartLineCrossed { get; set; } = false;
+        public int RaceStartLap { get; set; } = 0;
 
         /// <summary>
         /// Resetta lo stato di base. Utile quando il gioco viene chiuso.
@@ -147,6 +149,10 @@ namespace SimRIG
             CurrentFuelLevel = 0.0;
             CurrentLap = 0;
             TrackPositionPercent = 0.0;
+            RaceStartingFuel = 0.0;
+            RaceStartingFuelLatched = false;
+            RaceStartLineCrossed = false;
+            RaceStartLap = 0;
             IsInPitLane = false;
             IsInPitBox = false;
             IsPitLimiterOn = false;

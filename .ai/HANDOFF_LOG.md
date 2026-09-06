@@ -47,6 +47,51 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-07 00:35] antigravity → chiunque entri dopo (Claude in particolare)
+
+**Task:** Sincronizzazione precisa del via di gara sul primo taglio del traguardo (latch carburante e conteggio giri a verde)
+**Piano:** —
+**Commit:** questo
+
+### Fatto
+- `User.PluginSdkDemoEdit/SessionState.cs:133-134, 154-155`:
+  - Introdotti campi `public bool RaceStartLineCrossed { get; set; } = false;` e `public int RaceStartLap { get; set; } = 0;`, entrambi opportunamente resettati in `Reset()`.
+- `User.PluginSdkDemoEdit/TelemetryReader.cs:337-375`:
+  - Riscritto il latch del carburante iniziale (`ManageStartingFuelLatch`). In partenza lanciata (rolling start con giro di ricognizione/formazione), allo sventolare della bandiera verde (`SessionStateStatus >= 4`) la vettura sta ancora percorrendo la pista verso la linea del traguardo (es. curvone prima del rettilineo). `RaceStartingFuel` **non viene più agganciato prima del tempo**: si attende che la vettura tagli per la prima volta il traguardo sotto bandiera verde (rilevamento transizione `_lastTrackPosForFuel > 0.85` -> `TrackPositionPercent < 0.15` o incremento giro). Solo in quell'istante esatto viene registrato `state.RaceStartingFuel = state.CurrentFuelLevel`, `RaceStartingFuelLatched = true`, `RaceStartLineCrossed = true` e `RaceStartLap = state.CurrentLap`. Per le partenze da fermo (`SpeedKmh > 10.0 && TrackPositionPercent < 0.05`), l'aggancio scatta immediatamente allo stacco della frizione.
+- `User.PluginSdkDemoEdit/FuelManager.cs:258-295, 335`:
+  - Rimosso l'hack grezzo precedente `isRaceStartLap = state.IsRaceSession && _lastEvaluatedLap <= 1;`.
+  - Finché `state.IsRaceSession && !state.RaceStartLineCrossed`, `_lastEvaluatedLap` viene mantenuto allineato a `state.CurrentLap` e nessun consumo viene contabilizzato né in telemetria né nelle medie.
+  - Al frame esatto in cui `RaceStartLineCrossed` diventa `true` (primo taglio linea under green), `_fuelAtLapStart` viene agganciato a `RaceStartingFuel` (es. 46.07 L nel replay di Road Atlanta, invece dei 49.04 L alla bandiera verde): lo sprint prima della linea viene scartato a monte.
+  - Al secondo taglio del traguardo (fine del primo giro effettivo di gara, es. da Lap 2 a Lap 3 in iRacing), il consumo calcolato (46.07 - 43.86 = 2.21 L) entra direttamente come **primo campione pulito** nella finestra dei 5 giri di `AverageFuelPerLap`, garantendo un allineamento istantaneo con irdashies e con la realtà.
+  - Nei log di consumo viene riportato sia il giro di gara relativo (`RaceLap`) sia il giro raw di telemetria (`Lap`).
+- `User.PluginSdkDemoEdit/RaceAnalyzer.cs:640-660, 750-770, 780-800, 910-1010, 1120-1155, 1280-1295, 1715-1825`:
+  - `Results.RaceLapsCompleted`: calcolato come `state.RaceStartLineCrossed ? Math.Max(0, state.CurrentLap - state.RaceStartLap) : 0` (e 0 se fuori gara o prima del verde). Sia in formazione (`SessionStateStatus == 3`) che nello sprint pre-via prima della linea (`SessionStateStatus == 4`), i giri completati di gara rimangono a 0.
+  - `Results.LeaderRaceLapsCompleted`: sincronizzato analogamente col giro iniziale del leader.
+  - `playerAbsolutePos` e `leaderAbsolutePos`: tenuti a 0.0 finché non si taglia la linea del via under green.
+  - Reso completamente null-safe `RaceAnalyzer.Update` (null-conditional su `log?.Log(...)`, guardie contro `tracker == null`, `radar == null`, `state.Opponents == null`, `fuel == null`).
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/FuelOutlierFilterUnitTests.cs:365, 480, 500`:
+  - Aggiornati i test esistenti per riflettere il latch al passaggio sulla linea.
+  - Aggiunto test completo end-to-end `Test_RaceStartLineCrossed_FuelAndLapSync` che valida l'intero ciclo: formazione -> sprint pre-via -> attraversamento linea del via (giri 0, fuel latched) -> primo giro reale completato (giri completati 1, consumo 2.21 L).
+- Suite test: passata da 321 a **322 test PASS** (100% verdi, 0 falliti).
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build 0 errori, 322 PASS, exit code 0.
+
+### Stato
+- ✅ Compila
+- ✅ Test passano (322 PASS su 322)
+
+### Per chi entra
+**Prossimo passo:** Verifica live con replay a Road Atlanta con Andreas.
+**NON toccare:** `Hardware/` (territorio di Andreas).
+**Attenzione a:** In iRacing durante il formation lap il giro raw può essere 1 o 2 a seconda del tracciato. Il conteggio giri di gara `RaceLapsCompleted` parte tassativamente da 0 sul primo attraversamento linea under green e scala a 1 al completamento del primo giro di gara.
+
+---
+
 ## [2026-09-06 18:55] antigravity → chiunque entri dopo (Claude in particolare)
 
 **Task:** Risoluzione mancato seeding passo leader da YAML e contaminazione media consumo al via (esclusione assoluta Giro 1)
@@ -354,46 +399,6 @@ Atteso: con lock `owner: NONE`, `{"hookSpecificOutput":{"hookEventName":"PreTool
 **Prossimo passo (proposto, non deciso):** comandi custom `/new-session` e `/handoff` per automatizzare il bootstrap di una sessione nuova (ridurre la dipendenza da Andreas come "portavoce" fra chat), poi valutare l'installazione della skill Superpowers (obra/Jesse Vincent, `/plugin install superpowers@claude-plugins-official`) per il brainstorming strutturato — verificare dove scrive di default e se va redirezionato verso `.ai/plans/`. In coda, una skill di dominio motorsport (formule fuel/pit/proiezione) da costruire con l'esito di una deep search già preparata per Andreas.
 **NON toccare:** nessuna area di codice interessata da questo turno.
 **Attenzione a:** l'hook copre solo `User.PluginSdkDemoEdit/` e `Hardware/` — non impedisce scritture scorrette altrove; resta comunque disciplina per tutto il resto, come prima. Se Antigravity introduce un meccanismo equivalente per sé, va documentato in AGENTS.md invece di duplicare la logica qui.
-
----
-
-## [2026-09-05 13:15] antigravity → chiunque entri dopo
-
-**Task:** Y-52 Passo 2 di 4 — Seeding `DriverCarEstLapTime` e `CarClassEstLapTime` nei ripieghi di passo e introduzione flag `IsLapsPredictionValid`
-**Piano:** —
-**Commit:** questo
-
-### Fatto
-- `User.PluginSdkDemoEdit/RaceAnalyzer.cs`:
-  - Aggiunto `public bool IsLapsPredictionValid { get; set; } = false;` in `RaceAnalysisResult`.
-  - Introdotti helper puri `ResolvePlayerPace`, `ResolveLeaderPace`, `IsLapsPredictionValid`.
-  - Sostituito il vecchio ripiego cablato `120.0s` con la cascata gerarchica: baseline normalizzata > best lap registrato in sessione > `DriverCarEstLapTime` (prior pilota) > `CarClassEstLapTime` (prior classe) > fisica del tracciato (`trackLength / 50.0`) > `120.0s`.
-  - In `ComputeFlagMoment`, seminato il passo degli avversari non ancora cronometrati da `Metadata.EstimatedPaceFor`, garantendo fin dal via l'identificazione corretta della vettura al comando.
-  - Connesso `Results.IsLapsPredictionValid` allo stato di gara e al ciclo di vita della sessione.
-- `User.PluginSdkDemoEdit/TargetStrategyManager.cs`:
-  - `refLapTime` ripiega su `state.Metadata.PlayerEstimatedPaceSec` e `state.Metadata.EstimatedPaceFor` prima di `trackLength / 50.0`.
-- `User.PluginSdkDemoEdit/DataPluginDemo.cs`:
-  - Registrata e pubblicata la proprietà SimHub `SimRIG.Session.IsLapsPredictionValid`.
-  - Leaderboard laterale (`lapPaceSec`) ripiega sui metadati stimati prima di `trackLen / 45.0`.
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/PredictedPaceUnitTests.cs`:
-  - 15 unit test che verificano gerarchia fonti (ADR-005), risoluzione leader, transizioni flag di validità e regressione Road Atlanta GT3 (36 giri proiettati al semaforo verde, risolvendo il buco nero dei 23 giri causato dal fallback a 120s).
-
-### Come verificare
-```bash
-"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
-"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: exit code `0`, tutti i 311 test passano (100%).
-
-### Stato
-- ✅ Compila — 0 errori
-- ✅ Test passano (100% PASS, 311/311 unit test)
-
-### Per chi entra
-**Prossimo passo:** Y-52 Passo 3 di 4 — radar piazzola box metrica (`DriverPitTrkPct` per indicare la distanza in metri allo stallo assegnato).
-**NON toccare:** `Hardware/` (territorio di Andreas).
-**Attenzione a:** la semina è valida al semaforo verde (`SessionTimeLeft > 0`). In griglia con tempo `-1` `TimeUntilLeaderCheckered` restituisce 0 come da design.
-
 ---
 
 ## Handoff più vecchi

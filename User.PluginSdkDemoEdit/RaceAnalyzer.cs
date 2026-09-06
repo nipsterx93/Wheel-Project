@@ -229,6 +229,7 @@ namespace SimRIG
         /// esposta alla dashboard, non solo il calcolo derivato.
         /// </summary>
         private int _lastGoodLeaderLapsCompleted = -1;
+        private int _leaderRaceStartLap = 0;
 
         /// <summary>
         /// Protegge la media del passo del leader dai campioni raccolti mentre l'identita' del P1
@@ -355,7 +356,7 @@ namespace SimRIG
 
             if (state.IsSessionActive)
             {
-                if (radar.HasValidCleanSectorBounds())
+                if (radar != null && radar.HasValidCleanSectorBounds())
                 {
                     int playerLapsOnTyres = Math.Max(0, state.CurrentLap - _playerLastPitLap);
                     if (PlayerExtendedSectorRacingZone.Update(
@@ -393,7 +394,7 @@ namespace SimRIG
                             PostPitNormalizedTimes[PostPitTransitCount] = normalizedSector;
                             PostPitNormalizedDeltas[PostPitTransitCount] = normalizedSector - PrePitNormalizedAverage;
                             
-                            log.Log(LogModule.SYSTEM, LogType.EVENT, "Player Post-Pit Sector Transit",
+                            log?.Log(LogModule.SYSTEM, LogType.EVENT, "Player Post-Pit Sector Transit",
                                 $"Index: {PostPitTransitCount} | Time: {normalizedSector:F3}s | PrePitAvg: {PrePitNormalizedAverage:F3}s | Delta: {PostPitNormalizedDeltas[PostPitTransitCount]:F3}s");
 
                             PostPitTransitCount++;
@@ -414,7 +415,7 @@ namespace SimRIG
                                 PostPitWarmupPenalties[i] = Math.Max(0.0, PostPitNormalizedTimes[i] - PlayerExtendedSectorRacingZone.BestFreshNormalTime);
                                 if (Math.Abs(PostPitWarmupPenalties[i] - oldPenalty) > 0.001)
                                 {
-                                    log.Log(LogModule.SYSTEM, LogType.EVENT, "Player Post-Pit Warmup Penalty Update",
+                                    log?.Log(LogModule.SYSTEM, LogType.EVENT, "Player Post-Pit Warmup Penalty Update",
                                         $"Index: {i} | Time: {PostPitNormalizedTimes[i]:F3}s | BestFresh: {PlayerExtendedSectorRacingZone.BestFreshNormalTime:F3}s | Penalty: {PostPitWarmupPenalties[i]:F3}s");
                                 }
                             }
@@ -449,37 +450,40 @@ namespace SimRIG
 
                     bool wasInsideExtendedPit = PlayerExtendedPitZone.IsInside;
 
-                    PlayerExtendedPitZone.Update(
-                        state.TrackPositionPercent,
-                        state.SessionTimeLeftSec,
-                        false, // isCarInPit - purely raw stopwatch
-                        radar.IsInExtendedPitLaneZone(state.TrackPositionPercent),
-                        1.0 - radar.GetExtendedSectorRacingZoneWeight(),
-                        0.0, // currentFuel
-                        0.0, // trackTemp
-                        0.0, // baselineTemp
-                        state.CurrentLap,
-                        state.TrackLengthMeters,
-                        false, // tiresChanged
-                        log
-                    );
-
-                    if (wasInsideExtendedPit && !PlayerExtendedPitZone.IsInside)
+                    if (radar != null)
                     {
-                        if (radar.LastPlayerStrictPitLaneTime > 0.0)
-                        {
-                            double playerAccDecTime = PlayerExtendedPitZone.LastTransitTime - radar.LastPlayerStrictPitLaneTime;
-                            
-                            // Registriamo i dettagli del pit stop per il giocatore nel logger radar per debug e verifica
-                            log.Log(LogModule.RADAR, LogType.EVENT, "Player Pit AccDec Details", 
-                                $"ExtendedPitZoneTime={PlayerExtendedPitZone.LastTransitTime:F2}s, StrictPitLaneTime={radar.LastPlayerStrictPitLaneTime:F2}s, InOutPitAccDecTime={playerAccDecTime:F2}s, StationaryTime={radar.LastPlayerStationaryTime:F2}s, GlobalDbAccDec={radar.PitInOutAccDecTime:F2}s");
+                        PlayerExtendedPitZone.Update(
+                            state.TrackPositionPercent,
+                            state.SessionTimeLeftSec,
+                            false, // isCarInPit - purely raw stopwatch
+                            radar.IsInExtendedPitLaneZone(state.TrackPositionPercent),
+                            1.0 - radar.GetExtendedSectorRacingZoneWeight(),
+                            0.0, // currentFuel
+                            0.0, // trackTemp
+                            0.0, // baselineTemp
+                            state.CurrentLap,
+                            state.TrackLengthMeters,
+                            false, // tiresChanged
+                            log
+                        );
 
-                            if (playerAccDecTime > 0.0)
+                        if (wasInsideExtendedPit && !PlayerExtendedPitZone.IsInside)
+                        {
+                            if (radar.LastPlayerStrictPitLaneTime > 0.0)
                             {
-                                radar.UpdatePitInOutAccDecTime(playerAccDecTime);
-                                log.Log(LogModule.STRATEGY, LogType.EVENT, "AccDec Time Calibrated from Player", $"{playerAccDecTime:F2}s");
+                                double playerAccDecTime = PlayerExtendedPitZone.LastTransitTime - radar.LastPlayerStrictPitLaneTime;
+                                
+                                // Registriamo i dettagli del pit stop per il giocatore nel logger radar per debug e verifica
+                                log?.Log(LogModule.RADAR, LogType.EVENT, "Player Pit AccDec Details", 
+                                    $"ExtendedPitZoneTime={PlayerExtendedPitZone.LastTransitTime:F2}s, StrictPitLaneTime={radar.LastPlayerStrictPitLaneTime:F2}s, InOutPitAccDecTime={playerAccDecTime:F2}s, StationaryTime={radar.LastPlayerStationaryTime:F2}s, GlobalDbAccDec={radar.PitInOutAccDecTime:F2}s");
+
+                                if (playerAccDecTime > 0.0)
+                                {
+                                    radar.UpdatePitInOutAccDecTime(playerAccDecTime);
+                                    log?.Log(LogModule.STRATEGY, LogType.EVENT, "AccDec Time Calibrated from Player", $"{playerAccDecTime:F2}s");
+                                }
+                                radar.ResetLastPlayerStrictPitLaneTime();
                             }
-                            radar.ResetLastPlayerStrictPitLaneTime();
                         }
                     }
                 }
@@ -532,12 +536,12 @@ namespace SimRIG
                     for (int i = 0; i < 3; i++) PostPitNormalizedDeltas[i] = 99.0;
                     for (int i = 0; i < 3; i++) PostPitWarmupPenalties[i] = 0.0;
 
-                    log.Log(LogModule.SYSTEM, LogType.EVENT, "Player Pit Stop Reset (Exit)",
+                    log?.Log(LogModule.SYSTEM, LogType.EVENT, "Player Pit Stop Reset (Exit)",
                         $"TotalPits: {Results.PlayerPitCount} | TiresChanged: True | ResetLap: {_playerLastPitLap} | PrePitAvg: {PrePitNormalizedAverage:F3}");
                 }
                 else
                 {
-                    log.Log(LogModule.SYSTEM, LogType.EVENT, "Player Pit Stop No Reset (Exit)",
+                    log?.Log(LogModule.SYSTEM, LogType.EVENT, "Player Pit Stop No Reset (Exit)",
                         $"TotalPits: {Results.PlayerPitCount} | TiresChanged: False | CurrentLap: {state.CurrentLap}");
                 }
             }
@@ -546,7 +550,21 @@ namespace SimRIG
 
 
 
-            Results.RaceLapsCompleted = Math.Max(0, state.CurrentLap - 1);
+            if (state.IsRaceSession)
+            {
+                if (state.SessionStateStatus < 4 || !state.RaceStartLineCrossed)
+                {
+                    Results.RaceLapsCompleted = 0;
+                }
+                else
+                {
+                    Results.RaceLapsCompleted = Math.Max(0, state.CurrentLap - state.RaceStartLap);
+                }
+            }
+            else
+            {
+                Results.RaceLapsCompleted = Math.Max(0, state.CurrentLap - 1);
+            }
 
             int leaderCurrentLap = state.CurrentLap;
             // Se il Player e' lui stesso il leader, la posizione del leader e' la sua.
@@ -565,7 +583,44 @@ namespace SimRIG
                 }
             }
 
-            int resolvedLeaderLaps = Math.Max(0, leaderCurrentLap - 1);
+            int resolvedLeaderLaps = 0;
+            if (state.IsRaceSession)
+            {
+                if (state.SessionStateStatus < 4)
+                {
+                    resolvedLeaderLaps = 0;
+                    _leaderRaceStartLap = 0;
+                }
+                else
+                {
+                    if (state.Position == 1)
+                    {
+                        resolvedLeaderLaps = Results.RaceLapsCompleted;
+                    }
+                    else
+                    {
+                        if (_leaderRaceStartLap == 0)
+                        {
+                            if (state.Metadata.IsStandingStart == true)
+                            {
+                                _leaderRaceStartLap = leaderCurrentLap;
+                            }
+                            else if (state.RaceStartLineCrossed || leaderCurrentLap > 1)
+                            {
+                                _leaderRaceStartLap = leaderCurrentLap;
+                            }
+                        }
+
+                        resolvedLeaderLaps = (_leaderRaceStartLap > 0)
+                            ? Math.Max(0, leaderCurrentLap - _leaderRaceStartLap)
+                            : 0;
+                    }
+                }
+            }
+            else
+            {
+                resolvedLeaderLaps = Math.Max(0, leaderCurrentLap - 1);
+            }
 
             // Stesso record vuoto che falsava leaderAbsolutePos (Y-24), qui alla sorgente: il
             // conteggio giri del leader va a zero per circa il 43% dei tick nel replay Daytona.
@@ -579,34 +634,29 @@ namespace SimRIG
             // dato da cui nasce tutta la proiezione, e finora non era osservabile a schermo.
             Results.LeaderTrackPct = leaderTrackPosPct;
 
-
-
             if (state.CurrentLap != _lastEvaluatedLap)
-
             {
-
-                if (_lastEvaluatedLap > 0 && state.CurrentLap > 1)
-
+                if (state.IsRaceSession && (state.SessionStateStatus < 4 || !state.RaceStartLineCrossed))
                 {
-
+                    _lastEvaluatedLap = state.CurrentLap;
+                }
+                else if (_lastEvaluatedLap > 0 && state.CurrentLap > 1)
+                {
                     Results.IsLapped = (Results.LeaderRaceLapsCompleted > Results.RaceLapsCompleted);
-
-
 
                     int playerLapsOnTyres = Math.Max(0, Results.RaceLapsCompleted - _playerLastPitLap);
                     double distanceOnTyres = playerLapsOnTyres * state.TrackLengthMeters;
                     AnalyzePlayerLap(state.LastLapTimeSec, state.CurrentFuelLevel, state.TrackTemperature, state.IsInPitLane, state.Flag_Black, Results.RaceLapsCompleted, state.GlobalBaselineTemp, fuelWeightCoef, tempCoef, distanceOnTyres, playerLapsOnTyres, state.Metadata, state.CarClassId, state.TrackLengthMeters, log);
 
-
-
-                    log.Log(LogModule.STRATEGY, LogType.EVENT, "Race Projections Update",
-
+                    log?.Log(LogModule.STRATEGY, LogType.EVENT, "Race Projections Update",
                         $"L_Rem: {Results.LeaderRaceLapsRemaining:F2} | P_Rem: {Results.RaceLapsRemaining:F2} | L_Pace: {Results.LeaderEstimatedPace:F3} | P_PosAtFlag: {Results.ProjectedPosAtCheckered:F3} | P_Total: {Results.RaceTotalLaps:F2} | L_PosAtFlag: {Results.LeaderProjectedPosAtCheckered:F3} | L_Total: {Results.LeaderRaceTotalLaps:F2} | P_Pace: {Results.PlayerPaceUsed:F3} | P_LeftPre: {Results.PlayerLapsLeftBeforePitLoss:F3} | P_LeftPost: {Results.PlayerLapsLeftAfterPitLoss:F3} | RaceLife: {Results.RaceLifeTimeLeftSec:F1}");
 
+                    _lastEvaluatedLap = state.CurrentLap;
                 }
-
-                _lastEvaluatedLap = state.CurrentLap;
-
+                else
+                {
+                    _lastEvaluatedLap = state.CurrentLap;
+                }
             }
 
 
@@ -701,15 +751,15 @@ namespace SimRIG
             double activePlayerPace = ResolvePlayerPace(
                 Results.NormalizedRaceStartPace,
                 state.BestLapTimeSec,
-                state.Metadata.PlayerEstimatedPaceSec,
-                state.Metadata.EstimatedPaceFor(null, state.CarClassId),
+                state.Metadata?.PlayerEstimatedPaceSec,
+                state.Metadata?.EstimatedPaceFor(null, state.CarClassId),
                 state.TrackLengthMeters);
 
             var resolvedLeader = ResolveLeaderPace(
                 state.Position,
                 activePlayerPace,
                 state.Opponents,
-                tracker.TrackedOpponents,
+                tracker?.TrackedOpponents,
                 state.Metadata,
                 state.BestLapTimeSec,
                 state.TrackLengthMeters);
@@ -727,10 +777,18 @@ namespace SimRIG
 
 
 
+            double playerAbsolutePos = (state.IsRaceSession && (state.SessionStateStatus < 4 || !state.RaceStartLineCrossed))
+                ? 0.0
+                : (Results.RaceLapsCompleted + effTrackPos);
+
             double leaderAbsolutePos = Results.LeaderRaceLapsCompleted + 0.0;
-            if (state.Position == 1)
+            if (state.IsRaceSession && (state.SessionStateStatus < 4 || (state.Position != 1 && _leaderRaceStartLap == 0 && !state.RaceStartLineCrossed)))
             {
-                leaderAbsolutePos = Results.RaceLapsCompleted + effTrackPos;
+                leaderAbsolutePos = 0.0;
+            }
+            else if (state.Position == 1)
+            {
+                leaderAbsolutePos = playerAbsolutePos;
                 _lastGoodLeaderAbsolutePos = leaderAbsolutePos;
                 _lastGoodLeaderPosSessionTimeLeft = effSessionTimeLeft;
             }
@@ -764,8 +822,6 @@ namespace SimRIG
                     _lastGoodLeaderPosSessionTimeLeft = effSessionTimeLeft;
                 }
             }
-
-            double playerAbsolutePos = Results.RaceLapsCompleted + effTrackPos;
 
 
 
@@ -851,11 +907,11 @@ namespace SimRIG
                         leaderName = "PLAYER";
                     }
 
-                    bool isMultiClass = state.Opponents.Select(o => o.CarClass).Distinct().Count() > 1;
+                    bool isMultiClass = state.Opponents != null && state.Opponents.Select(o => o.CarClass).Distinct().Count() > 1;
 
                     double leaderStintLaps = 0.0;
                     double defaultLeaderPace = state.TrackLengthMeters > 0.0 ? (state.TrackLengthMeters / 50.0) : 120.0;
-                    double fallbackLeaderPace = state.Metadata.EstimatedPaceFor(leaderName, leaderClass) ?? defaultLeaderPace;
+                    double fallbackLeaderPace = state.Metadata?.EstimatedPaceFor(leaderName, leaderClass) ?? defaultLeaderPace;
                     double leaderPace = _smoothedLeaderPace > 0.0 ? _smoothedLeaderPace : (state.BestLapTimeSec > 0.0 ? state.BestLapTimeSec : fallbackLeaderPace);
                     double leaderPitLoss = 0.0;
                     double leaderTankLapsRemaining = 99.0;
@@ -864,7 +920,7 @@ namespace SimRIG
                     if (!isMultiClass)
                     {
                         // Gara Single-Class: usiamo i parametri ricavati dal Player nel database
-                        var dbPlayerRecord = radar.CurrentTrack;
+                        var dbPlayerRecord = radar?.CurrentTrack;
                         if (dbPlayerRecord != null)
                         {
                             leaderStintLaps = dbPlayerRecord.AverageStintLaps;
@@ -875,19 +931,19 @@ namespace SimRIG
                         
                         if (leaderStintLaps <= 0.0)
                         {
-                            double pFuelPerLap = fuel.AverageFuelPerLap > 0.0 ? fuel.AverageFuelPerLap : 3.0;
-                            leaderStintLaps = state.MaxFuelCapacity / pFuelPerLap;
-                            leaderPitLoss = radar.PitTransitTime + radar.PitInOutAccDecTime + 25.0;
+                            double pFuelPerLap = (fuel != null && fuel.AverageFuelPerLap > 0.0) ? fuel.AverageFuelPerLap : 3.0;
+                            leaderStintLaps = pFuelPerLap > 0.0 ? (state.MaxFuelCapacity / pFuelPerLap) : 0.0;
+                            leaderPitLoss = (radar?.PitTransitTime ?? 0.0) + (radar?.PitInOutAccDecTime ?? 0.0) + 25.0;
                             leaderSource = "SINGLE_CLASS_LIVE";
                         }
                         
-                        leaderTankLapsRemaining = fuel.TankLapsRemaining;
+                        leaderTankLapsRemaining = fuel?.TankLapsRemaining ?? 99.0;
                     }
                     else
                     {
                         // Gara Multi-Class: cascata di priorità per il leader
                         // Priorità 1: Database JSON
-                        var dbLeaderRecord = radar.Database.Tracks.FirstOrDefault(t => t.TrackID == state.TrackId && t.CarClass == leaderClass);
+                        var dbLeaderRecord = radar?.Database?.Tracks?.FirstOrDefault(t => t.TrackID == state.TrackId && t.CarClass == leaderClass);
                         if (dbLeaderRecord != null && dbLeaderRecord.AverageStintLaps > 0.0)
                         {
                             leaderStintLaps = dbLeaderRecord.AverageStintLaps;
@@ -897,7 +953,7 @@ namespace SimRIG
                         }
                         
                         // Priorità 2: Apprendimento Live
-                        if (leaderSource == "NONE" && state.Position != 1)
+                        if (leaderSource == "NONE" && state.Position != 1 && tracker != null)
                         {
                             if (tracker.TrackedOpponents.TryGetValue(leaderName, out var leaderData))
                             {
@@ -918,9 +974,9 @@ namespace SimRIG
                         // Calcoliamo il serbatoio rimanente del leader
                         if (state.Position == 1)
                         {
-                            leaderTankLapsRemaining = fuel.TankLapsRemaining;
+                            leaderTankLapsRemaining = fuel?.TankLapsRemaining ?? 99.0;
                         }
-                        else if (tracker.TrackedOpponents.TryGetValue(leaderName, out var leaderData))
+                        else if (tracker != null && tracker.TrackedOpponents.TryGetValue(leaderName, out var leaderData))
                         {
                             double dbLeaderFuelPerLap = (dbLeaderRecord != null && dbLeaderRecord.FuelPerLap > 0.0) ? dbLeaderRecord.FuelPerLap : 3.0;
                             leaderTankLapsRemaining = leaderData.EstimatedFuelTank / dbLeaderFuelPerLap;
@@ -930,7 +986,7 @@ namespace SimRIG
                     // Log della sorgente del leader (solo in caso di variazione significativa o ad intervalli)
                     if (state.CurrentLap % 5 == 0 && state.CurrentLap != _lastEvaluatedLap)
                     {
-                        log.Log(LogModule.STRATEGY, LogType.FLOW, "Leader Strategy Parameters",
+                        log?.Log(LogModule.STRATEGY, LogType.FLOW, "Leader Strategy Parameters",
                             $"Source: {leaderSource} | Class: {leaderClass} | StintLaps: {leaderStintLaps:F1} | Pace: {leaderPace:F2} | PitLoss: {leaderPitLoss:F1}s");
                     }
 
@@ -946,7 +1002,7 @@ namespace SimRIG
                     {
                         leaderIsInPit = state.IsInPitLane;
                     }
-                    else if (tracker.TrackedOpponents.TryGetValue(leaderName, out var leaderData))
+                    else if (tracker != null && tracker.TrackedOpponents.TryGetValue(leaderName, out var leaderData))
                     {
                         leaderIsInPit = leaderData.IsInsideGeofence;
                     }
@@ -1062,19 +1118,20 @@ namespace SimRIG
                         // tempi misurati migliorerebbe il leader e **peggiorerebbe il Player**.
                         double playerL_leftBeforePitLoss = playerL_left;
                         
-                        double playerFuelPerLap = fuel.AverageFuelPerLap > 0.0 ? fuel.AverageFuelPerLap : 3.0;
-                        double playerStintLaps = state.MaxFuelCapacity / playerFuelPerLap;
+                        double playerFuelPerLap = (fuel != null && fuel.AverageFuelPerLap > 0.0) ? fuel.AverageFuelPerLap : 3.0;
+                        double playerStintLaps = playerFuelPerLap > 0.0 ? (state.MaxFuelCapacity / playerFuelPerLap) : 0.0;
                         // Y-44: il costo della sosta e' il tempo passato nella zona box **meno**
                         // quello che ci avresti messo a percorrere quella stessa porzione di
                         // tracciato in pista. Prima si contava la traversata intera: sul replay
                         // 20260901_211532 la perdita reale misurata dai tempi sul giro era 35.85 s
                         // e il plugin ne sottraeva ~54, cioe' il 52% in piu'.
-                        double playerStationaryTime = Math.Max(
-                            fuel.FuelToAdd / (radar.MeasuredFuelFillRate > 0 ? radar.MeasuredFuelFillRate : 2.7),
-                            radar.DbTireChangeTime);
+                        double fillRate = (radar != null && radar.MeasuredFuelFillRate > 0) ? radar.MeasuredFuelFillRate : 2.7;
+                        double fuelToAdd = fuel != null ? fuel.FuelToAdd : 0.0;
+                        double dbTireTime = radar != null ? radar.DbTireChangeTime : 0.0;
+                        double playerStationaryTime = Math.Max(fuelToAdd / fillRate, dbTireTime);
 
                         double pitZoneFraction = 0.0;
-                        if (radar.CurrentTrack != null)
+                        if (radar != null && radar.CurrentTrack != null)
                         {
                             pitZoneFraction = RaceTimeProjection.PitZoneLapFraction(
                                 radar.CurrentTrack.PitEntryPct,
@@ -1083,14 +1140,14 @@ namespace SimRIG
                         }
 
                         double playerPitLoss = RaceTimeProjection.PitLossSec(
-                            radar.PitTransitTime,
-                            radar.PitInOutAccDecTime,
+                            radar?.PitTransitTime ?? 0.0,
+                            radar?.PitInOutAccDecTime ?? 0.0,
                             playerStationaryTime,
                             pitZoneFraction,
                             activePlayerPace);
                         int playerRemainingStops = 0;
 
-                        double effectivePlayerTank = fuel.TankLapsRemaining;
+                        double effectivePlayerTank = fuel?.TankLapsRemaining ?? 99.0;
                         if (shouldLatch) // Se stiamo entrando ai box o siamo già in pitlane, consideriamo il serbatoio pieno per la proiezione futura
                         {
                             effectivePlayerTank = playerStintLaps;
@@ -1225,12 +1282,12 @@ namespace SimRIG
                 else
                 {
                     leaderIsInPit = state.IsInPitLane;
-                    leaderFuelToAdd = fuel.FuelToAdd;
+                    leaderFuelToAdd = fuel != null ? fuel.FuelToAdd : 0.0;
                 }
 
-                log.Log(LogModule.STRATEGY, LogType.FLOW, "RaceProjectionsDiagnostics",
+                log?.Log(LogModule.STRATEGY, LogType.FLOW, "RaceProjectionsDiagnostics",
                     $"TimeLeft: {state.SessionTimeLeftSec:F1}s | " +
-                    $"Player: Lap={state.CurrentLap}, PosPct={state.TrackPositionPercent:F4}, LapsComp={Results.RaceLapsCompleted}, LapsRem={Results.RaceLapsRemaining:F2}, PosAtFlag={Results.ProjectedPosAtCheckered:F3}, FuelToAdd={fuel.FuelToAdd:F2}L, IsInPit={state.IsInPitLane}, Latched={_isLatchedForPit}, LatchedVal={_latchedRaceLapsRemaining:F2}, LatchedReality={_latchedPlayerTotalReality:F2} | " +
+                    $"Player: Lap={state.CurrentLap}, PosPct={state.TrackPositionPercent:F4}, LapsComp={Results.RaceLapsCompleted}, LapsRem={Results.RaceLapsRemaining:F2}, PosAtFlag={Results.ProjectedPosAtCheckered:F3}, FuelToAdd={(fuel != null ? fuel.FuelToAdd : 0.0):F2}L, IsInPit={state.IsInPitLane}, Latched={_isLatchedForPit}, LatchedVal={_latchedRaceLapsRemaining:F2}, LatchedReality={_latchedPlayerTotalReality:F2} | " +
                     $"Leader ({leaderName}): PosPct={leaderTrackPos:F4}, LapsComp={leaderLapsCompleted}, LapsRem={Results.LeaderRaceLapsRemaining:F2}, PosAtFlag={Results.LeaderProjectedPosAtCheckered:F3}, FuelToAdd={leaderFuelToAdd:F2}L, IsInPit={leaderIsInPit}, LatchedTotal={_latchedLeaderTotalLaps:F2}");
             }
         }
@@ -1274,7 +1331,7 @@ namespace SimRIG
 
                         NormalizedTimes.LapBaseline = normalizedLap;
 
-                        log.Log(LogModule.STRATEGY, LogType.EVENT, "Player Normalized Lap Baseline Established", $"{NormalizedTimes.LapBaseline:F3}");
+                        log?.Log(LogModule.STRATEGY, LogType.EVENT, "Player Normalized Lap Baseline Established", $"{NormalizedTimes.LapBaseline:F3}");
 
                     }
 
@@ -1292,7 +1349,7 @@ namespace SimRIG
 
                             RawTimes.LapHistory.Clear();
 
-                            log.Log(LogModule.STRATEGY, LogType.EVENT, "Player Normalized Lap Baseline Reset", $"New Base: {NormalizedTimes.LapBaseline:F3} (Drastic Improvement)");
+                            log?.Log(LogModule.STRATEGY, LogType.EVENT, "Player Normalized Lap Baseline Reset", $"New Base: {NormalizedTimes.LapBaseline:F3} (Drastic Improvement)");
 
                         }
 
@@ -1302,7 +1359,7 @@ namespace SimRIG
 
                             NormalizedTimes.LapBaseline = normalizedLap;
 
-                            log.Log(LogModule.STRATEGY, LogType.EVENT, "Player Normalized Lap Baseline Updated (Better)", $"{NormalizedTimes.LapBaseline:F3}");
+                            log?.Log(LogModule.STRATEGY, LogType.EVENT, "Player Normalized Lap Baseline Updated (Better)", $"{NormalizedTimes.LapBaseline:F3}");
 
                         }
 
@@ -1316,7 +1373,7 @@ namespace SimRIG
 
                         RawTimes.LapBaseline = lapTime;
 
-                        log.Log(LogModule.STRATEGY, LogType.EVENT, "Player Raw Lap Baseline Established", $"{RawTimes.LapBaseline:F3}");
+                        log?.Log(LogModule.STRATEGY, LogType.EVENT, "Player Raw Lap Baseline Established", $"{RawTimes.LapBaseline:F3}");
 
                     }
 
@@ -1330,7 +1387,7 @@ namespace SimRIG
 
                             RawTimes.LapBaseline = lapTime;
 
-                            log.Log(LogModule.STRATEGY, LogType.EVENT, "Player Raw Lap Baseline Reset", $"New Base: {RawTimes.LapBaseline:F3} (Drastic Improvement)");
+                            log?.Log(LogModule.STRATEGY, LogType.EVENT, "Player Raw Lap Baseline Reset", $"New Base: {RawTimes.LapBaseline:F3} (Drastic Improvement)");
 
                         }
 
@@ -1340,7 +1397,7 @@ namespace SimRIG
 
                             RawTimes.LapBaseline = lapTime;
 
-                            log.Log(LogModule.STRATEGY, LogType.EVENT, "Player Raw Lap Baseline Updated (Better)", $"{RawTimes.LapBaseline:F3}");
+                            log?.Log(LogModule.STRATEGY, LogType.EVENT, "Player Raw Lap Baseline Updated (Better)", $"{RawTimes.LapBaseline:F3}");
 
                         }
 
@@ -1361,7 +1418,7 @@ namespace SimRIG
 
             if (isWarmupLap)
             {
-                log.Log(LogModule.STRATEGY, LogType.EVENT, "Player Lap Excluded From Degradation",
+                log?.Log(LogModule.STRATEGY, LogType.EVENT, "Player Lap Excluded From Degradation",
                     $"lapsOnTyres={playerLapsOnTyres} | warmupLapsActive={warmupLapsActive} | normalizedLap={normalizedLap:F3} | reason=ancora in warmup, gia' contato dal modello");
             }
             else
@@ -1455,7 +1512,7 @@ namespace SimRIG
 
 
 
-            log.Log(LogModule.STRATEGY, LogType.EVENT, "Player Pace Analysis",
+            log?.Log(LogModule.STRATEGY, LogType.EVENT, "Player Pace Analysis",
 
                 $"EstimatedCurrent: {Results.EstimatedCurrentPace:F3} | Baseline: {Results.NormalizedRaceStartPace:F3} | Deg: {Results.PaceDropDueToTyres:F2}");
 
@@ -1659,11 +1716,11 @@ namespace SimRIG
             string leaderNow = "PLAYER";
             if (state.Position != 1)
             {
-                var p1 = state.Opponents.FirstOrDefault(o => o.Position == 1);
+                var p1 = state.Opponents?.FirstOrDefault(o => o.Position == 1);
                 if (p1 != null && !string.IsNullOrEmpty(p1.Name)) leaderNow = p1.Name;
             }
 
-            log.Log(LogModule.STRATEGY, LogType.EVENT, "Total Laps Transition",
+            log?.Log(LogModule.STRATEGY, LogType.EVENT, "Total Laps Transition",
                 $"{(isFirst ? "INIZIALE" : "CAMBIO")} | " +
                 $"Player: {previousPlayer:F0} -> {_latchedPlayerTotalReality:F0} | " +
                 $"grezzo={Results.ProjectedPosAtCheckered:F3} lisciato={Results.SmoothedPosAtCheckered:F3} " +
@@ -1728,22 +1785,24 @@ namespace SimRIG
             }
             if (state.BestLapTimeSec > 0.0) fastestLapSeen = state.BestLapTimeSec;
 
-            foreach (var opponent in state.Opponents)
+            if (state.Opponents != null && tracker != null)
             {
-                if (opponent == null || string.IsNullOrEmpty(opponent.Name)) continue;
-
-                OpponentTelemetryData data;
-                if (!tracker.TrackedOpponents.TryGetValue(opponent.Name, out data) || data == null) continue;
-
-                double pace = data.NormalizedTimes.LapMovingAverage > 0.0
-                    ? data.NormalizedTimes.LapMovingAverage
-                    : data.NormalizedTimes.BestLapTime;
-                if (pace <= 0.0)
+                foreach (var opponent in state.Opponents)
                 {
-                    double? est = state.Metadata.EstimatedPaceFor(opponent.Name, opponent.CarClass);
-                    if (est.HasValue && est.Value > 0.0) pace = est.Value;
-                }
-                if (pace <= 0.0) continue;
+                    if (opponent == null || string.IsNullOrEmpty(opponent.Name)) continue;
+
+                    OpponentTelemetryData data;
+                    if (!tracker.TrackedOpponents.TryGetValue(opponent.Name, out data) || data == null) continue;
+
+                    double pace = data.NormalizedTimes.LapMovingAverage > 0.0
+                        ? data.NormalizedTimes.LapMovingAverage
+                        : data.NormalizedTimes.BestLapTime;
+                    if (pace <= 0.0)
+                    {
+                        double? est = state.Metadata?.EstimatedPaceFor(opponent.Name, opponent.CarClass);
+                        if (est.HasValue && est.Value > 0.0) pace = est.Value;
+                    }
+                    if (pace <= 0.0) continue;
 
                 // Stessa convenzione del conteggio giri del leader: CurrentLap e' il giro in corso,
                 // quindi i giri completati sono uno di meno.
@@ -1757,8 +1816,9 @@ namespace SimRIG
                     PaceSec = pace
                 });
 
-                double best = data.NormalizedTimes.BestLapTime;
-                if (best > 0.0 && (fastestLapSeen <= 0.0 || best < fastestLapSeen)) fastestLapSeen = best;
+                    double best = data.NormalizedTimes.BestLapTime;
+                    if (best > 0.0 && (fastestLapSeen <= 0.0 || best < fastestLapSeen)) fastestLapSeen = best;
+                }
             }
 
             if (candidates.Count == 0) return new RaceTimeProjection.FlagMoment();
@@ -1809,7 +1869,7 @@ namespace SimRIG
             double overrunMax = loose.TimeSec - timeUntilZero;
             double overrunMin = loose.EarliestCrossingSec - timeUntilZero;
 
-            log.Log(LogModule.STRATEGY, LogType.FLOW, "Flag Moment",
+            log?.Log(LogModule.STRATEGY, LogType.FLOW, "Flag Moment",
                 $"USATO={Results.RaceLifeTimeLeftSec:F1}s (comanda={loose.LeaderName}, passo={loose.LeaderPaceSec:F2}, suppl={overrunMax:F1}s, " +
                 $"vetture={loose.Considered}, inLotta={loose.Contenders}, scartate={loose.RejectedByFloor}, maxProiettato={loose.MaxProjectedPos:F2}) | " +
                 $"totLeader={_latchedLeaderTotalLaps:F0} | " +
@@ -1913,7 +1973,7 @@ namespace SimRIG
             Results.LeaderTrackPctAtExpiry = _leaderTrackPctAtExpiry;
             Results.LeaderPosAtExpiry = _leaderPosAtExpiry;
 
-            log.Log(LogModule.STRATEGY, LogType.EVENT, "Leader Position At Expiry",
+            log?.Log(LogModule.STRATEGY, LogType.EVENT, "Leader Position At Expiry",
                 $"VERITA' DI TERRENO | leader={_leaderNameAtExpiry} | giriCompletati={lapsCompleted} | " +
                 $"posSulGiro={_leaderTrackPctAtExpiry:F4} | posAssoluta={_leaderPosAtExpiry:F3} | " +
                 $"giriCheCompletera={Math.Ceiling(_leaderPosAtExpiry):F0}");
@@ -1932,7 +1992,7 @@ namespace SimRIG
                              $"(err {_p1ProjectionAtHorizon[i] - _leaderPosAtExpiry:+0.000;-0.000})");
             }
 
-            log.Log(LogModule.STRATEGY, LogType.EVENT, "Projection Validation",
+            log?.Log(LogModule.STRATEGY, LogType.EVENT, "Projection Validation",
                 $"vero={_leaderPosAtExpiry:F3}{righe}");
         }
 
@@ -2308,6 +2368,7 @@ namespace SimRIG
             _lastGoodLeaderAbsolutePos = -1.0;
             _lastGoodLeaderPosSessionTimeLeft = -1.0;
             _lastGoodLeaderLapsCompleted = -1;
+            _leaderRaceStartLap = 0;
 
             _lastEvaluatedLap = -1;
 

@@ -38,6 +38,7 @@ namespace User.PluginSdkDemo.Tests
             Test_LastLapFuelUsed_IsAMeasureNotAStatistic();
             Test_FuelManager_Lap1_FreezeFuelToAdd();
             Test_FuelManager_Grid_ParadeLap_IgnoredAndGreenFlagLatched();
+            Test_RaceStartLineCrossed_FuelAndLapSync();
 
             Console.WriteLine("[TEST SUCCESS] All Fuel Outlier Filter Tests Passed!");
         }
@@ -358,11 +359,10 @@ namespace User.PluginSdkDemo.Tests
         }
 
         /// <summary>
-        /// Nel Giro 1 (partenza di gara): FuelToAdd deve rimanere 0.0 e IsPredictionValid false.
-        /// Al termine del Giro 1 (ingresso in Giro 2), il consumo del Giro 1 viene registrato in LastLapFuelUsed,
-        /// ma escluso dalla cronologia media (giro di lancio/partenza anomalo).
-        /// Al termine del Giro 2 (ingresso in Giro 3), il primo giro lanciato entra in cronologia,
-        /// IsPredictionValid diventa true e FuelToAdd si calcola regolarmente.
+        /// Nel tratto pre-via (sprint bandiera verde verso il traguardo): FuelToAdd deve rimanere 0.0 e IsPredictionValid false.
+        /// Al primo passaggio sul traguardo, il serbatoio viene fotografato sul via (RaceStartingFuel).
+        /// Al termine del primo giro reale di gara (ingresso in Giro 3 in iRacing), il consumo del primo giro
+        /// entra direttamente in cronologia pulita, IsPredictionValid diventa true e FuelToAdd si calcola regolarmente.
         /// </summary>
         private static void Test_FuelManager_Lap1_FreezeFuelToAdd()
         {
@@ -378,36 +378,42 @@ namespace User.PluginSdkDemo.Tests
                 MaxFuelCapacity = 100.0,
                 IsInPitLane = false,
                 Flag_Yellow = 0,
-                Flag_Black = 0
+                Flag_Black = 0,
+                RaceStartLineCrossed = false // ancora nello sprint verso il traguardo
             };
 
-            // Giro 1 durante la corsa
+            // Sprint pre-traguardo verso il via
             fm.Update(state, 20.0, 0.0, null);
-            Assert(!fm.Calculations.IsPredictionValid, "Nel Giro 1 IsPredictionValid deve essere false");
-            Assert(fm.Calculations.FuelToAdd == 0.0, "Nel Giro 1 FuelToAdd deve essere congelato a 0.0");
-            Assert(fm.Calculations.AverageFuelPerLap == 0.0, "Nel Giro 1 non c'e' ancora consumo medio");
+            Assert(!fm.Calculations.IsPredictionValid, "Nel tratto pre-via IsPredictionValid deve essere false");
+            Assert(fm.Calculations.FuelToAdd == 0.0, "Nel tratto pre-via FuelToAdd deve essere congelato a 0.0");
+            Assert(fm.Calculations.AverageFuelPerLap == 0.0, "Nel tratto pre-via non c'e' ancora consumo medio");
 
-            // Fine giro 1 -> ingresso giro 2 (consumati 2.5 L al via)
+            // Taglio del traguardo al via (CurrentLap passa a 2, serbatoio latched a 47.5 L)
+            state.RaceStartLineCrossed = true;
+            state.RaceStartLap = 2;
             state.CurrentLap = 2;
             state.CurrentFuelLevel = 47.5;
+            state.RaceStartingFuel = 47.5;
+            state.RaceStartingFuelLatched = true;
             fm.Update(state, 19.0, 0.0, null);
 
-            Assert(Math.Abs(fm.Calculations.LastLapFuelUsed - 2.5) < 1e-6, "LastLapFuelUsed misura il consumo del giro 1 (2.5L)");
-            Assert(fm.FuelHistory.Count == 0, "Il Giro 1 di gara non deve entrare in cronologia");
-            Assert(!fm.Calculations.IsPredictionValid, "All'ingresso del Giro 2 IsPredictionValid e' ancora false senza giri lanciati");
-            Assert(fm.Calculations.FuelToAdd == 0.0, "All'ingresso del Giro 2 FuelToAdd resta 0.0");
+            Assert(fm.FuelHistory.Count == 0, "Lo sprint pre-via non deve entrare in cronologia");
+            Assert(!fm.Calculations.IsPredictionValid, "Al via del primo giro IsPredictionValid e' ancora false");
+            Assert(fm.Calculations.FuelToAdd == 0.0, "Al via del primo giro FuelToAdd resta 0.0");
 
-            // Fine giro 2 -> ingresso giro 3 (consumati 2.4 L nel primo giro lanciato)
+            // Fine del primo giro reale di gara (CurrentLap passa a 3, consumati 2.4 L)
             state.CurrentLap = 3;
             state.CurrentFuelLevel = 45.1;
             fm.Update(state, 18.0, 0.0, null);
 
-            Assert(fm.Calculations.IsPredictionValid, "All'ingresso del Giro 3 IsPredictionValid deve essere true");
+            Assert(Math.Abs(fm.Calculations.LastLapFuelUsed - 2.4) < 1e-6, "LastLapFuelUsed misura il consumo del primo giro reale (2.4L)");
+            Assert(fm.FuelHistory.Count == 1, "Il primo giro reale di gara entra subito in cronologia");
+            Assert(fm.Calculations.IsPredictionValid, "Al termine del primo giro reale IsPredictionValid diventa true");
             Assert(Math.Abs(fm.Calculations.AverageFuelPerLap - 2.4) < 1e-6, "AverageFuelPerLap deve essere 2.4L");
             // Con 25 giri mancanti: 25 * 2.4 = 60.0 L necessari. A bordo 45.1 L -> rawFuelToAdd = 14.9 L.
             fm.Update(state, 25.0, 0.0, null);
             Assert(fm.Calculations.FuelToAdd > 0.0, "Con fabbisogno superiore al serbatoio FuelToAdd deve essere > 0");
-            Pass("Giro 1 congelato a 0.0 L; al giro 2 il via non entra nella media; al giro 3 il primo giro lanciato popola FuelToAdd");
+            Pass("Sprint pre-via scartato; al passaggio linea si azzera; al termine del primo giro reale entra 2.4L e popola FuelToAdd");
         }
 
         /// <summary>
@@ -439,35 +445,107 @@ namespace User.PluginSdkDemo.Tests
 
             Assert(!fm.Calculations.IsPredictionValid, "In griglia IsPredictionValid deve essere false");
             Assert(fm.Calculations.FuelToAdd == 0.0, "In griglia FuelToAdd deve essere 0.0");
+            Assert(!state.RaceStartLineCrossed, "In formazione la linea di partenza non e' ancora attraversata");
 
-            // Bandiera Verde! SessionStateStatus passa a 4, RaceStartingFuel viene fissato a 99.5
+            // Bandiera Verde a metà pista (pos 0.62)! SessionStateStatus passa a 4
+            // Ma la macchina non ha ancora tagliato il traguardo (RaceStartLineCrossed = false)
             state.SessionStateStatus = 4;
             state.Flag_Yellow = 0;
-            state.RaceStartingFuel = 99.5;
+            state.CurrentFuelLevel = 99.0;
+            fm.Update(state, 20.0, 0.0, null);
+
+            Assert(!state.RaceStartLineCrossed, "Prima del traguardo RaceStartLineCrossed e' false");
+            Assert(fm.FuelHistory.Count == 0, "Nessun dato di fuel durante lo sprint pre-via");
+
+            // La vettura taglia per la prima volta il traguardo sotto bandiera verde (AbsolutePos == 0.00)
+            // Latch di RaceStartingFuel = 97.0L
+            state.RaceStartLineCrossed = true;
+            state.RaceStartLap = 2; // in iRacing i lap salgono a 2 al via
+            state.CurrentLap = 2;
+            state.CurrentFuelLevel = 97.0;
+            state.RaceStartingFuel = 97.0;
             state.RaceStartingFuelLatched = true;
             fm.Update(state, 20.0, 0.0, null);
 
-            // Fine giro 1 di gara (giro di lancio/formazione):
-            // LastLapFuelUsed si aggiorna a 2.5L (misura), ma NON entra in FuelHistory (statistica)
-            // perche' il giro 1 di gara e' anomalo (rolling start o standing launch)
-            state.CurrentLap = 2;
-            state.CurrentFuelLevel = 97.0;
-            fm.Update(state, 19.0, 0.0, null);
+            // Lo sprint pre-traguardo NON deve essere entrato in cronologia
+            Assert(fm.FuelHistory.Count == 0, "Lo sprint pre-via non deve entrare in cronologia");
 
-            Assert(Math.Abs(fm.Calculations.LastLapFuelUsed - 2.5) < 1e-6,
-                   $"LastLapFuelUsed deve misurare 2.5L, ottenuto {fm.Calculations.LastLapFuelUsed:F2}");
-            Assert(fm.FuelHistory.Count == 0,
-                   $"Il Giro 1 di gara non deve entrare in cronologia media, ottenuto {fm.FuelHistory.Count}");
-
-            // Fine giro 2 di gara verde (primo giro lanciato a piena velocita', 97.0 -> 94.6 = 2.4L)
+            // Fine giro 1 di gara reale (97.0 -> 94.6 = 2.4L)
             state.CurrentLap = 3;
             state.CurrentFuelLevel = 94.6;
             fm.Update(state, 18.0, 0.0, null);
 
-            Assert(fm.FuelHistory.Count == 1, "Il Giro 2 verde lanciato deve entrare in cronologia");
+            Assert(fm.FuelHistory.Count == 1, "Il primo giro reale di gara verde deve entrare in cronologia");
             Assert(Math.Abs(fm.Calculations.AverageFuelPerLap - 2.4) < 1e-6,
-                   $"Il consumo medio deve basarsi solo sui giri lanciati (2.4L), ottenuto {fm.Calculations.AverageFuelPerLap:F2}");
-            Pass("Giro 1 di gara escluso da cronologia; Giro 2 lanciato inizia la media pulita");
+                   $"Il consumo medio deve basarsi direttamente sul primo giro pulito (2.4L), ottenuto {fm.Calculations.AverageFuelPerLap:F2}");
+            Pass("Sprint pre-via escluso dal traguardo; primo giro reale di gara entra pulito a 2.4L");
+        }
+
+        private static void Test_RaceStartLineCrossed_FuelAndLapSync()
+        {
+            var ra = new RaceAnalyzer();
+            var fm = new FuelManager();
+            var state = new SessionState
+            {
+                IsGameRunning = true,
+                IsRaceSession = true,
+                SessionStateStatus = 3, // Formation lap
+                CurrentLap = 1,
+                TrackPositionPercent = 0.50,
+                CurrentFuelLevel = 50.0,
+                MaxFuelCapacity = 50.0,
+                Position = 1, // Player è leader
+                TrackLengthMeters = 4088.0,
+                SpeedKmh = 90.0
+            };
+
+            // 1. In formazione: LapsCompleted deve essere 0, Fuel non conteggiato
+            ra.Update(state, null, null, fm.Calculations, null, TyreSelectionScope.None, 0.0, 0.0);
+            fm.Update(state, 20.0, 0.0, null);
+            Assert(ra.Results.RaceLapsCompleted == 0, "In formazione RaceLapsCompleted deve essere 0");
+            Assert(fm.FuelHistory.Count == 0, "In formazione nessun consumo deve essere registrato");
+
+            // 2. Bandiera verde a pos 0.62 (Rolling start sprint verso il traguardo)
+            state.SessionStateStatus = 4;
+            state.TrackPositionPercent = 0.62;
+            state.CurrentFuelLevel = 49.04;
+            state.RaceStartLineCrossed = false; // non ha ancora tagliato la linea del via
+            ra.Update(state, null, null, fm.Calculations, null, TyreSelectionScope.None, 0.0, 0.0);
+            fm.Update(state, 20.0, 0.0, null);
+
+            Assert(ra.Results.RaceLapsCompleted == 0, "Durante lo sprint pre-via RaceLapsCompleted deve essere 0");
+            Assert(!state.RaceStartingFuelLatched, "Durante lo sprint pre-via RaceStartingFuel non deve essere ancora agganciato");
+            Assert(fm.FuelHistory.Count == 0, "Durante lo sprint pre-via nessun consumo deve essere registrato");
+
+            // 3. Primo passaggio sul traguardo sotto bandiera verde (AbsolutePos == 0.00)
+            // Latch di RaceStartingFuel = 46.07L, CurrentLap passa a 2 in iRacing
+            state.CurrentLap = 2;
+            state.TrackPositionPercent = 0.001;
+            state.CurrentFuelLevel = 46.07;
+            state.RaceStartingFuel = 46.07;
+            state.RaceStartingFuelLatched = true;
+            state.RaceStartLineCrossed = true;
+            state.RaceStartLap = 2;
+
+            ra.Update(state, null, null, fm.Calculations, null, TyreSelectionScope.None, 0.0, 0.0);
+            fm.Update(state, 20.0, 0.0, null);
+
+            Assert(ra.Results.RaceLapsCompleted == 0, "Al primo passaggio del via i giri completati devono essere 0 (si inizia il Giro 1!)");
+            Assert(fm.FuelHistory.Count == 0, "Al passaggio del via lo sprint pre-traguardo viene scartato");
+
+            // 4. Completamento del primo giro reale di gara (CurrentLap passa a 3, fuel = 43.86L)
+            state.CurrentLap = 3;
+            state.TrackPositionPercent = 0.002;
+            state.CurrentFuelLevel = 43.86;
+
+            ra.Update(state, null, null, fm.Calculations, null, TyreSelectionScope.None, 0.0, 0.0);
+            fm.Update(state, 19.0, 0.0, null);
+
+            Assert(ra.Results.RaceLapsCompleted == 1, "Dopo il primo giro completo RaceLapsCompleted deve essere 1");
+            Assert(fm.FuelHistory.Count == 1, "Dopo il primo giro completo deve entrare esattamente 1 campione di fuel");
+            Assert(Math.Abs(fm.Calculations.AverageFuelPerLap - 2.21) < 1e-6,
+                   $"Il consumo del primo giro deve essere 46.07 - 43.86 = 2.21L, ottenuto {fm.Calculations.AverageFuelPerLap:F2}");
+            Pass("Sincronizzazione completa: start line crossing latch, giri completati 0->1, fuel 2.21L");
         }
     }
 }
