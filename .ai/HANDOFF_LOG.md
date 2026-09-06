@@ -47,6 +47,38 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-06 09:10] claude → chiunque entri dopo (Andreas, Antigravity, Codex)
+
+**Task:** Setup coworking Claude/Antigravity — hook di lock-enforcement, permessi progetto, tabella Ruoli senza divisione per compiti, protocollo di brainstorming in AGENTS.md. Nessun punto Y toccato: turno di infrastruttura, non di correzione.
+**Piano:** discussione diretta con Andreas in chat (confronto con una proposta parallela di Antigravity, scartata sul punto della scrittura concorrente — vedi sotto).
+**Commit:** `cbe66ef`, `e205d8b`, `87b9e46`
+
+### Fatto
+- `.ai/PROJECT_STATE.md`:
+  - Tabella "Ruoli" riscritta: niente più compiti esclusivi per agente (era Antigravity=architettura, Claude=implementazione, Codex=review). Ogni agente fa tutto; principio guida "uno corregge l'altro" — decisione di Andreas, confermata da Antigravity.
+- `.claude/hooks/check-lock.js` + `.claude/settings.json`:
+  - Hook `PreToolUse` su `Edit|Write|MultiEdit` che legge il blocco `LOCK` in `PROJECT_STATE.md` e nega la scrittura in `User.PluginSdkDemoEdit/` se l'owner non è `NONE` né `claude`. Nega **sempre** scritture in `Hardware/` (Y-53), indipendentemente dal lock. Non tocca nient'altro (`.ai/`, root docs restano scrivibili senza lock, come già previsto da AGENTS.md per piani/handoff/review).
+  - Verificato con pipe-test sintetico (4 casi: codice+lock libero→allow, Hardware→deny sempre, doc .ai/→allow, codice+lock altrui→deny) e poi con un trigger reale (sentinella temporanea rimossa a verifica avvenuta) per confermare che l'hook è effettivamente collegato, non solo scritto.
+  - `permissions.allow`: `Bash(awk *)` e l'eseguibile esatto dei test, via skill `fewer-permission-prompts`. **Scartato deliberatamente** MSBuild dall'allowlist: builda e installa il plugin nel SimHub reale (side effect già documentato in AGENTS.md), non è "read-only" nel senso della skill.
+- `AGENTS.md`: nuova sezione "Protocollo di brainstorming e coworking fra agenti" — niente ruoli esclusivi, lock seriale anche durante il brainstorming (una proposta di Antigravity per uno stato `owner: ALL` con scrittura concorrente su `.ai/plans/` è stata discussa e **scartata**: due processi che scrivono lo stesso file senza un commit in mezzo si sovrascrivono a livello di filesystem, prima che Git possa aiutare — la sicurezza del lock viene proprio dal seriale), esito del brainstorming sempre scritto in `.ai/plans/<data>-<argomento>.md`, niente inondazione di subagenti.
+
+### Come verificare
+```bash
+node .claude/hooks/check-lock.js <<< '{"tool_name":"Edit","tool_input":{"file_path":"User.PluginSdkDemoEdit/PitRadar.cs"}}'
+```
+Atteso: con lock `owner: NONE`, `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}`.
+
+### Stato
+- ✅ Compila (nessun file di codice C# toccato in questo turno)
+- ⏭️ Test non eseguiti (nessuna modifica alla logica del plugin)
+
+### Per chi entra
+**Prossimo passo (proposto, non deciso):** comandi custom `/new-session` e `/handoff` per automatizzare il bootstrap di una sessione nuova (ridurre la dipendenza da Andreas come "portavoce" fra chat), poi valutare l'installazione della skill Superpowers (obra/Jesse Vincent, `/plugin install superpowers@claude-plugins-official`) per il brainstorming strutturato — verificare dove scrive di default e se va redirezionato verso `.ai/plans/`. In coda, una skill di dominio motorsport (formule fuel/pit/proiezione) da costruire con l'esito di una deep search già preparata per Andreas.
+**NON toccare:** nessuna area di codice interessata da questo turno.
+**Attenzione a:** l'hook copre solo `User.PluginSdkDemoEdit/` e `Hardware/` — non impedisce scritture scorrette altrove; resta comunque disciplina per tutto il resto, come prima. Se Antigravity introduce un meccanismo equivalente per sé, va documentato in AGENTS.md invece di duplicare la logica qui.
+
+---
+
 ## [2026-09-05 13:15] antigravity → chiunque entri dopo
 
 **Task:** Y-52 Passo 2 di 4 — Seeding `DriverCarEstLapTime` e `CarClassEstLapTime` nei ripieghi di passo e introduzione flag `IsLapsPredictionValid`
@@ -532,45 +564,6 @@ in `Solo per analisi logiche/`). Il filtro IQR è stato portato da `antigravity`
 è la correzione del pezzo che era rimasto fuori dal port. Restano da valutare, dalla stessa analisi:
 il ripiegamento di `posDiff` entro ±0.5 giro per Y-13, il broadcast nativo iRacing per Y-34,
 e la distanza metrica dalla piazzola box.
-
----
-
-## [2026-09-03 22:45] antigravity -> claude / utente
-
-**Task:** Passo 1: Filtro IQR Carburante, latch giro verde/pit lane e buffer a 10 giri (allineamento irdashies).
-**Piano:** `implementation_plan.md` e discussione in chat.
-**Commit:** `c0be69d`
-
-### Fatto
-- `User.PluginSdkDemoEdit/FuelManager.cs:90-130`:
-  - Aggiunta costante `MAX_CLEAN_HISTORY_LAPS = 10` (estensione da 4 a 10 giri puliti).
-  - Implementazione del metodo puro `ValidateFuelConsumptionIQR(fuelUsed, cleanHistory)` con indicizzazione esatta di irdashies `(int)Math.Floor(count * 0.25)` e `(int)Math.Floor(count * 0.75)`, fattore motorsport `factor = 2.0` e tolleranza `mean * 0.15`.
-- `User.PluginSdkDemoEdit/FuelManager.cs:180-275`:
-  - Aggiunti accumulatori di stato durante il giro: `_wasInPitLaneDuringLap`, `_wasPreviousLapPit`, `_isLapFullyGreen`.
-  - Aggiornamento in `Update()`: esclusione da `_fuelHistory` di giri out-lap, in-lap e con bandiera gialla durante qualsiasi tick del giro.
-  - Reset esplicito e pulito di `_wasInPitLaneDuringLap = false;` e `_isLapFullyGreen = true;` al cambio giro per evitare race condition di timing al traguardo (fix proposto da Claude su bug tipo Y-18/Y-23).
-  - Integrazione filtro IQR al passaggio sul traguardo prima dell'inserimento in `_fuelHistory`.
-  - `ResetSession()` aggiornato con reset di tutti gli accumulatori.
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/FuelOutlierFilterUnitTests.cs`:
-  - Nuova suite di 7 test unitari dedicati che copre: baseline <3 campioni, reiezione outlier IQR (caution a 1.4L e picchi a 3.5L), tolleranza 15% su pilota costante, indicizzazione esatta Math.Floor, latch di stato (in-lap, out-lap, gialla), capacità massima 10 giri, e reset sessione.
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/TestRunner.cs` e `.csproj`:
-  - Registrazione della nuova suite. Tutti i 193 test (186 preesistenti + 7 nuovi) passano con successo (100%).
-
-### Come verificare
-```bash
-"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/User.PluginSdkDemo.Tests.csproj" -p:Configuration=Debug -v:minimal -nologo
-"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: 0 errori di build, `[TEST SUCCESS] All Fuel Outlier Filter Tests Passed!`, `ALL UNIT TESTS PASSED SUCCESSFULLY! (100%)`.
-
-### Stato
-- ✅ Compila senza errori
-- ✅ 193 test passano (100%)
-
-### Per chi entra
-**Prossimo passo:** Passo 2: Invio carburante nativo iRacing via broadcast Win32 (`irsdk_BroadcastPitCommand`) per risolvere definitivamente Y-34.
-**NON toccare:** `FuelManager.Calculations.AverageFuelPerLap` resta l'API consumata all'esterno (nessuna breaking change).
-**Attenzione a:** I flag di latch in `FuelManager.cs` mantengono il reset separato dopo la valutazione del giro per evitare corruzione al traguardo.
 
 ---
 

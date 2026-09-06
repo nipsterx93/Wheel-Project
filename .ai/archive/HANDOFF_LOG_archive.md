@@ -9,6 +9,45 @@
 
 ---
 
+## [2026-09-03 22:45] antigravity -> claude / utente
+
+**Task:** Passo 1: Filtro IQR Carburante, latch giro verde/pit lane e buffer a 10 giri (allineamento irdashies).
+**Piano:** `implementation_plan.md` e discussione in chat.
+**Commit:** `c0be69d`
+
+### Fatto
+- `User.PluginSdkDemoEdit/FuelManager.cs:90-130`:
+  - Aggiunta costante `MAX_CLEAN_HISTORY_LAPS = 10` (estensione da 4 a 10 giri puliti).
+  - Implementazione del metodo puro `ValidateFuelConsumptionIQR(fuelUsed, cleanHistory)` con indicizzazione esatta di irdashies `(int)Math.Floor(count * 0.25)` e `(int)Math.Floor(count * 0.75)`, fattore motorsport `factor = 2.0` e tolleranza `mean * 0.15`.
+- `User.PluginSdkDemoEdit/FuelManager.cs:180-275`:
+  - Aggiunti accumulatori di stato durante il giro: `_wasInPitLaneDuringLap`, `_wasPreviousLapPit`, `_isLapFullyGreen`.
+  - Aggiornamento in `Update()`: esclusione da `_fuelHistory` di giri out-lap, in-lap e con bandiera gialla durante qualsiasi tick del giro.
+  - Reset esplicito e pulito di `_wasInPitLaneDuringLap = false;` e `_isLapFullyGreen = true;` al cambio giro per evitare race condition di timing al traguardo (fix proposto da Claude su bug tipo Y-18/Y-23).
+  - Integrazione filtro IQR al passaggio sul traguardo prima dell'inserimento in `_fuelHistory`.
+  - `ResetSession()` aggiornato con reset di tutti gli accumulatori.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/FuelOutlierFilterUnitTests.cs`:
+  - Nuova suite di 7 test unitari dedicati che copre: baseline <3 campioni, reiezione outlier IQR (caution a 1.4L e picchi a 3.5L), tolleranza 15% su pilota costante, indicizzazione esatta Math.Floor, latch di stato (in-lap, out-lap, gialla), capacità massima 10 giri, e reset sessione.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/TestRunner.cs` e `.csproj`:
+  - Registrazione della nuova suite. Tutti i 193 test (186 preesistenti + 7 nuovi) passano con successo (100%).
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/User.PluginSdkDemo.Tests.csproj" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: 0 errori di build, `[TEST SUCCESS] All Fuel Outlier Filter Tests Passed!`, `ALL UNIT TESTS PASSED SUCCESSFULLY! (100%)`.
+
+### Stato
+- ✅ Compila senza errori
+- ✅ 193 test passano (100%)
+
+### Per chi entra
+**Prossimo passo:** Passo 2: Invio carburante nativo iRacing via broadcast Win32 (`irsdk_BroadcastPitCommand`) per risolvere definitivamente Y-34.
+**NON toccare:** `FuelManager.Calculations.AverageFuelPerLap` resta l'API consumata all'esterno (nessuna breaking change).
+**Attenzione a:** I flag di latch in `FuelManager.cs` mantengono il reset separato dopo la valutazione del giro per evitare corruzione al traguardo.
+
+---
+
 ## [2026-09-03 18:00] claude -> utente
 
 **Task:** inventario di passo e perdita ai box (nessun codice), poi **Y-49** — l'ancora del passo che

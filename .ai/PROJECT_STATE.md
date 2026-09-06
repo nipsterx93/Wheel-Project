@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      claude
-since:      2026-09-06T00:00
-task:       Setup coworking Claude/Antigravity -- hook lock enforcement, permessi, tabella Ruoli, protocollo brainstorming
-scope:      .claude/, .ai/PROJECT_STATE.md, AGENTS.md
-expires:    2026-09-06T06:00
+owner:      NONE
+since:      null
+task:       null
+scope:      null
+expires:    null
 ```
 
 **Regole del lock**
@@ -66,8 +66,9 @@ poteva più correggere). Il rimedio comune è in ADR-005.
 > L'indice dei punti chiusi resta più in basso in questo file: serve a sapere **che** un punto esiste
 > ed è chiuso, senza caricarne il testo. Quando ti serve il *perché*, apri l'archivio a quell'ID.
 
-**Come è stato verificato tutto:** build 0 errori, **295 test PASS** (erano 111 al setup, 186 al
-24 agosto — cifra aggiornata il 2026-09-05 dall'ultimo handoff; ⚠️ vedi Y-54: il backtest sul replay
+**Come è stato verificato tutto:** build 0 errori, **311 test PASS** (erano 111 al setup, 186 al
+24 agosto, 295 dopo Y-52 passo 1 — cifra aggiornata il 2026-09-06 da `PredictedPaceUnitTests.cs`,
+15 nuovi test di Y-52 passo 2, vedi `HANDOFF_LOG.md` 2026-09-05 13:15; ⚠️ vedi Y-54: il backtest sul replay
 reale si salta in silenzio se il file non c'è, quindi il numero da solo non dice quanta copertura
 sia davvero girata), e per ogni
 correzione la **regressione neutralizzata** — si disattiva il fix e si controlla che il test diventi
