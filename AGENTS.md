@@ -220,3 +220,10 @@ applicate. Ora sono ~95 KB. **Mantenerli così fa parte del lavoro:**
   `CLOSED_POINTS.md` (il ragionamento completo dei 40 punti chiusi, con numeri e commit) e
   `HANDOFF_LOG_archive.md` (gli handoff oltre i 10 tenuti). Ci si va quando serve contestare una
   conclusione o ricostruire un turno vecchio — non all'apertura.
+- **Skill di dominio `motorsport-telemetry-engineering`** — formule di fisica carburante,
+  scomposizione pit stop, statistica robusta su campioni radi, e un avviso esplicito su un
+  criterio di proiezione fine gara già misurato come sbagliato in questo progetto (Y-38). Copie
+  gemelle in `.claude/skills/motorsport-telemetry-engineering/` (Claude Code) e
+  `.agent/skills/motorsport-telemetry-engineering/` (Antigravity) — stesso contenuto, percorsi
+  diversi perché i due tool cercano le skill di progetto in cartelle diverse. Se una copia cambia,
+  l'altra va aggiornata di conseguenza.
