@@ -1,4 +1,4 @@
-﻿// -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
 // FILE: FuelOutlierFilterUnitTests.cs
 // Verifica dell'algoritmo Interquartile Range (IQR) e della tolleranza del 15%
 // derivata da irdashies (fuelCalculations.ts), con indicizzazione intera esatta
@@ -36,6 +36,8 @@ namespace User.PluginSdkDemo.Tests
             Test_ResetSession_ClearsAll();
             Test_ConsumptionShift_ReopensFilter();
             Test_LastLapFuelUsed_IsAMeasureNotAStatistic();
+            Test_FuelManager_Lap1_FreezeFuelToAdd();
+            Test_FuelManager_Grid_ParadeLap_IgnoredAndGreenFlagLatched();
 
             Console.WriteLine("[TEST SUCCESS] All Fuel Outlier Filter Tests Passed!");
         }
@@ -353,6 +355,95 @@ namespace User.PluginSdkDemo.Tests
             Assert(fm.FuelHistory.Count == 1, "l'in-lap non entra in cronologia");
 
             Pass("LastLapFuelUsed segue la gialla ma non l'in-lap contaminato dal rifornimento");
+        }
+
+        /// <summary>
+        /// Nel Giro 1 (partenza di gara): FuelToAdd deve rimanere 0.0 e IsPredictionValid false.
+        /// Al termine del Giro 1 (ingresso in Giro 2), il consumo del Giro 1 viene registrato,
+        /// IsPredictionValid diventa true e FuelToAdd si calcola regolarmente.
+        /// </summary>
+        private static void Test_FuelManager_Lap1_FreezeFuelToAdd()
+        {
+            var fm = new FuelManager();
+            fm.Calculations.StrategyMode = FuelStrategyMode.Normal;
+            var state = new SessionState
+            {
+                IsGameRunning = true,
+                IsRaceSession = true,
+                SessionStateStatus = 4, // Semaforo verde
+                CurrentLap = 1,
+                CurrentFuelLevel = 50.0,
+                MaxFuelCapacity = 100.0,
+                IsInPitLane = false,
+                Flag_Yellow = 0,
+                Flag_Black = 0
+            };
+
+            // Giro 1 durante la corsa
+            fm.Update(state, 20.0, 0.0, null);
+            Assert(!fm.Calculations.IsPredictionValid, "Nel Giro 1 IsPredictionValid deve essere false");
+            Assert(fm.Calculations.FuelToAdd == 0.0, "Nel Giro 1 FuelToAdd deve essere congelato a 0.0");
+            Assert(fm.Calculations.AverageFuelPerLap == 0.0, "Nel Giro 1 non c'e' ancora consumo medio");
+
+            // Fine giro 1 -> ingresso giro 2 (consumati 2.5 L)
+            state.CurrentLap = 2;
+            state.CurrentFuelLevel = 47.5;
+            fm.Update(state, 19.0, 0.0, null);
+
+            Assert(fm.Calculations.IsPredictionValid, "All'ingresso del Giro 2 IsPredictionValid deve essere true");
+            Assert(Math.Abs(fm.Calculations.AverageFuelPerLap - 2.5) < 1e-6, "AverageFuelPerLap deve essere 2.5L");
+            // Con 25 giri mancanti: 25 * 2.5 = 62.5 L necessari. A bordo 47.5 L -> rawFuelToAdd = 15.0 L.
+            fm.Update(state, 25.0, 0.0, null);
+            Assert(fm.Calculations.FuelToAdd > 0.0, "Con fabbisogno superiore al serbatoio FuelToAdd deve essere > 0");
+            Pass("Giro 1 congelato a 0.0 L; al giro 2 IsPredictionValid e' true e FuelToAdd si popola");
+        }
+
+        /// <summary>
+        /// In griglia di partenza o giro di ricognizione (SessionStateStatus = 3), l'idling o le bandiere
+        /// gialle non devono sporcare il consumo del Giro 1.
+        /// Alla bandiera verde (SessionStateStatus = 4), il carburante di partenza viene agganciato
+        /// e il consumo del Giro 1 viene calcolato pulito.
+        /// </summary>
+        private static void Test_FuelManager_Grid_ParadeLap_IgnoredAndGreenFlagLatched()
+        {
+            var fm = new FuelManager();
+            var state = new SessionState
+            {
+                IsGameRunning = true,
+                IsRaceSession = true,
+                SessionStateStatus = 3, // Griglia / Parade lap
+                CurrentLap = 1,
+                CurrentFuelLevel = 100.0,
+                MaxFuelCapacity = 100.0,
+                IsInPitLane = false,
+                Flag_Yellow = 1, // Bandiera gialla di ricognizione/pace car
+                Flag_Black = 0
+            };
+
+            // In griglia: motore acceso che consuma carburante (100.0 -> 99.5)
+            fm.Update(state, 20.0, 0.0, null);
+            state.CurrentFuelLevel = 99.5;
+            fm.Update(state, 20.0, 0.0, null);
+
+            Assert(!fm.Calculations.IsPredictionValid, "In griglia IsPredictionValid deve essere false");
+            Assert(fm.Calculations.FuelToAdd == 0.0, "In griglia FuelToAdd deve essere 0.0");
+
+            // Bandiera Verde! SessionStateStatus passa a 4, RaceStartingFuel viene fissato a 99.5
+            state.SessionStateStatus = 4;
+            state.Flag_Yellow = 0;
+            state.RaceStartingFuel = 99.5;
+            state.RaceStartingFuelLatched = true;
+            fm.Update(state, 20.0, 0.0, null);
+
+            // Fine giro 1 di gara verde (consumati 2.5 L di gara: serbatoio scende da 99.5 a 97.0)
+            state.CurrentLap = 2;
+            state.CurrentFuelLevel = 97.0;
+            fm.Update(state, 19.0, 0.0, null);
+
+            Assert(fm.FuelHistory.Count == 1, "Il Giro 1 verde deve entrare in cronologia");
+            Assert(Math.Abs(fm.Calculations.AverageFuelPerLap - 2.5) < 1e-6,
+                   $"Il consumo del Giro 1 deve essere 2.5L (non includere l'idle pre-gara), ottenuto {fm.Calculations.AverageFuelPerLap:F2}");
+            Pass("Griglia e ricognizione non sporcano il Giro 1; latch al verde registra consumo corretto");
         }
     }
 }

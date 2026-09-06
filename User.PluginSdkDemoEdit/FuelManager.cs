@@ -1,4 +1,4 @@
-﻿// -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
 
 // FILE: FuelManager.cs
 
@@ -267,6 +267,7 @@ namespace SimRIG
 
         private int _lastEvaluatedLap = -1;
         private double _fuelAtLapStart = 0.0;
+        private int _lastSessionStateStatus = -1;
 
         private bool _wasInPitLaneDuringLap = false;
         private bool _wasPreviousLapPit = false;
@@ -284,6 +285,30 @@ namespace SimRIG
         public void Update(SessionState state, double raceLapsRemaining, double fuelCapacityInTireTime, LogManager log)
         {
             if (!state.IsGameRunning) return;
+
+            // In gara: gestione della griglia pre-via e transizione al semaforo verde
+            if (state.IsRaceSession)
+            {
+                if (state.SessionStateStatus < 4)
+                {
+                    // In griglia o giro di ricognizione: ripuliamo accumulatori e sincronizziamo il fuel
+                    _fuelAtLapStart = state.CurrentFuelLevel;
+                    _isLapFullyGreen = true;
+                    _wasInPitLaneDuringLap = false;
+                    _wasPreviousLapPit = false;
+                }
+                else if (_lastSessionStateStatus < 4 && state.SessionStateStatus >= 4)
+                {
+                    // Semaforo verde! Latch del carburante di inizio gara (esclude idle e formazione)
+                    _fuelAtLapStart = state.RaceStartingFuel > 0.0 ? state.RaceStartingFuel : state.CurrentFuelLevel;
+                    _isLapFullyGreen = true;
+                    _wasInPitLaneDuringLap = false;
+                    _wasPreviousLapPit = false;
+                    log?.Log(LogModule.FUEL, LogType.EVENT, "Race Start Green Flag (Fuel Latch)",
+                        $"Lap: {state.CurrentLap} | StartFuel: {_fuelAtLapStart:F2}L");
+                }
+            }
+            _lastSessionStateStatus = state.SessionStateStatus;
 
             if (state.CurrentLap != _lastEvaluatedLap)
             {
@@ -377,7 +402,8 @@ namespace SimRIG
 
 
 
-            Calculations.IsPredictionValid = (state.CurrentLap > 1) && (consumption > 0);
+            bool raceStatusOk = !state.IsRaceSession || (state.SessionStateStatus >= 4);
+            Calculations.IsPredictionValid = raceStatusOk && (state.CurrentLap > 1) && (consumption > 0);
 
 
 
@@ -539,6 +565,7 @@ namespace SimRIG
             _recentLaps.Clear();
             _lastEvaluatedLap = -1;
             _fuelAtLapStart = 0.0;
+            _lastSessionStateStatus = -1;
             _wasInPitLaneDuringLap = false;
             _wasPreviousLapPit = false;
             _isLapFullyGreen = true;

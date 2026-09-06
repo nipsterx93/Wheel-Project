@@ -1085,6 +1085,7 @@ namespace SimRIG
                         CurrentState.Reset();
                         OpponentTracker.ResetSession();
                         RaceAnalyzer.ResetSession();
+                        FuelManager.ResetSession();
                     }
                 }
 
@@ -1104,6 +1105,7 @@ namespace SimRIG
                     CurrentState.Reset();
                     OpponentTracker.ResetSession();
                     RaceAnalyzer.ResetSession();
+                    FuelManager.ResetSession();
                     TelemetryReader.UpdateState(data, CurrentState, _alertThreshold);
                 }
 

@@ -43,6 +43,8 @@ namespace User.PluginSdkDemo.Tests
             Test_IsLapsPredictionValid_TrueWithClassMetadataPrior();
             Test_IsLapsPredictionValid_FalseWhenOnlyBlindFallback();
             Test_IsLapsPredictionValid_FalseOutsideRaceSession();
+            Test_IsLapsPredictionValid_FalsePreGreenFlag_WhenSessionStateStatusLessThan4();
+            Test_IsLapsPredictionValid_FalseWhenTimeLimitedCountdownNegative();
 
             Test_RoadAtlanta_GT3_LapProjection_Solves3LapBlackHole();
 
@@ -360,6 +362,50 @@ namespace User.PluginSdkDemo.Tests
 
             Assert(!valid, "Fuori gara IsLapsPredictionValid deve essere false");
             Pass("Fuori dalla sessione di gara IsLapsPredictionValid e' false");
+        }
+
+        /// <summary>
+        /// In griglia o giro di ricognizione (SessionStateStatus < 4), IsLapsPredictionValid deve essere false.
+        /// </summary>
+        private static void Test_IsLapsPredictionValid_FalsePreGreenFlag_WhenSessionStateStatusLessThan4()
+        {
+            bool valid = RaceAnalyzer.IsLapsPredictionValid(
+                isRaceSession: true,
+                isRaceFinished: false,
+                isLapLimited: false,
+                isTimeLimited: true,
+                totalLaps: 0,
+                normalizedRaceStartPace: 0.0,
+                bestLapTimeSec: 0.0,
+                playerEstimatedPaceSec: 76.524,
+                classEstimatedPaceSec: 76.524,
+                sessionStateStatus: 3,
+                sessionTimeLeftSec: 2700.0);
+
+            Assert(!valid, "In griglia prima del via IsLapsPredictionValid deve essere false");
+            Pass("Griglia pre-gara (SessionStateStatus < 4): IsLapsPredictionValid e' false");
+        }
+
+        /// <summary>
+        /// Gara a tempo con countdown non ancora attivo (negativo), IsLapsPredictionValid deve essere false.
+        /// </summary>
+        private static void Test_IsLapsPredictionValid_FalseWhenTimeLimitedCountdownNegative()
+        {
+            bool valid = RaceAnalyzer.IsLapsPredictionValid(
+                isRaceSession: true,
+                isRaceFinished: false,
+                isLapLimited: false,
+                isTimeLimited: true,
+                totalLaps: 0,
+                normalizedRaceStartPace: 0.0,
+                bestLapTimeSec: 0.0,
+                playerEstimatedPaceSec: 76.524,
+                classEstimatedPaceSec: 76.524,
+                sessionStateStatus: 4,
+                sessionTimeLeftSec: -1.0);
+
+            Assert(!valid, "Gara a tempo con orologio negativo non deve essere considerata valida");
+            Pass("Gara a tempo con orologio negativo: IsLapsPredictionValid e' false");
         }
 
         /// <summary>

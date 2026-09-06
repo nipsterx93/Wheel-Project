@@ -682,7 +682,7 @@ namespace SimRIG
 
 
 
-            if (!state.IsRaceSession || _isRaceFinished)
+            if (!state.IsRaceSession || _isRaceFinished || state.SessionStateStatus < 4 || (state.IsTimeLimited && state.SessionTimeLeftSec < 0.0))
             {
                 Results.RaceLapsRemaining = 0.0;
                 Results.RaceTotalLaps = 0.0;
@@ -694,6 +694,7 @@ namespace SimRIG
                 Results.IsLapsPredictionValid = false;
 
                 _isLatchedForPit = false;
+                _lastStabilizerTimeLeft = -1.0;
                 return;
             }
 
@@ -1168,7 +1169,9 @@ namespace SimRIG
                 Results.NormalizedRaceStartPace,
                 state.BestLapTimeSec,
                 state.Metadata.PlayerEstimatedPaceSec,
-                state.Metadata.EstimatedPaceFor(null, state.CarClassId));
+                state.Metadata.EstimatedPaceFor(null, state.CarClassId),
+                state.SessionStateStatus,
+                state.SessionTimeLeftSec);
 
             // --- La riga che scatta quando il totale CAMBIA ------------------------------
             // Serve a rendere osservabile l'ingresso che ha fatto scattare il filtro. La
@@ -2233,6 +2236,8 @@ namespace SimRIG
 
         /// <summary>
         /// Determina se la stima dei giri di gara e' valida e affidabile (Y-52 passo 2).
+        /// Prima della bandiera verde (sessionStateStatus &lt; 4) o prima che il conto alla rovescia
+        /// a tempo sia avviato (sessionTimeLeftSec &lt; 0), la stima non e' attiva (Decisione 1 Seeding).
         /// </summary>
         public static bool IsLapsPredictionValid(
             bool isRaceSession,
@@ -2243,9 +2248,13 @@ namespace SimRIG
             double normalizedRaceStartPace,
             double bestLapTimeSec,
             double? playerEstimatedPaceSec,
-            double? classEstimatedPaceSec)
+            double? classEstimatedPaceSec,
+            int sessionStateStatus = 4,
+            double sessionTimeLeftSec = 0.0)
         {
             if (!isRaceSession || isRaceFinished) return false;
+            if (sessionStateStatus < 4) return false;
+            if (isTimeLimited && sessionTimeLeftSec < 0.0) return false;
             if (isLapLimited && !isTimeLimited && totalLaps > 0) return true;
             if (normalizedRaceStartPace > 0.0) return true;
             if (bestLapTimeSec > 0.0) return true;
