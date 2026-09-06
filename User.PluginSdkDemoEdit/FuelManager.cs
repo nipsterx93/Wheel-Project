@@ -97,6 +97,8 @@ namespace SimRIG
         /// quando il consumo reale e' cambiato davvero (Y-50).
         /// </summary>
         public const int MAX_CLEAN_HISTORY_LAPS = 10;
+        public const int FUEL_AVERAGE_WINDOW_LAPS = 5;
+        private const int HISTORY_SIZE = MAX_CLEAN_HISTORY_LAPS;
 
         /// <summary>
         /// Convalida un valore di consumo carburante per giro utilizzando l'algoritmo
@@ -272,10 +274,12 @@ namespace SimRIG
         private bool _wasInPitLaneDuringLap = false;
         private bool _wasPreviousLapPit = false;
         private bool _isLapFullyGreen = true;
+        private bool _lapStartedBeforeGreen = false;
 
         public bool WasInPitLaneDuringLap => _wasInPitLaneDuringLap;
         public bool WasPreviousLapPit => _wasPreviousLapPit;
         public bool IsLapFullyGreen => _isLapFullyGreen;
+        public bool LapStartedBeforeGreen => _lapStartedBeforeGreen;
 
         public FuelCalculations Calculations { get; private set; } = new FuelCalculations();
 
@@ -291,17 +295,18 @@ namespace SimRIG
             {
                 if (state.SessionStateStatus < 4)
                 {
+                    _lapStartedBeforeGreen = true;
                     // In griglia o giro di ricognizione: ripuliamo accumulatori e sincronizziamo il fuel
                     _fuelAtLapStart = state.CurrentFuelLevel;
-                    _isLapFullyGreen = true;
+                    _isLapFullyGreen = false;
                     _wasInPitLaneDuringLap = false;
                     _wasPreviousLapPit = false;
                 }
                 else if (_lastSessionStateStatus < 4 && state.SessionStateStatus >= 4)
                 {
-                    // Semaforo verde! Latch del carburante di inizio gara (esclude idle e formazione)
+                    // Semaforo verde! Latch del carburante di inizio gara (esclude idle e formazione).
+                    // _lapStartedBeforeGreen rimane true perche' questo giro e' iniziato prima del verde.
                     _fuelAtLapStart = state.RaceStartingFuel > 0.0 ? state.RaceStartingFuel : state.CurrentFuelLevel;
-                    _isLapFullyGreen = true;
                     _wasInPitLaneDuringLap = false;
                     _wasPreviousLapPit = false;
                     log?.Log(LogModule.FUEL, LogType.EVENT, "Race Start Green Flag (Fuel Latch)",
@@ -318,20 +323,18 @@ namespace SimRIG
                     bool isOutLap = _wasPreviousLapPit;
                     bool isInLap = _wasInPitLaneDuringLap;
                     bool isGreen = _isLapFullyGreen;
+                    bool isRaceStartLap = state.IsRaceSession && _lastEvaluatedLap <= 1 && _lapStartedBeforeGreen;
 
                     bool isSanityOk = fuelUsed > 0.1 && fuelUsed < state.MaxFuelCapacity && state.Flag_Black == 0;
 
                     // `LastLapFuelUsed` e' una **misura**, non una statistica: va aggiornata anche
-                    // quando il giro non e' rappresentativo (gialla, out-lap). L'unico caso in cui
-                    // il numero non significa nulla e' l'in-lap: con un rifornimento parziale
-                    // `fuelAtLapStart - fuelLevel` sottostima il consumo vero, e da li' finirebbe
-                    // nell'allarme vocale FUEL_TARGET_ALERT (DataPluginDemo.cs:1152).
+                    // quando il giro non e' rappresentativo (gialla, out-lap, giro di formazione).
                     if (isSanityOk && !isInLap)
                     {
                         Calculations.LastLapFuelUsed = fuelUsed;
                     }
 
-                    if (isSanityOk && !isInLap && !isOutLap && isGreen)
+                    if (isSanityOk && !isInLap && !isOutLap && isGreen && !isRaceStartLap)
                     {
                         // La baseline sono i soli accettati **dentro la finestra**, non tutti gli
                         // accettati di sempre: quando il consumo reale cambia, i rifiuti riempiono
@@ -344,7 +347,8 @@ namespace SimRIG
 
                         if (accepted && acceptedNow.Count > 0)
                         {
-                            Calculations.AverageFuelPerLap = acceptedNow.Average();
+                            var windowForAverage = acceptedNow.Skip(Math.Max(0, acceptedNow.Count - FUEL_AVERAGE_WINDOW_LAPS)).ToList();
+                            Calculations.AverageFuelPerLap = windowForAverage.Average();
 
                             if (!Calculations.TargetManuallySet && Calculations.AverageFuelPerLap > 0)
                             {
@@ -363,6 +367,7 @@ namespace SimRIG
                     else
                     {
                         string reason = !isSanityOk ? "Sanity Failed" :
+                                        isRaceStartLap ? "Race Start / Formation Lap" :
                                         isInLap ? "In-Lap / Pit Active" :
                                         isOutLap ? "Out-Lap" : "!Green Flag";
 
@@ -374,6 +379,7 @@ namespace SimRIG
                     _wasPreviousLapPit = _wasInPitLaneDuringLap;
                     _wasInPitLaneDuringLap = false;
                     _isLapFullyGreen = true;
+                    _lapStartedBeforeGreen = (state.SessionStateStatus < 4);
                 }
 
                 _fuelAtLapStart = state.CurrentFuelLevel;
@@ -569,6 +575,7 @@ namespace SimRIG
             _wasInPitLaneDuringLap = false;
             _wasPreviousLapPit = false;
             _isLapFullyGreen = true;
+            _lapStartedBeforeGreen = false;
             Calculations = new FuelCalculations();
         }
 

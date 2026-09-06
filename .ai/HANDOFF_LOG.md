@@ -47,6 +47,38 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-06 17:35] antigravity → chiunque entri dopo (Claude in particolare)
+
+**Task:** Risoluzione contaminazione consumo medio al via e protezione baseline passo da outlap/formazione
+**Piano:** —
+**Commit:** `<sha>`
+
+### Fatto
+- `User.PluginSdkDemoEdit/FuelManager.cs:99` — Introdotta costante `FUEL_AVERAGE_WINDOW_LAPS = 5` per `AverageFuelPerLap` mantenendo `MAX_CLEAN_HISTORY_LAPS = 10` per l'Interquartile Range (IQR). Il consumo medio calcola ora la media aritmetica sui 5 giri più recenti accettati, garantendo un rapido allineamento a irdashies e ai cambi di ritmo in pista.
+- `User.PluginSdkDemoEdit/FuelManager.cs:277, 298, 326, 382` — Introdotto flag `_lapStartedBeforeGreen`: se la gara parte dalla griglia o giro di ricognizione/parade (`SessionStateStatus < 4`), il Giro 1 viene contrassegnato come `isRaceStartLap` e il suo consumo (spesso anomalo per lancio o parzialità) aggiorna la telemetria istantanea `LastLapFuelUsed` ma **non entra mai in `_recentLaps`** né nella media `AverageFuelPerLap`.
+- `User.PluginSdkDemoEdit/RaceAnalyzer.cs:1240, 2150` — Introdotto metodo di plausibilità `RaceAnalyzer.IsPlausibleBaselineLap(lapTime, playerEstimatedPaceSec, classEstimatedPaceSec, trackLengthMeters)`. In `AnalyzePlayerLap`, i tempi sul giro che superano il 120% del passo atteso (come i 109.744 s del giro di formazione a Road Atlanta rispetto a 77.047 s attesi) o inferiori al 60% vengono esclusi dall'aggiornare `NormalizedTimes.LapBaseline`. Questo impedisce il crollo istantaneo delle proiezioni del totale giri da 35 a 26 giri.
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:535, 766, 1126` — Sostituita la cascata ad-hoc di calcolo del tempo di riferimento che controllava per primo `state.LastLapTimeSec > 10.0` (prendendo 109.744 s) con `RaceAnalyzer.ResolvePlayerPace` che rispetta la gerarchia canonica (baseline normalizzata > best lap di sessione > stima YAML del pilota > stima YAML di classe > ripiego fisico).
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/PredictedPaceUnitTests.cs:460` — Aggiunti test di regressione `Test_IsPlausibleBaselineLap_RejectsFormationAndOutlaps` e `Test_IsPlausibleBaselineLap_AcceptsNormalRacingLaps`.
+- Suite test: passata da 318 a **320 test PASS** (100% verdi, 0 falliti).
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit `0`, **320 PASS**.
+
+### Stato
+- ✅ Compila senza errori (solution completa compilata e deployata in `%SIMHUB_INSTALL_PATH%`)
+- ✅ 320 test passano (100%)
+
+### Per chi entra
+**Prossimo passo:** Verifica dal vivo su replay dei log per confermare che `AverageFuelPerLap` e le proiezioni restino allineate e stabili sin dal via.
+**NON toccare:** `Hardware/` (riservato ad Andreas).
+**Attenzione a:** La baseline del passo in `RaceAnalyzer` ora rifiuta outlap e giri lenti (> +20% del passo atteso YAML/fisico); il carburante del giro 1 di formazione viene letto in `LastLapFuelUsed` ma non contamina `AverageFuelPerLap`.
+
+---
+
 ## [2026-09-06 16:45] antigravity → chiunque entri dopo (Claude in particolare)
 
 **Task:** Affinamento Seeding al via: silenzio metriche in griglia pre-gara e freeze FuelToAdd a 0.0 nel Giro 1
@@ -368,52 +400,6 @@ git diff --stat eab83d8..HEAD -- User.PluginSdkDemoEdit/   # atteso: nessun outp
 **Attenzione a:** le regole ora stanno in **`AGENTS.md`** alla radice. `CLAUDE.md` e `GEMINI.md`
 sono puntatori: se ti trovi a modificarli, stai creando un duplicato (ADR-006).
 
----
-
-## [2026-09-05 14:35] claude → chiunque entri dopo (Gemini/Antigravity compreso)
-
-**Task:** regole di progetto in un file neutro, leggibile da qualunque agente
-**Piano:** — (deciso con l'utente)
-**Commit:** `8362a95` (lock) + questo
-
-### Perché
-Le regole vivevano in `CLAUDE.md`: Claude Code lo carica da solo, Gemini e Codex no. Il protocollo
-arrivava automaticamente a **un agente su tre**, e si vede nei numeri — dei 22 handoff archiviati,
-**21 firmati `claude`, uno `antigravity`**.
-
-### Fatto
-- `AGENTS.md` (nuovo, radice) — **la fonte unica delle regole.** Contenuto di `CLAUDE.md` reso
-  neutro (`[<agente>]` invece di `[claude]`, "non è il tuo" invece di "non sono io"), più tre
-  aggiunte: `CustomDialog.xaml.cs` fra le trappole (Y-55), l'avvertenza sul conteggio PASS da
-  leggere dall'output e non ricopiare (Y-54), e una sezione **"Tenere leggeri i file di stato"**
-  che rende esplicita la manutenzione dell'archivio.
-- `CLAUDE.md` — ridotto a **puntatore**: rimando ad `AGENTS.md` + le due sole regole il cui costo,
-  se ignorate, è una sovrascrittura silenziosa (leggi il lock; handoff e rilascio a fine turno).
-- `GEMINI.md` (nuovo) — stesso puntatore, con prefisso commit `[antigravity]`.
-- `.ai/ARCHITECTURE.md` — **ADR-006** che formalizza la decisione e scarta la duplicazione.
-- `.ai/NEW_SESSION_PROMPT.md`, `.ai/STRATEGY_ENGINE_GUIDE.md` — l'ordine di lettura punta ora ad
-  `AGENTS.md`, e il prompt spiega che i punti chiusi sono un indice + archivio.
-
-I riferimenti a `CLAUDE.md` dentro documenti **datati** (review, handoff vecchi, piani) sono stati
-lasciati intatti di proposito: dicevano il vero quando sono stati scritti.
-
-### Come verificare
-```bash
-wc -l AGENTS.md CLAUDE.md GEMINI.md        # atteso: ~190 / ~20 / ~20
-grep -rn "CLAUDE.md" .ai --include "*.md" | grep -v archive/ | grep -v reviews/ | grep -v plans/
-```
-Atteso: la seconda riga non trova più riferimenti "vivi" a `CLAUDE.md` come fonte delle regole.
-
-### Stato
-- ⏭️ Build e test **non eseguiti**: sessione macOS, e **nessun file di codice toccato**.
-  Il codice resta esattamente a `bd00979`.
-
-### Per chi entra
-**Prossimo passo:** invariato — Y-52 passo 2 di 4.
-**NON toccare:** nulla lasciato a metà.
-**Attenzione a:** se cambi una regola, cambiala in **`AGENTS.md`**. `CLAUDE.md` e `GEMINI.md` non
-contengono regole: se ti trovi a modificarle, quasi certamente stai creando il duplicato che
-ADR-006 esiste per evitare.
 
 ---
 

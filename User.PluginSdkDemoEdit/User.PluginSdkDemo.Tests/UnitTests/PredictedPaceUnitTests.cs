@@ -46,6 +46,9 @@ namespace User.PluginSdkDemo.Tests
             Test_IsLapsPredictionValid_FalsePreGreenFlag_WhenSessionStateStatusLessThan4();
             Test_IsLapsPredictionValid_FalseWhenTimeLimitedCountdownNegative();
 
+            Test_IsPlausibleBaselineLap_RejectsFormationAndOutlaps();
+            Test_IsPlausibleBaselineLap_AcceptsNormalRacingLaps();
+
             Test_RoadAtlanta_GT3_LapProjection_Solves3LapBlackHole();
 
             Console.WriteLine("[TEST SUCCESS] All Predicted Pace Seeding Tests Passed!");
@@ -452,6 +455,61 @@ namespace User.PluginSdkDemo.Tests
                 $"Verifica difetto: col fallback a 120s deve dare 23 giri, ottenuto {oldTotalLaps:F0}");
 
             Pass("Regressione Road Atlanta GT3: al semaforo verde la proiezione e' 36 giri (risolto il buco nero dei 23)");
+        }
+
+        /// <summary>
+        /// Verifica che IsPlausibleBaselineLap filtri outlap, giri di formazione e giri anomali (> +20% o < -40% del passo atteso).
+        /// Previene che il giro di formazione (es. 109.744s a Road Atlanta quando il passo e' 77.047s)
+        /// avveleni la baseline del player (NormalizedTimes.LapBaseline) facendo crollare la proiezione a 26 giri.
+        /// </summary>
+        private static void Test_IsPlausibleBaselineLap_RejectsFormationAndOutlaps()
+        {
+            double playerPace = 77.047;
+            double classPace = 77.047;
+            double trackLength = 4088.0;
+
+            // 1. Giro di formazione Road Atlanta (109.744s, +42% rispetto al passo)
+            bool formationLap = RaceAnalyzer.IsPlausibleBaselineLap(109.744, playerPace, classPace, trackLength);
+            Assert(!formationLap, "Giro di formazione da 109.744s deve essere scartato come baseline");
+
+            // 2. Giro con testacoda / errore grave (> +20%)
+            bool spinLap = RaceAnalyzer.IsPlausibleBaselineLap(95.0, playerPace, classPace, trackLength);
+            Assert(!spinLap, "Giro con errore da 95.0s (+23%) deve essere scartato");
+
+            // 3. Giro parziale / glitch telemetria (< -40%)
+            bool partialLap = RaceAnalyzer.IsPlausibleBaselineLap(40.0, playerPace, classPace, trackLength);
+            Assert(!partialLap, "Giro da 40.0s (-48%) deve essere scartato");
+
+            // 4. LapTime invalido (<= 10s, NaN, Infinito)
+            Assert(!RaceAnalyzer.IsPlausibleBaselineLap(5.0, playerPace, classPace, trackLength), "LapTime <= 10s deve essere scartato");
+            Assert(!RaceAnalyzer.IsPlausibleBaselineLap(double.NaN, playerPace, classPace, trackLength), "LapTime NaN deve essere scartato");
+
+            Pass("IsPlausibleBaselineLap scarta correttamente outlap, formazione e anomalie");
+        }
+
+        private static void Test_IsPlausibleBaselineLap_AcceptsNormalRacingLaps()
+        {
+            double playerPace = 77.047;
+            double classPace = 77.047;
+            double trackLength = 4088.0;
+
+            // Giro regolare vicino al passo stimato
+            bool normalLap = RaceAnalyzer.IsPlausibleBaselineLap(77.699, playerPace, classPace, trackLength);
+            Assert(normalLap, "Giro da 77.699s deve essere accettato come baseline");
+
+            // Giro veloce (es. qualifica o scia, -10%)
+            bool fastLap = RaceAnalyzer.IsPlausibleBaselineLap(75.500, playerPace, classPace, trackLength);
+            Assert(fastLap, "Giro da 75.500s deve essere accettato come baseline");
+
+            // Fallback su track length quando i metadati non ci sono
+            // 4088m / 50m/s = 81.76s
+            bool fallbackLap = RaceAnalyzer.IsPlausibleBaselineLap(82.0, null, null, trackLength);
+            Assert(fallbackLap, "Giro da 82.0s con ripiego fisico su trackLength deve essere accettato");
+
+            bool fallbackOutlap = RaceAnalyzer.IsPlausibleBaselineLap(120.0, null, null, trackLength);
+            Assert(!fallbackOutlap, "Giro da 120.0s con ripiego fisico su trackLength deve essere scartato (> +20% di 81.76s)");
+
+            Pass("IsPlausibleBaselineLap accetta correttamente giri da gara regolari");
         }
     }
 }

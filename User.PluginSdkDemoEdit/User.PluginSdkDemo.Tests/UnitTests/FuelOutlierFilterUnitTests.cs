@@ -435,15 +435,27 @@ namespace User.PluginSdkDemo.Tests
             state.RaceStartingFuelLatched = true;
             fm.Update(state, 20.0, 0.0, null);
 
-            // Fine giro 1 di gara verde (consumati 2.5 L di gara: serbatoio scende da 99.5 a 97.0)
+            // Fine giro 1 di gara (giro di lancio/formazione):
+            // LastLapFuelUsed si aggiorna a 2.5L (misura), ma NON entra in FuelHistory (statistica)
+            // perche' il giro 1 di gara e' anomalo (rolling start o standing launch)
             state.CurrentLap = 2;
             state.CurrentFuelLevel = 97.0;
             fm.Update(state, 19.0, 0.0, null);
 
-            Assert(fm.FuelHistory.Count == 1, "Il Giro 1 verde deve entrare in cronologia");
-            Assert(Math.Abs(fm.Calculations.AverageFuelPerLap - 2.5) < 1e-6,
-                   $"Il consumo del Giro 1 deve essere 2.5L (non includere l'idle pre-gara), ottenuto {fm.Calculations.AverageFuelPerLap:F2}");
-            Pass("Griglia e ricognizione non sporcano il Giro 1; latch al verde registra consumo corretto");
+            Assert(Math.Abs(fm.Calculations.LastLapFuelUsed - 2.5) < 1e-6,
+                   $"LastLapFuelUsed deve misurare 2.5L, ottenuto {fm.Calculations.LastLapFuelUsed:F2}");
+            Assert(fm.FuelHistory.Count == 0,
+                   $"Il Giro 1 di gara non deve entrare in cronologia media, ottenuto {fm.FuelHistory.Count}");
+
+            // Fine giro 2 di gara verde (primo giro lanciato a piena velocita', 97.0 -> 94.6 = 2.4L)
+            state.CurrentLap = 3;
+            state.CurrentFuelLevel = 94.6;
+            fm.Update(state, 18.0, 0.0, null);
+
+            Assert(fm.FuelHistory.Count == 1, "Il Giro 2 verde lanciato deve entrare in cronologia");
+            Assert(Math.Abs(fm.Calculations.AverageFuelPerLap - 2.4) < 1e-6,
+                   $"Il consumo medio deve basarsi solo sui giri lanciati (2.4L), ottenuto {fm.Calculations.AverageFuelPerLap:F2}");
+            Pass("Giro 1 di gara escluso da cronologia; Giro 2 lanciato inizia la media pulita");
         }
     }
 }

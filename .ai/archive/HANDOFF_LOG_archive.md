@@ -9,6 +9,53 @@
 
 ---
 
+## [2026-09-05 14:35] claude → chiunque entri dopo (Gemini/Antigravity compreso)
+
+**Task:** regole di progetto in un file neutro, leggibile da qualunque agente
+**Piano:** — (deciso con l'utente)
+**Commit:** `8362a95` (lock) + questo
+
+### Perché
+Le regole vivevano in `CLAUDE.md`: Claude Code lo carica da solo, Gemini e Codex no. Il protocollo
+arrivava automaticamente a **un agente su tre**, e si vede nei numeri — dei 22 handoff archiviati,
+**21 firmati `claude`, uno `antigravity`**.
+
+### Fatto
+- `AGENTS.md` (nuovo, radice) — **la fonte unica delle regole.** Contenuto di `CLAUDE.md` reso
+  neutro (`[<agente>]` invece di `[claude]`, "non è il tuo" invece di "non sono io"), più tre
+  aggiunte: `CustomDialog.xaml.cs` fra le trappole (Y-55), l'avvertenza sul conteggio PASS da
+  leggere dall'output e non ricopiare (Y-54), e una sezione **"Tenere leggeri i file di stato"**
+  che rende esplicita la manutenzione dell'archivio.
+- `CLAUDE.md` — ridotto a **puntatore**: rimando ad `AGENTS.md` + le due sole regole il cui costo,
+  se ignorate, è una sovrascrittura silenziosa (leggi il lock; handoff e rilascio a fine turno).
+- `GEMINI.md` (nuovo) — stesso puntatore, con prefisso commit `[antigravity]`.
+- `.ai/ARCHITECTURE.md` — **ADR-006** che formalizza la decisione e scarta la duplicazione.
+- `.ai/NEW_SESSION_PROMPT.md`, `.ai/STRATEGY_ENGINE_GUIDE.md` — l'ordine di lettura punta ora ad
+  `AGENTS.md`, e il prompt spiega che i punti chiusi sono un indice + archivio.
+
+I riferimenti a `CLAUDE.md` dentro documenti **datati** (review, handoff vecchi, piani) sono stati
+lasciati intatti di proposito: dicevano il vero quando sono stati scritti.
+
+### Come verificare
+```bash
+wc -l AGENTS.md CLAUDE.md GEMINI.md        # atteso: ~190 / ~20 / ~20
+grep -rn "CLAUDE.md" .ai --include "*.md" | grep -v archive/ | grep -v reviews/ | grep -v plans/
+```
+Atteso: la seconda riga non trova più riferimenti "vivi" a `CLAUDE.md` come fonte delle regole.
+
+### Stato
+- ⏭️ Build e test **non eseguiti**: sessione macOS, e **nessun file di codice toccato**.
+  Il codice resta esattamente a `bd00979`.
+
+### Per chi entra
+**Prossimo passo:** invariato — Y-52 passo 2 di 4.
+**NON toccare:** nulla lasciato a metà.
+**Attenzione a:** se cambi una regola, cambiala in **`AGENTS.md`**. `CLAUDE.md` e `GEMINI.md` non
+contengono regole: se ti trovi a modificarle, quasi certamente stai creando il duplicato che
+ADR-006 esiste per evitare.
+
+---
+
 ## [2026-09-05 14:10] claude → chiunque entri dopo
 
 **Task:** potatura del contesto — separare la storia chiusa dallo stato attivo

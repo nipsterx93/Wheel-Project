@@ -595,7 +595,7 @@ namespace SimRIG
 
                     int playerLapsOnTyres = Math.Max(0, Results.RaceLapsCompleted - _playerLastPitLap);
                     double distanceOnTyres = playerLapsOnTyres * state.TrackLengthMeters;
-                    AnalyzePlayerLap(state.LastLapTimeSec, state.CurrentFuelLevel, state.TrackTemperature, state.IsInPitLane, state.Flag_Black, Results.RaceLapsCompleted, state.GlobalBaselineTemp, fuelWeightCoef, tempCoef, distanceOnTyres, playerLapsOnTyres, log);
+                    AnalyzePlayerLap(state.LastLapTimeSec, state.CurrentFuelLevel, state.TrackTemperature, state.IsInPitLane, state.Flag_Black, Results.RaceLapsCompleted, state.GlobalBaselineTemp, fuelWeightCoef, tempCoef, distanceOnTyres, playerLapsOnTyres, state.Metadata, state.CarClassId, state.TrackLengthMeters, log);
 
 
 
@@ -1237,37 +1237,28 @@ namespace SimRIG
 
 
 
-        private void AnalyzePlayerLap(double lapTime, double currentFuel, double trackTemp, bool isInPit, int blackFlag, int raceLapsCompleted, double globalBaselineTemp, double fuelWeightCoef, double tempCoef, double distanceOnTyres, int playerLapsOnTyres, LogManager log)
-
+        private void AnalyzePlayerLap(double lapTime, double currentFuel, double trackTemp, bool isInPit, int blackFlag, int raceLapsCompleted, double globalBaselineTemp, double fuelWeightCoef, double tempCoef, double distanceOnTyres, int playerLapsOnTyres, SessionMetadata metadata, string carClassId, double trackLengthMeters, LogManager log)
         {
-
             if (isInPit || lapTime <= 0 || blackFlag > 0) return;
 
-
-
             double fuelPenalty = RaceTimeProjection.FuelWeightPenaltySec(currentFuel, fuelWeightCoef);
-
             double tempPenalty = globalBaselineTemp > 0 ? ((trackTemp - globalBaselineTemp) * tempCoef) : 0.0;
-
-
 
             double normalizedLap = lapTime - fuelPenalty - tempPenalty;
 
-
-
             RawTimes.LastLapTime = lapTime;
-
             NormalizedTimes.LastLapTime = normalizedLap;
-
-
 
             bool isValidForBaseline = true;
 
-
-
             if (raceLapsCompleted < 2) isValidForBaseline = false;
 
-
+            if (isValidForBaseline && !IsPlausibleBaselineLap(lapTime, metadata?.PlayerEstimatedPaceSec, metadata?.EstimatedPaceFor(null, carClassId), trackLengthMeters))
+            {
+                isValidForBaseline = false;
+                log?.Log(LogModule.STRATEGY, LogType.EVENT, "Player Lap Excluded From Baseline (Plausibility)",
+                    $"lapTime={lapTime:F3} | normalized={normalizedLap:F3} | reason=Giro non plausibile per baseline (troppo lento o parziale rispetto al passo atteso)");
+            }
 
             if (isValidForBaseline)
 
@@ -2151,6 +2142,22 @@ namespace SimRIG
                 Pace = pace;
                 LeaderName = leaderName;
             }
+        }
+
+        /// <summary>
+        /// Determina se un tempo sul giro e' plausibile come baseline per la proiezione (filtra outlap/formazione/giri lenti o parziali).
+        /// </summary>
+        public static bool IsPlausibleBaselineLap(double lapTime, double? playerEstimatedPaceSec, double? classEstimatedPaceSec, double trackLengthMeters)
+        {
+            if (lapTime <= 10.0 || double.IsNaN(lapTime) || double.IsInfinity(lapTime)) return false;
+            double expectedPace = playerEstimatedPaceSec.HasValue && playerEstimatedPaceSec.Value > 10.0
+                ? playerEstimatedPaceSec.Value
+                : (classEstimatedPaceSec.HasValue && classEstimatedPaceSec.Value > 10.0
+                    ? classEstimatedPaceSec.Value
+                    : (trackLengthMeters > 0 ? trackLengthMeters / 50.0 : 120.0));
+            if (lapTime > expectedPace * 1.20) return false;
+            if (lapTime < expectedPace * 0.60) return false;
+            return true;
         }
 
         /// <summary>

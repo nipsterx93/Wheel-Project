@@ -532,13 +532,12 @@ namespace SimRIG
                     }
                 }
 
-                double refLapTime = 100.0;
-                if (state.LastLapTimeSec > 10.0) refLapTime = state.LastLapTimeSec;
-                else if (state.BestLapTimeSec > 10.0) refLapTime = state.BestLapTimeSec;
-                else if (raceResult.NormalizedRaceStartPace > 10.0) refLapTime = raceResult.NormalizedRaceStartPace;
-                else if (state.Metadata != null && state.Metadata.PlayerEstimatedPaceSec.HasValue && state.Metadata.PlayerEstimatedPaceSec.Value > 10.0) refLapTime = state.Metadata.PlayerEstimatedPaceSec.Value;
-                else if (state.Metadata != null && state.Metadata.EstimatedPaceFor(null, state.CarClassId).HasValue && state.Metadata.EstimatedPaceFor(null, state.CarClassId).Value > 10.0) refLapTime = state.Metadata.EstimatedPaceFor(null, state.CarClassId).Value;
-                else if (state.TrackLengthMeters > 0.0) refLapTime = state.TrackLengthMeters / 50.0;
+                double refLapTime = RaceAnalyzer.ResolvePlayerPace(
+                    raceResult.NormalizedRaceStartPace,
+                    state.BestLapTimeSec,
+                    state.Metadata?.PlayerEstimatedPaceSec,
+                    state.Metadata?.EstimatedPaceFor(null, state.CarClassId),
+                    state.TrackLengthMeters);
 
                 if (!gapCalculated)
                 {
@@ -764,13 +763,12 @@ namespace SimRIG
 
                     // 2. Controllo del Traffico all'Uscita Box (Drop-Zone)
                     CurrentTarget.TargetMode = targetModeString;
-                    refLapTime = 100.0;
-                    if (state.LastLapTimeSec > 10.0) refLapTime = state.LastLapTimeSec;
-                    else if (state.BestLapTimeSec > 10.0) refLapTime = state.BestLapTimeSec;
-                    else if (raceResult.NormalizedRaceStartPace > 10.0) refLapTime = raceResult.NormalizedRaceStartPace;
-                    else if (state.Metadata != null && state.Metadata.PlayerEstimatedPaceSec.HasValue && state.Metadata.PlayerEstimatedPaceSec.Value > 10.0) refLapTime = state.Metadata.PlayerEstimatedPaceSec.Value;
-                    else if (state.Metadata != null && state.Metadata.EstimatedPaceFor(null, state.CarClassId).HasValue && state.Metadata.EstimatedPaceFor(null, state.CarClassId).Value > 10.0) refLapTime = state.Metadata.EstimatedPaceFor(null, state.CarClassId).Value;
-                    else if (state.TrackLengthMeters > 0.0) refLapTime = state.TrackLengthMeters / 50.0;
+                    refLapTime = RaceAnalyzer.ResolvePlayerPace(
+                        raceResult.NormalizedRaceStartPace,
+                        state.BestLapTimeSec,
+                        state.Metadata?.PlayerEstimatedPaceSec,
+                        state.Metadata?.EstimatedPaceFor(null, state.CarClassId),
+                        state.TrackLengthMeters);
 
                     bool pitExitTrafficConflict = false;
                     double minMergeGap = 999.0;
@@ -1125,13 +1123,12 @@ namespace SimRIG
 
                             if (!gapFound)
                             {
-                                double refLap = 100.0;
-                                if (state.LastLapTimeSec > 10.0) refLap = state.LastLapTimeSec;
-                                else if (state.BestLapTimeSec > 10.0) refLap = state.BestLapTimeSec;
-                                else if (raceResult.NormalizedRaceStartPace > 10.0) refLap = raceResult.NormalizedRaceStartPace;
-                                else if (state.Metadata != null && state.Metadata.PlayerEstimatedPaceSec.HasValue && state.Metadata.PlayerEstimatedPaceSec.Value > 10.0) refLap = state.Metadata.PlayerEstimatedPaceSec.Value;
-                                else if (state.Metadata != null && state.Metadata.EstimatedPaceFor(null, state.CarClassId).HasValue && state.Metadata.EstimatedPaceFor(null, state.CarClassId).Value > 10.0) refLap = state.Metadata.EstimatedPaceFor(null, state.CarClassId).Value;
-                                else if (state.TrackLengthMeters > 0.0) refLap = state.TrackLengthMeters / 50.0;
+                                double refLap = RaceAnalyzer.ResolvePlayerPace(
+                                    raceResult.NormalizedRaceStartPace,
+                                    state.BestLapTimeSec,
+                                    state.Metadata?.PlayerEstimatedPaceSec,
+                                    state.Metadata?.EstimatedPaceFor(null, state.CarClassId),
+                                    state.TrackLengthMeters);
                                 logTargetFluidGap = Math.Abs(logPosDiff * refLap);
                             }
 

@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      antigravity
-since:      2026-09-06 17:25
-task:       fix fuel lap 1, pace plausibility, target cascade, opponent seeding
-scope:      User.PluginSdkDemoEdit/FuelManager.cs, User.PluginSdkDemoEdit/RaceAnalyzer.cs, User.PluginSdkDemoEdit/TargetStrategyManager.cs, User.PluginSdkDemoEdit/OpponentTracker.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/
-expires:    2026-09-06 19:00
+owner:      NONE
+since:      —
+task:       —
+scope:      —
+expires:    —
 ```
 
 **Regole del lock**
@@ -169,7 +169,7 @@ sapere che un punto esiste ed è chiuso, senza caricarne 47 KB a ogni sessione.
 
 **Fase attiva della Roadmap:** **Fase Y-52 (Metadati di Sessione da iRacing / irdashies)** — vedi [roadmap.md](.ai/plans/2026-08-24-roadmap.md).
 - **Passi 1 e 2:** Completati e testati (contenitore agnostico `SessionMetadata`, seeding passo stimato e validità `IsLapsPredictionValid`).
-- **Sblocco Dump SimHub (2026-09-06):** Risolto il mancato dump nei replay reali tramite `SessionDataReader.cs` che estrae i metadati dall'oggetto nativo `SessionData` / `DataSample` e dal property bag SimHub. Dump su disco sbloccato (314 test PASS).
+- **Stabilizzazione Fuel al via e Filtro Outlap (2026-09-06):** Risolta contaminazione `AverageFuelPerLap` dal giro di formazione/partenza (finestra media a 5 giri, Lap 1 escluso dalla media) e introdotto filtro plausibilità `RaceAnalyzer.IsPlausibleBaselineLap` che protegge la baseline dai tempi outlap/formazione. Allineata cascata `TargetStrategyManager` a `RaceAnalyzer.ResolvePlayerPace` (320 test PASS).
 - **Prossimo lavoro tecnico:** Y-52 Passo 3 (`DriverPitTrkPct` → coordinata metrica piazzola box) e Passo 4 (densità carburante reale, opzioni gara).
 - **Prossima fase strategica:** Fase B (Verifica consigli undercut/overcut contro esito reale di gara su replay idoneo fornito dall'utente).
 
