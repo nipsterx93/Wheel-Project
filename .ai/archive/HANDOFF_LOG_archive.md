@@ -9,6 +9,74 @@
 
 ---
 
+## [2026-09-05 12:30] claude → chiunque entri dopo
+
+**Task:** Y-52 passo 1 di 4 — `SessionMetadata`, `SessionYamlParser`, cache di sessione, dump
+**Piano:** — (quattro passi concordati con l'utente dopo l'analisi di irdashies)
+**Commit:** `bd00979`
+
+### Fatto
+- `SessionMetadata.cs` (nuovo) — contenitore **agnostico**, campi nullable. È l'interfaccia che
+  i consumatori leggeranno; il parser YAML è solo uno dei fornitori possibili.
+- `SessionYamlParser.cs` (nuovo) — fornitore iRacing, **funzione pura**: stringa in, contenitore
+  fuori. Nessun I/O, nessuno stato.
+- `SessionMetadataDump.cs` (nuovo) — `SimRigMetadata.json` + YAML grezzo, cartella configurabile.
+- `TelemetryReader.cs` — `RefreshSessionMetadata`: interpreta **solo quando lo YAML cambia**.
+- `OpponentTracker.cs` — il BoP arriva dal contenitore; `ParseOpponentMaxFuelPct` **eliminato**
+  (61 righe) e con lui la riscansione a 60 Hz.
+- `DataPluginDemoSettings.cs` — `MetadataDumpFolder`, vuota = accanto alla DLL.
+- Tre file nuovi nel `.csproj` principale, uno in quello dei test + `TestRunner`.
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/User.PluginSdkDemo.Tests.csproj" -p:Configuration=Debug -v:minimal -nologo
+```
+```bash
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit `0`, **295 PASS** (erano 289).
+
+**Regressione neutralizzata (ADR-004):** togliendo il troncamento dell'unità di misura in
+`SessionYamlParser.Number`, il test sul quirk del `'%'` di iRacing diventa rosso.
+
+### Criterio osservabile sul replay — serve all'utente
+Il passo 1 **non cambia comportamento**, quindi il replay non deve mostrare numeri diversi.
+Deve mostrare due cose:
+
+1. Una riga `Session Metadata Dumped` nel log **una volta sola per sessione**. Se comparisse a
+   ripetizione, la cache non starebbe funzionando — ed è metà del motivo di questo passo.
+2. Il file `SimRigMetadata.json` con dentro passo stimato, limite box, piazzola, incidenti; e
+   accanto un `SimRigSessionYaml_*.txt` con lo YAML grezzo.
+3. Il BoP deve continuare a comportarsi **identico**: nei log devono restare righe tipo
+   `BoP Pct: 0.500`. Se sparissero o cambiassero valore, il refactor avrebbe rotto qualcosa.
+
+### Attenzione per chi entra
+- ⚠️ **I test usano uno YAML scritto a mano.** Verificano la struttura (annidamento, unità,
+  quirk del `'%'`, risoluzione del Player per `CarIdx`) e la **preservazione del BoP**. Non
+  verificano che i nomi dei campi siano quelli che iRacing manda davvero: per quello serve il
+  dump che questo stesso passo produce. È il primo lavoro del prossimo turno, appena l'utente
+  gira un replay.
+- ⚠️ **La chiave di classe è incerta.** Lo YAML ha `CarClassShortName`, SimHub espone
+  `data.NewData.CarClass`: potrebbero non combaciare. Per questo il passo è indicizzato **anche
+  per nome pilota**, che è la chiave certa, e `EstimatedPaceFor` prova prima il pilota. Da
+  confermare sul dump reale prima di appoggiarci il passo 2.
+- ⚠️ **Il file di dump non va mai riletto a runtime.** È scritto nel commento della classe e
+  vale la pena ripeterlo: rileggerlo farebbe vincere una copia vecchia su una realtà fresca, che
+  è il difetto di Y-20, Y-21, Y-22 e Y-50.
+- La cache è verificata **per costruzione e per lettura, non da un test**: sta dentro
+  `TelemetryReader`, che richiede un `PluginManager` di SimHub. Il criterio osservabile è il
+  punto 1 qui sopra.
+
+### Prossimo passo
+Passo 2: `CarClassEstLapTime` come seme al posto di `100.0` e `trackLength/50`
+(`TargetStrategyManager.cs:535-539`), **con `IsLapsPredictionValid` propagato** — perché su
+questo percorso lo zero non è silenzio, è "gara finita adesso" (`RaceAnalyzer.cs:1064`).
+Rinominare anche `IsPredictionValid` in `IsFuelPredictionValid`, come concordato.
+Nella dash il `N/A` vive nelle proprietà `*Str` (ce ne sono già 77), non nelle numeriche: il
+flag governa l'**uso interno**, la stringa governa l'occhio.
+
+---
+
 ## [2026-09-05 09:40] claude → chiunque entri dopo
 
 **Task:** Y-34 — `FuelToAdd` all'intero, sempre per eccesso, in tutte le modalità

@@ -47,6 +47,32 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-06 13:50] antigravity → chiunque entri dopo
+
+**Task:** Comandi slash `/new-session` e `/handoff` registrati come Skill per Antigravity 2.0 (`.agent/skills/`)
+**Piano:** — (allineamento formati comandi custom vs skill Antigravity 2.0)
+**Commit:** `0d28aed`
+
+### Fatto
+- Creati `.agent/skills/new-session/SKILL.md` e `.agent/skills/handoff/SKILL.md` con frontmatter YAML conforme (`name` + `description`).
+- In precedenza i comandi erano stati inseriti in `.agent/workflows/*.md` (vecchio formato legacy supportato da Gemini CLI in terminale, ma non esposto come slash command nell'UI di Antigravity 2.0). Le cartelle `.agent/skills/<name>/SKILL.md` abilitano sia il comando slash (`/new-session`, `/handoff`) nell'interfaccia chat sia l'invocazione automatica da parte dell'agente.
+- Mantenute le versioni in `.agent/workflows/` e `.claude/commands/` per retrocompatibilità.
+
+### Come verificare
+- Digitare `/` nella casella di input della chat di Antigravity: i comandi `/new-session` e `/handoff` compaiono ora nell'elenco autocompletato.
+- Invocando `/new-session`, l'agente esegue la procedura di bootstrap (lettura `AGENTS.md`, `PROJECT_STATE.md`, `HANDOFF_LOG.md`, `STRATEGY_ENGINE_GUIDE.md`).
+
+### Stato
+- ⏭️ Nessun codice C# modificato (infrastruttura / skill di ambiente)
+- ✅ Git tree pulito
+
+### Per chi entra
+**Prossimo passo:** Continuare secondo roadmap (`.ai/plans/2026-08-24-roadmap.md`) o punto Y pianificato.
+**NON toccare:** `User.PluginSdkDemoEdit/` era fuori scope in questo turno.
+**Attenzione a:** Mantenere sincronizzati i file di bootstrap e handoff se ne viene modificato il contenuto (`.claude/commands/`, `.agent/workflows/`, `.agent/skills/`).
+
+---
+
 ## [2026-09-06 13:30] claude → chiunque entri dopo
 
 **Task:** Skill di dominio condivisa `motorsport-telemetry-engineering`, da una ricerca approfondita fornita dall'utente su fisica carburante, scomposizione pit stop, statistica robusta e filtraggio del passo. Nessun punto Y toccato: turno di infrastruttura/conoscenza, non di correzione codice — niente lock preso, nessun file in `User.PluginSdkDemoEdit/` modificato.
@@ -407,74 +433,6 @@ locale? è suo o di terzi?). Y-54 e Y-55 sono correggibili subito, prendendo il 
 l'handoff precedente.
 **Attenzione a:** Y-54 significa che "295 PASS" su una macchina senza i replay non è lo stesso
 "295 PASS" della macchina dell'utente. Finché non è corretto, il conteggio va letto sapendolo.
-
----
-
-## [2026-09-05 12:30] claude → chiunque entri dopo
-
-**Task:** Y-52 passo 1 di 4 — `SessionMetadata`, `SessionYamlParser`, cache di sessione, dump
-**Piano:** — (quattro passi concordati con l'utente dopo l'analisi di irdashies)
-**Commit:** `bd00979`
-
-### Fatto
-- `SessionMetadata.cs` (nuovo) — contenitore **agnostico**, campi nullable. È l'interfaccia che
-  i consumatori leggeranno; il parser YAML è solo uno dei fornitori possibili.
-- `SessionYamlParser.cs` (nuovo) — fornitore iRacing, **funzione pura**: stringa in, contenitore
-  fuori. Nessun I/O, nessuno stato.
-- `SessionMetadataDump.cs` (nuovo) — `SimRigMetadata.json` + YAML grezzo, cartella configurabile.
-- `TelemetryReader.cs` — `RefreshSessionMetadata`: interpreta **solo quando lo YAML cambia**.
-- `OpponentTracker.cs` — il BoP arriva dal contenitore; `ParseOpponentMaxFuelPct` **eliminato**
-  (61 righe) e con lui la riscansione a 60 Hz.
-- `DataPluginDemoSettings.cs` — `MetadataDumpFolder`, vuota = accanto alla DLL.
-- Tre file nuovi nel `.csproj` principale, uno in quello dei test + `TestRunner`.
-
-### Come verificare
-```bash
-"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/User.PluginSdkDemo.Tests.csproj" -p:Configuration=Debug -v:minimal -nologo
-```
-```bash
-"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: exit `0`, **295 PASS** (erano 289).
-
-**Regressione neutralizzata (ADR-004):** togliendo il troncamento dell'unità di misura in
-`SessionYamlParser.Number`, il test sul quirk del `'%'` di iRacing diventa rosso.
-
-### Criterio osservabile sul replay — serve all'utente
-Il passo 1 **non cambia comportamento**, quindi il replay non deve mostrare numeri diversi.
-Deve mostrare due cose:
-
-1. Una riga `Session Metadata Dumped` nel log **una volta sola per sessione**. Se comparisse a
-   ripetizione, la cache non starebbe funzionando — ed è metà del motivo di questo passo.
-2. Il file `SimRigMetadata.json` con dentro passo stimato, limite box, piazzola, incidenti; e
-   accanto un `SimRigSessionYaml_*.txt` con lo YAML grezzo.
-3. Il BoP deve continuare a comportarsi **identico**: nei log devono restare righe tipo
-   `BoP Pct: 0.500`. Se sparissero o cambiassero valore, il refactor avrebbe rotto qualcosa.
-
-### Attenzione per chi entra
-- ⚠️ **I test usano uno YAML scritto a mano.** Verificano la struttura (annidamento, unità,
-  quirk del `'%'`, risoluzione del Player per `CarIdx`) e la **preservazione del BoP**. Non
-  verificano che i nomi dei campi siano quelli che iRacing manda davvero: per quello serve il
-  dump che questo stesso passo produce. È il primo lavoro del prossimo turno, appena l'utente
-  gira un replay.
-- ⚠️ **La chiave di classe è incerta.** Lo YAML ha `CarClassShortName`, SimHub espone
-  `data.NewData.CarClass`: potrebbero non combaciare. Per questo il passo è indicizzato **anche
-  per nome pilota**, che è la chiave certa, e `EstimatedPaceFor` prova prima il pilota. Da
-  confermare sul dump reale prima di appoggiarci il passo 2.
-- ⚠️ **Il file di dump non va mai riletto a runtime.** È scritto nel commento della classe e
-  vale la pena ripeterlo: rileggerlo farebbe vincere una copia vecchia su una realtà fresca, che
-  è il difetto di Y-20, Y-21, Y-22 e Y-50.
-- La cache è verificata **per costruzione e per lettura, non da un test**: sta dentro
-  `TelemetryReader`, che richiede un `PluginManager` di SimHub. Il criterio osservabile è il
-  punto 1 qui sopra.
-
-### Prossimo passo
-Passo 2: `CarClassEstLapTime` come seme al posto di `100.0` e `trackLength/50`
-(`TargetStrategyManager.cs:535-539`), **con `IsLapsPredictionValid` propagato** — perché su
-questo percorso lo zero non è silenzio, è "gara finita adesso" (`RaceAnalyzer.cs:1064`).
-Rinominare anche `IsPredictionValid` in `IsFuelPredictionValid`, come concordato.
-Nella dash il `N/A` vive nelle proprietà `*Str` (ce ne sono già 77), non nelle numeriche: il
-flag governa l'**uso interno**, la stringa governa l'occhio.
 
 ---
 
