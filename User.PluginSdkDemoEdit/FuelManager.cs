@@ -136,6 +136,29 @@ namespace SimRIG
         }
 
         /// <summary>
+        /// Calcola la mediana su una collezione di campioni di consumo (statistica robusta).
+        /// La mediana ha un breakdown point del 50%: un singolo giro anomalo (es. scia, fuel
+        /// saving isolato o traffico) non sposta la stima nominale di gara; serve che almeno
+        /// la maggioranza dei campioni della finestra (es. 3 su 5) confermi il nuovo ritmo
+        /// per spostare il baricentro del consumo.
+        /// </summary>
+        public static double ComputeMedian(IReadOnlyList<double> samples)
+        {
+            if (samples == null || samples.Count == 0) return 0.0;
+            if (samples.Count == 1) return samples[0];
+
+            var sorted = samples.OrderBy(x => x).ToList();
+            int count = sorted.Count;
+            int mid = count / 2;
+
+            if (count % 2 != 0)
+            {
+                return sorted[mid];
+            }
+            return (sorted[mid - 1] + sorted[mid]) / 2.0;
+        }
+
+        /// <summary>
         /// Massimo risparmio di carburante ottenibile guidando, come frazione del consumo.
         /// Oltre questa soglia il divario non si colma alzando il piede: si colma solo con una
         /// sosta, e proporre il fuel saving sarebbe un consiglio impossibile da eseguire.
@@ -352,7 +375,7 @@ namespace SimRIG
                         if (accepted && acceptedNow.Count > 0)
                         {
                             var windowForAverage = acceptedNow.Skip(Math.Max(0, acceptedNow.Count - FUEL_AVERAGE_WINDOW_LAPS)).ToList();
-                            Calculations.AverageFuelPerLap = windowForAverage.Average();
+                            Calculations.AverageFuelPerLap = ComputeMedian(windowForAverage);
 
                             if (!Calculations.TargetManuallySet && Calculations.AverageFuelPerLap > 0)
                             {
@@ -366,8 +389,9 @@ namespace SimRIG
                         else
                         {
                             int raceLap = state.RaceStartLap > 0 ? (_lastEvaluatedLap - state.RaceStartLap + 1) : _lastEvaluatedLap;
+                            double currentEst = acceptedNow.Count > 0 ? ComputeMedian(acceptedNow.Skip(Math.Max(0, acceptedNow.Count - FUEL_AVERAGE_WINDOW_LAPS)).ToList()) : 0;
                             log?.Log(LogModule.FUEL, LogType.EVENT, "Lap Fuel Outlier Rejected (IQR)",
-                                $"Lap {raceLap} (Raw: {_lastEvaluatedLap}) | Used: {fuelUsed:F2}L | Avg: {(acceptedNow.Count > 0 ? acceptedNow.Average() : 0):F2}L | Accepted: {acceptedNow.Count}/{_recentLaps.Count}");
+                                $"Lap {raceLap} (Raw: {_lastEvaluatedLap}) | Used: {fuelUsed:F2}L | Avg: {currentEst:F2}L | Accepted: {acceptedNow.Count}/{_recentLaps.Count}");
                         }
                     }
                     else

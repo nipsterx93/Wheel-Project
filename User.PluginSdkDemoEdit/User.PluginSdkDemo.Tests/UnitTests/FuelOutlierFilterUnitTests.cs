@@ -39,6 +39,8 @@ namespace User.PluginSdkDemo.Tests
             Test_FuelManager_Lap1_FreezeFuelToAdd();
             Test_FuelManager_Grid_ParadeLap_IgnoredAndGreenFlagLatched();
             Test_RaceStartLineCrossed_FuelAndLapSync();
+            Test_ComputeMedian_RobustStatistics();
+            Test_RoadAtlanta_MedianFuelEstimation_AntiDraft();
 
             Console.WriteLine("[TEST SUCCESS] All Fuel Outlier Filter Tests Passed!");
         }
@@ -546,6 +548,97 @@ namespace User.PluginSdkDemo.Tests
             Assert(Math.Abs(fm.Calculations.AverageFuelPerLap - 2.21) < 1e-6,
                    $"Il consumo del primo giro deve essere 46.07 - 43.86 = 2.21L, ottenuto {fm.Calculations.AverageFuelPerLap:F2}");
             Pass("Sincronizzazione completa: start line crossing latch, giri completati 0->1, fuel 2.21L");
+        }
+
+        private static void Test_ComputeMedian_RobustStatistics()
+        {
+            // Null ed empty
+            Assert(FuelManager.ComputeMedian(null) == 0.0, "null deve restituire 0.0");
+            Assert(FuelManager.ComputeMedian(new List<double>()) == 0.0, "empty deve restituire 0.0");
+
+            // 1 campione
+            Assert(FuelManager.ComputeMedian(new List<double> { 2.5 }) == 2.5, "1 campione restituisce se stesso");
+
+            // 2 campioni (media dei due)
+            Assert(Math.Abs(FuelManager.ComputeMedian(new List<double> { 2.4, 2.6 }) - 2.5) < 1e-6, "2 campioni restituisce la media dei due");
+
+            // 3 campioni
+            Assert(FuelManager.ComputeMedian(new List<double> { 2.9, 2.2, 2.5 }) == 2.5, "3 campioni restituisce il valore centrale");
+
+            // 5 campioni: caso Road Atlanta con 1 calo isolato da scia/fuel saving (2.14L su giro 12)
+            var roadAtlantaWindow = new List<double> { 2.28, 2.27, 2.23, 2.14, 2.26 };
+            double median = FuelManager.ComputeMedian(roadAtlantaWindow);
+            Assert(Math.Abs(median - 2.26) < 1e-6, $"Road Atlanta: la mediana deve essere 2.26L, ottenuta {median:F3}");
+
+            // 5 campioni con 2 cali (ancora non persistenti, servono almeno 3 per spostare la maggioranza)
+            var twoDrops = new List<double> { 2.28, 2.27, 2.14, 2.14, 2.26 };
+            Assert(Math.Abs(FuelManager.ComputeMedian(twoDrops) - 2.26) < 1e-6, "2 cali isolati non spostano la mediana da 2.26L");
+
+            // 5 campioni con 3 cali (persistenza confermata: il pilota sta gestendo davvero!)
+            var threeDrops = new List<double> { 2.14, 2.14, 2.14, 2.27, 2.28 };
+            Assert(Math.Abs(FuelManager.ComputeMedian(threeDrops) - 2.14) < 1e-6, "3 cali consecutivi spostano la mediana al nuovo valore (2.14L)");
+
+            // 5 campioni con 1 picco isolato verso l'alto (errore/pattinamento a 2.45L)
+            var oneHighPeak = new List<double> { 2.26, 2.26, 2.27, 2.28, 2.45 };
+            Assert(Math.Abs(FuelManager.ComputeMedian(oneHighPeak) - 2.27) < 1e-6, "1 picco isolato alto non sposta la mediana oltre 2.27L");
+
+            Pass("ComputeMedian: statistica robusta, immunità a scia singola (1 calo) e transizione solo a 3 cali");
+        }
+
+        private static void Test_RoadAtlanta_MedianFuelEstimation_AntiDraft()
+        {
+            var fm = new FuelManager();
+            var state = new SessionState
+            {
+                IsGameRunning = true,
+                IsRaceSession = true,
+                SessionStateStatus = 4,
+                CurrentLap = 2,
+                RaceStartLap = 2,
+                RaceStartLineCrossed = true,
+                RaceStartingFuelLatched = true,
+                RaceStartingFuel = 48.19,
+                CurrentFuelLevel = 48.19,
+                MaxFuelCapacity = 52.0,
+                TrackPositionPercent = 0.001
+            };
+
+            // Inizializza stato iniziale di inizio stint
+            fm.Update(state, 21.0, 0.0, null);
+
+            // Simula i 5 giri puliti prima del pit stop (Giri 8, 9, 11, 12, 13)
+            // con il Giro 12 anomalo a 2.14L
+            double[] lapsFuel = { 2.28, 2.27, 2.23, 2.14, 2.26 };
+            double fuel = 48.19;
+            int lap = 2;
+            foreach (double burn in lapsFuel)
+            {
+                fuel -= burn;
+                state.CurrentLap = ++lap;
+                state.CurrentFuelLevel = fuel;
+                fm.Update(state, 21.0, 0.0, null);
+            }
+
+            // La stima mediana deve essere 2.26L (mentre la vecchia media dava 2.236L)
+            Assert(Math.Abs(fm.Calculations.AverageFuelPerLap - 2.26) < 1e-6,
+                $"La stima di consumo deve essere la mediana 2.26L, ottenuta {fm.Calculations.AverageFuelPerLap:F3}");
+
+            // All'ingresso box (giro 14, 21.0458 giri rimanenti, 17.16L nel serbatoio):
+            state.CurrentFuelLevel = 17.16;
+            fm.Calculations.StrategyMode = FuelStrategyMode.Aggressive;
+            fm.Update(state, 21.0458, 0.0, null);
+
+            // In AGGRESSIVE: (21.0458 * 2.26) - 17.16 = 30.404L -> Math.Ceiling(30.404) = 31L!
+            Assert(fm.Calculations.FuelToAdd == 31.0,
+                $"In AGGRESSIVE con la mediana il rifornimento deve essere 31L (salva la gara!), ottenuto {fm.Calculations.FuelToAdd:F1}L");
+
+            // In NORMAL: margine fisso +0.6L -> 30.404 + 0.6 = 31.004L -> Math.Ceiling(31.004) = 32L
+            fm.Calculations.StrategyMode = FuelStrategyMode.Normal;
+            fm.Update(state, 21.0458, 0.0, null);
+            Assert(fm.Calculations.FuelToAdd == 32.0,
+                $"In NORMAL il rifornimento con margine +0.6L deve essere 32L, ottenuto {fm.Calculations.FuelToAdd:F1}L");
+
+            Pass("Road Atlanta Replay Pit Stop: la mediana a 2.26L evita la sottostima e consiglia 31L in AGGR e 32L in NORM");
         }
     }
 }
