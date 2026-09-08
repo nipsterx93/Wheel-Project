@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      —
-task:       —
-scope:      —
-expires:    —
+owner:      antigravity
+since:      2026-09-08 13:12
+task:       unificazione formule pit loss
+scope:      User.PluginSdkDemoEdit/CarPitData.cs, User.PluginSdkDemoEdit/RaceAnalyzer.cs, User.PluginSdkDemoEdit/TargetStrategyManager.cs, User.PluginSdkDemoEdit/DataPluginDemo.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/, .ai/
+expires:    2026-09-08 15:12
 ```
 
 **Regole del lock**
