@@ -47,6 +47,50 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-08 14:35] antigravity → chiunque entri dopo (Claude in particolare)
+
+**Task:** Merge Gap simmetrico a 4 stati, rimozione hardcoded target Egor dal monitor, e azioni SimHub per selezione e lock target da tastiera/replay
+**Piano:** —
+**Commit:** `45cfb4c` (codice e test), questo (handoff e rilascio lock)
+
+### Fatto
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:211-224, 1095-1105, 1180-1205`:
+  - Implementato metodo centralizzato `CalculateProjectedMergeGap(double signedGap, bool playerNeedsPit, double playerPitLoss, bool targetNeedsPit, double targetPitLoss)` che applica la formula simmetrica: `signedGap + (playerNeedsPit ? playerPitLoss : 0.0) - (targetNeedsPit ? targetPitLoss : 0.0)`.
+  - Risolta l'anomalia dello stato post-sosta: quando entrambe le vetture hanno completato la sosta o possono finire senza fermarsi (`!playerNeedsPit && !targetNeedsPit`), il `ProjectedMergeGap` coincide esattamente con `SignedGapSeconds` senza aggiungere il falso ritardo fantasma (+25~32s).
+  - Rimossa la stringa hardcoded `"Egor"` / `"Ogorodnicov"` in `MERGE_GAP_MONITOR`: ora il monitor prioritizza `LatchedTargetName` se presente (lock attivo), altrimenti traccia dinamicamente `targetOpp` (il bersaglio attivo).
+  - Nel log del monitor aggiornati i campi `PIT LOSS TIMINGS` e `RESULT` per mostrare `+0.00s` e `PlayerNeedsPit: False` quando non c'è sosta residua.
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs:260-295`:
+  - Aggiunta azione SimHub `Target_ToggleLock`: permette di agganciare/sganciare il lock sul target corrente (`LatchedTargetName`) via tastiera o pulsante SimHub durante i replay, senza richiedere il volante fisico.
+  - Aggiunte azioni SimHub `Target_NextTarget` e `Target_PrevTarget` per scorrere i bersagli anche da tastiera o interfaccia SimHub.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/MergeGapUnitTests.cs`:
+  - Aggiornati i test per coprire tutti e 4 gli stati della sosta con `TargetStrategyManager.CalculateProjectedMergeGap`:
+    - Stato 1: Player deve pittare, Target no (+11.48s).
+    - Stato 2: Entrambi hanno pittato (nessuna sosta fantasma, SignedGap = MergeGap = +11.70s).
+    - Stato 3: Entrambi devono pittare (differenziale perdite = -9.32s).
+    - Stato 4: Target deve pittare, Player no (-25.00s).
+- **Analisi Replay Road Atlanta (`Logs/Road Atlanta/SimRIG_StrategySnapshot_20260908_112922.csv`)**:
+  - Sara Tolotti (Player, BMW M4 GT3 EVO) ha concluso la gara in **P19** direttamente dietro a **Aake Korte** (Ferrari 296 GT3, **P18**) con un distacco finale di circa 3.2s.
+  - Aake Korte è stato l'avversario diretto di riferimento sia nel primo stint (Giri 13-14, gap ~3.6s) sia per tutto il secondo stint (Giri 22-35, gap ~3.5s).
+  - Per il test sul replay di Road Atlanta, agganciare il lock su **Aake Korte** per monitorare sia la fase pre-pit che la stabilità del Merge Gap nel secondo stint (Giri 22-35) che ora rimarrà fedele a ~3.2s invece del balzo anomalo a +29s.
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Criterio di successo: **328 PASS (100%)**.
+
+### Stato
+- ✅ Compila (0 errori, 1 warning CS0219 noto)
+- ✅ 328 PASS (100%)
+
+### Per chi entra
+**Prossimo passo:** Esecuzione del replay di Road Atlanta per confermare la stabilità di `ProjectedMergeGap` con lock su Aake Korte (Giri 22-35: deve rimanere ancorato a ~3.2s senza salti a +29s), poi avanzamento nella roadmap (`.ai/plans/2026-08-24-roadmap.md`).
+**NON toccare:** `CarPitData.cs` e la formula unificata di `CalculateProjectedMergeGap`.
+**Attenzione a:** L'azione SimHub `Target_ToggleLock` opera su `TargetStrategyManager.LatchedTargetName`. Per usarla in SimHub, mappare un tasto o pulsante sull'azione `User.PluginSdkDemo.Target_ToggleLock`.
+
+---
+
 ## [2026-09-08 13:20] antigravity → chiunque entri dopo (Claude in particolare)
 
 **Task:** Unificazione formule di Pit Loss e tempo da fermo (CarPitData) tra RaceAnalyzer, TargetStrategyManager e DataPluginDemo
@@ -365,39 +409,6 @@ Eseguendo un replay in SimHub, `SimRigMetadata.json` viene ora scritto nella car
 **Prossimo passo:** Continuare secondo roadmap (`.ai/plans/2026-08-24-roadmap.md`) o punto Y pianificato.
 **NON toccare:** `User.PluginSdkDemoEdit/` era fuori scope in questo turno.
 **Attenzione a:** Mantenere sincronizzati i file di bootstrap e handoff se ne viene modificato il contenuto (`.claude/commands/`, `.agent/workflows/`, `.agent/skills/`).
-
----
-
-## [2026-09-06 13:30] claude → chiunque entri dopo
-
-**Task:** Skill di dominio condivisa `motorsport-telemetry-engineering`, da una ricerca approfondita fornita dall'utente su fisica carburante, scomposizione pit stop, statistica robusta e filtraggio del passo. Nessun punto Y toccato: turno di infrastruttura/conoscenza, non di correzione codice — niente lock preso, nessun file in `User.PluginSdkDemoEdit/` modificato.
-**Piano:** discusso in chat (brainstorming bounded, superpowers:brainstorming), non salvato come file separato — la sintesi sta in questa voce e nei file stessi.
-**Commit:** — (da fare in chiusura di questo handoff)
-
-### Fatto
-- Installato il plugin `superpowers@claude-plugins-official` (`/plugin install`), su richiesta esplicita dell'utente — traccia in `.claude/settings.json` (`enabledPlugins`).
-- Confrontata la ricerca fornita dall'utente con gli algoritmi già in produzione (`CalibrationConsensus.cs`, `StrategyGateHysteresis.cs`, `RaceTimeProjection.cs`, `RelativePaceTracker.cs`, `FuelManager.cs`): trovato un **conflitto diretto**. La ricerca propone il criterio "minimo tempo di attraversamento fra i contendenti" per la proiezione della bandiera a scacchi — esattamente il criterio che **Y-38** ha già misurato e scartato con dati reali (replay `20260901_175019`, 758 campioni: mediana 5.2 s contro i ~50.6 s corretti). Il progetto usa invece il **massimo** (`RaceTimeProjection.ProjectFlagMoment`).
-- Scritta la skill in `.claude/skills/motorsport-telemetry-engineering/` (`SKILL.md` + `fuel-physics.md`, `pit-stop-decomposition.md`, `robust-statistics.md`, `future-techniques.md`) e mirror identico in `.agent/skills/motorsport-telemetry-engineering/` (percorsi di discovery diversi fra Claude Code e Antigravity, stesso standard aperto `SKILL.md`). Il warning sul criterio sbagliato sta nel corpo principale di `SKILL.md`, non in un file secondario.
-- `AGENTS.md` — riga aggiunta in "Riferimenti" che punta alla skill e ricorda la duplicazione.
-- **Test RED/GREEN** (subagent freschi, senza memoria di questa conversazione): RED (senza skill, senza accesso al repo) non ha riprodotto il bug esatto della ricerca, ma ha comunque proposto un terzo criterio diverso da quello corretto ("latch dell'identità del leader a T-zero + EMA per-vettura") — conferma che la formula giusta non è ovvia nemmeno per un agente ragionevole senza guida. GREEN (con la skill disponibile e accesso al repo) ha risposto correttamente col criterio del massimo, citando `RaceTimeProjection.cs`, `FlagMomentUnitTests.cs` e i numeri misurati — ma ha anche esplorato il codice sorgente direttamente, quindi il test non isola perfettamente il contributo della sola skill dal contributo della lettura del codice.
-
-### Come verificare
-Non c'è build/test da eseguire (nessun file C# toccato). Verifica manuale:
-```bash
-ls .claude/skills/motorsport-telemetry-engineering/ .agent/skills/motorsport-telemetry-engineering/
-diff .claude/skills/motorsport-telemetry-engineering/SKILL.md .agent/skills/motorsport-telemetry-engineering/SKILL.md
-```
-Atteso: stessi 5 file in entrambe le cartelle, `diff` senza output (contenuto identico).
-
-### Stato
-- ✅ Compila (nessun file di codice C# toccato)
-- ⏭️ Test .NET non eseguiti (nessuna modifica alla logica del plugin)
-- ✅ Skill verificata con test RED/GREEN a subagent (vedi sopra), non con build/test automatico
-
-### Per chi entra
-**Prossimo passo:** nessuno obbligato — la skill è di consultazione. Se si riprende **Y-14** (tempo cambio gomme), `pit-stop-decomposition.md` ha la tecnica di scomposizione pronta da usare come riferimento, non come decisione già presa. Restano validi Fase B della roadmap (`2026-08-24-roadmap.md`) e la riscrittura di `STRATEGY_ENGINE_GUIDE.md` (Fase D) come prossimi passi di contenuto.
-**NON toccare:** non è stato deciso nulla su Y-14 in questo turno — solo documentata una tecnica.
-**Attenzione a:** le due copie della skill (`.claude/skills/` e `.agent/skills/`) sono duplicati testuali voluti, non linkati — se una viene corretta in futuro (es. un refinement di `robust-statistics.md`), l'altra va aggiornata a mano, stesso rischio già noto per `/new-session`/`/handoff`.
 
 ---
 

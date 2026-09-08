@@ -9,6 +9,39 @@
 
 ---
 
+## [2026-09-06 13:30] claude → chiunque entri dopo
+
+**Task:** Skill di dominio condivisa `motorsport-telemetry-engineering`, da una ricerca approfondita fornita dall'utente su fisica carburante, scomposizione pit stop, statistica robusta e filtraggio del passo. Nessun punto Y toccato: turno di infrastruttura/conoscenza, non di correzione codice — niente lock preso, nessun file in `User.PluginSdkDemoEdit/` modificato.
+**Piano:** discusso in chat (brainstorming bounded, superpowers:brainstorming), non salvato come file separato — la sintesi sta in questa voce e nei file stessi.
+**Commit:** — (da fare in chiusura di questo handoff)
+
+### Fatto
+- Installato il plugin `superpowers@claude-plugins-official` (`/plugin install`), su richiesta esplicita dell'utente — traccia in `.claude/settings.json` (`enabledPlugins`).
+- Confrontata la ricerca fornita dall'utente con gli algoritmi già in produzione (`CalibrationConsensus.cs`, `StrategyGateHysteresis.cs`, `RaceTimeProjection.cs`, `RelativePaceTracker.cs`, `FuelManager.cs`): trovato un **conflitto diretto**. La ricerca propone il criterio "minimo tempo di attraversamento fra i contendenti" per la proiezione della bandiera a scacchi — esattamente il criterio che **Y-38** ha già misurato e scartato con dati reali (replay `20260901_175019`, 758 campioni: mediana 5.2 s contro i ~50.6 s corretti). Il progetto usa invece il **massimo** (`RaceTimeProjection.ProjectFlagMoment`).
+- Scritta la skill in `.claude/skills/motorsport-telemetry-engineering/` (`SKILL.md` + `fuel-physics.md`, `pit-stop-decomposition.md`, `robust-statistics.md`, `future-techniques.md`) e mirror identico in `.agent/skills/motorsport-telemetry-engineering/` (percorsi di discovery diversi fra Claude Code e Antigravity, stesso standard aperto `SKILL.md`). Il warning sul criterio sbagliato sta nel corpo principale di `SKILL.md`, non in un file secondario.
+- `AGENTS.md` — riga aggiunta in "Riferimenti" che punta alla skill e ricorda la duplicazione.
+- **Test RED/GREEN** (subagent freschi, senza memoria di questa conversazione): RED (senza skill, senza accesso al repo) non ha riprodotto il bug esatto della ricerca, ma ha comunque proposto un terzo criterio diverso da quello corretto ("latch dell'identità del leader a T-zero + EMA per-vettura") — conferma che la formula giusta non è ovvia nemmeno per un agente ragionevole senza guida. GREEN (con la skill disponibile e accesso al repo) ha risposto correttamente col criterio del massimo, citando `RaceTimeProjection.cs`, `FlagMomentUnitTests.cs` e i numeri misurati — ma ha anche esplorato il codice sorgente direttamente, quindi il test non isola perfettamente il contributo della sola skill dal contributo della lettura del codice.
+
+### Come verificare
+Non c'è build/test da eseguire (nessun file C# toccato). Verifica manuale:
+```bash
+ls .claude/skills/motorsport-telemetry-engineering/ .agent/skills/motorsport-telemetry-engineering/
+diff .claude/skills/motorsport-telemetry-engineering/SKILL.md .agent/skills/motorsport-telemetry-engineering/SKILL.md
+```
+Atteso: stessi 5 file in entrambe le cartelle, `diff` senza output (contenuto identico).
+
+### Stato
+- ✅ Compila (nessun file di codice C# toccato)
+- ⏭️ Test .NET non eseguiti (nessuna modifica alla logica del plugin)
+- ✅ Skill verificata con test RED/GREEN a subagent (vedi sopra), non con build/test automatico
+
+### Per chi entra
+**Prossimo passo:** nessuno obbligato — la skill è di consultazione. Se si riprende **Y-14** (tempo cambio gomme), `pit-stop-decomposition.md` ha la tecnica di scomposizione pronta da usare come riferimento, non come decisione già presa. Restano validi Fase B della roadmap (`2026-08-24-roadmap.md`) e la riscrittura di `STRATEGY_ENGINE_GUIDE.md` (Fase D) come prossimi passi di contenuto.
+**NON toccare:** non è stato deciso nulla su Y-14 in questo turno — solo documentata una tecnica.
+**Attenzione a:** le due copie della skill (`.claude/skills/` e `.agent/skills/`) sono duplicati testuali voluti, non linkati — se una viene corretta in futuro (es. un refinement di `robust-statistics.md`), l'altra va aggiornata a mano, stesso rischio già noto per `/new-session`/`/handoff`.
+
+---
+
 ## [2026-09-06 10:40] claude → chiunque entri dopo (Antigravity in particolare)
 
 **Task:** Equivalente Antigravity di `/new-session` e `/handoff`, dopo che Andreas ha fatto notare che esistevano solo per Claude Code. Nessun punto Y toccato: infrastruttura.
