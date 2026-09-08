@@ -47,6 +47,43 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-08 11:35] antigravity → chiunque entri dopo (Claude in particolare)
+
+**Task:** Stima del consumo robusta con mediana su finestra a 5 giri (anti-draft / anti-lift)
+**Piano:** —
+**Commit:** `ad961ac` (codice e test), questo (handoff e rilascio lock)
+
+### Fatto
+- `User.PluginSdkDemoEdit/FuelManager.cs:144-160, 378, 391`:
+  - Implementato `FuelManager.ComputeMedian(IReadOnlyList<double> samples)`: calcola la mediana statistica su collezioni arbitrarie di campioni ordinando l'array temporaneo (gestione campioni singoli, pari con media dei due centrali, o dispari col valore centrale).
+  - Sostituito in `FuelManager.cs:378` il calcolo di `Calculations.AverageFuelPerLap` dalla media aritmetica semplice (`windowForAverage.Average()`) alla mediana mobile (`ComputeMedian(windowForAverage)`).
+  - Motivazione fisica/ingegneristica: un singolo giro percorso in scia stretta o con lift-and-coast (es. Giro 12 a Road Atlanta con 2.14 L vs ritmo gara medio di 2.26 L) con la media aritmetica pesava per il 20% su una finestra a 5 giri (2.260 L -> 2.236 L). Su 21 giri residui di stint, questa flessione rimuoveva mezzo litro di carburante stimato (30.40 L -> 29.898 L), causando con `Math.Ceiling` in modalità `AGGR` l'imbarco di soli 30 L invece di 31 L (margine al traguardo di appena +0.10 L contro il reale +1.04 L necessario). Con la mediana, 1 o 2 giri isolati anomali (in difetto o in eccesso) non spostano la stima nominale; occorrono almeno 3 giri su 5 (breakdown point >= 50%) per consolidare un nuovo passo carburante.
+  - Aggiornato anche il log diagnostico alla riga 391 per indicare la stima mediana corrente.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/FuelOutlierFilterUnitTests.cs:552-640`:
+  - Aggiunto `Test_ComputeMedian_RobustStatistics()`: verifica il calcolo della mediana statistica su array di 0, 1, 2, 3 e 5 elementi, validando l'immunità a 1 o 2 outlier isolati (sia verso il basso che verso l'alto) e la transizione solo a fronte di persistenza (>= 3 campioni).
+  - Aggiunto `Test_RoadAtlanta_MedianFuelEstimation_AntiDraft()`: replica lo scenario reale di Road Atlanta al Giro 13 pre-pit stop con la serie [2.27, 2.27, 2.23, 2.14, 2.26]. Verifica che la mediana dia esattamente 2.26 L (contro il 2.236 L della media aritmetica) e che i litri calcolati per il pit stop risultino:
+    - AGGR: 31 L (invece dei rischiosi 30 L)
+    - NORM: 32 L (invece di 31 L)
+  - Registrati entrambi i test in `FuelOutlierFilterUnitTests.RunAllTests()`.
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/User.PluginSdkDemo.Tests.csproj" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Criterio di successo: output console termina con `ALL UNIT TESTS PASSED SUCCESSFULLY! (100%)` e il conteggio dei `[PASS]` sale a **324** (era 322).
+
+### Stato
+- ✅ Compila (0 errori, 1 warning noto CS0219 non correlato)
+- ✅ Test passano: 324 PASS (conteggiati da output console)
+
+### Per chi entra
+**Prossimo passo:** Continuare secondo roadmap `.ai/plans/2026-08-24-roadmap.md` o analizzare eventuali feedback di telemetria da nuove gare/replay.
+**NON toccare:** `FuelManager.cs` nelle sezioni di detection del pit/sessione già stabilizzate.
+**Attenzione a:** La finestra di campionamento per il consumo medio resta a 5 giri (`Calculations.FuelAveragesWindowSize = 5`). Se in futuro si vorrà aumentare o diminuire tale finestra, la mediana manterrà sempre un breakdown point del 50% (ossia immunità a un numero di outlier pari a `(N - 1) / 2`).
+
+---
+
 ## [2026-09-07 00:35] antigravity → chiunque entri dopo (Claude in particolare)
 
 **Task:** Sincronizzazione precisa del via di gara sul primo taglio del traguardo (latch carburante e conteggio giri a verde)
@@ -367,37 +404,6 @@ l'equivalente, va scritto nel suo formato di comandi custom (vedi Gemini CLI: `.
 per Gemini CLI standalone; Antigravity ha un proprio meccanismo di "custom slash workflows" ancora
 da verificare in dettaglio), non copiato alla lettera.
 
----
-
-## [2026-09-06 09:10] claude → chiunque entri dopo (Andreas, Antigravity, Codex)
-
-**Task:** Setup coworking Claude/Antigravity — hook di lock-enforcement, permessi progetto, tabella Ruoli senza divisione per compiti, protocollo di brainstorming in AGENTS.md. Nessun punto Y toccato: turno di infrastruttura, non di correzione.
-**Piano:** discussione diretta con Andreas in chat (confronto con una proposta parallela di Antigravity, scartata sul punto della scrittura concorrente — vedi sotto).
-**Commit:** `cbe66ef`, `e205d8b`, `87b9e46`
-
-### Fatto
-- `.ai/PROJECT_STATE.md`:
-  - Tabella "Ruoli" riscritta: niente più compiti esclusivi per agente (era Antigravity=architettura, Claude=implementazione, Codex=review). Ogni agente fa tutto; principio guida "uno corregge l'altro" — decisione di Andreas, confermata da Antigravity.
-- `.claude/hooks/check-lock.js` + `.claude/settings.json`:
-  - Hook `PreToolUse` su `Edit|Write|MultiEdit` che legge il blocco `LOCK` in `PROJECT_STATE.md` e nega la scrittura in `User.PluginSdkDemoEdit/` se l'owner non è `NONE` né `claude`. Nega **sempre** scritture in `Hardware/` (Y-53), indipendentemente dal lock. Non tocca nient'altro (`.ai/`, root docs restano scrivibili senza lock, come già previsto da AGENTS.md per piani/handoff/review).
-  - Verificato con pipe-test sintetico (4 casi: codice+lock libero→allow, Hardware→deny sempre, doc .ai/→allow, codice+lock altrui→deny) e poi con un trigger reale (sentinella temporanea rimossa a verifica avvenuta) per confermare che l'hook è effettivamente collegato, non solo scritto.
-  - `permissions.allow`: `Bash(awk *)` e l'eseguibile esatto dei test, via skill `fewer-permission-prompts`. **Scartato deliberatamente** MSBuild dall'allowlist: builda e installa il plugin nel SimHub reale (side effect già documentato in AGENTS.md), non è "read-only" nel senso della skill.
-- `AGENTS.md`: nuova sezione "Protocollo di brainstorming e coworking fra agenti" — niente ruoli esclusivi, lock seriale anche durante il brainstorming (una proposta di Antigravity per uno stato `owner: ALL` con scrittura concorrente su `.ai/plans/` è stata discussa e **scartata**: due processi che scrivono lo stesso file senza un commit in mezzo si sovrascrivono a livello di filesystem, prima che Git possa aiutare — la sicurezza del lock viene proprio dal seriale), esito del brainstorming sempre scritto in `.ai/plans/<data>-<argomento>.md`, niente inondazione di subagenti.
-
-### Come verificare
-```bash
-node .claude/hooks/check-lock.js <<< '{"tool_name":"Edit","tool_input":{"file_path":"User.PluginSdkDemoEdit/PitRadar.cs"}}'
-```
-Atteso: con lock `owner: NONE`, `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}`.
-
-### Stato
-- ✅ Compila (nessun file di codice C# toccato in questo turno)
-- ⏭️ Test non eseguiti (nessuna modifica alla logica del plugin)
-
-### Per chi entra
-**Prossimo passo (proposto, non deciso):** comandi custom `/new-session` e `/handoff` per automatizzare il bootstrap di una sessione nuova (ridurre la dipendenza da Andreas come "portavoce" fra chat), poi valutare l'installazione della skill Superpowers (obra/Jesse Vincent, `/plugin install superpowers@claude-plugins-official`) per il brainstorming strutturato — verificare dove scrive di default e se va redirezionato verso `.ai/plans/`. In coda, una skill di dominio motorsport (formule fuel/pit/proiezione) da costruire con l'esito di una deep search già preparata per Andreas.
-**NON toccare:** nessuna area di codice interessata da questo turno.
-**Attenzione a:** l'hook copre solo `User.PluginSdkDemoEdit/` e `Hardware/` — non impedisce scritture scorrette altrove; resta comunque disciplina per tutto il resto, come prima. Se Antigravity introduce un meccanismo equivalente per sé, va documentato in AGENTS.md invece di duplicare la logica qui.
 ---
 
 ## Handoff più vecchi

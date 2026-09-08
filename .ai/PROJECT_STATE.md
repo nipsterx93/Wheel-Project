@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      antigravity
-since:      2026-09-08 11:20
-task:       stima consumo robusta con mediana su finestra 5 giri
-scope:      User.PluginSdkDemoEdit/FuelManager.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/, .ai/
-expires:    2026-09-08 13:20
+owner:      NONE
+since:      —
+task:       —
+scope:      —
+expires:    —
 ```
 
 **Regole del lock**
