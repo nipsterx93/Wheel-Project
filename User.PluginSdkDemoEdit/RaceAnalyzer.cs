@@ -1120,15 +1120,21 @@ namespace SimRIG
                         
                         double playerFuelPerLap = (fuel != null && fuel.AverageFuelPerLap > 0.0) ? fuel.AverageFuelPerLap : 3.0;
                         double playerStintLaps = playerFuelPerLap > 0.0 ? (state.MaxFuelCapacity / playerFuelPerLap) : 0.0;
-                        // Y-44: il costo della sosta e' il tempo passato nella zona box **meno**
-                        // quello che ci avresti messo a percorrere quella stessa porzione di
-                        // tracciato in pista. Prima si contava la traversata intera: sul replay
-                        // 20260901_211532 la perdita reale misurata dai tempi sul giro era 35.85 s
-                        // e il plugin ne sottraeva ~54, cioe' il 52% in piu'.
-                        double fillRate = (radar != null && radar.MeasuredFuelFillRate > 0) ? radar.MeasuredFuelFillRate : 2.7;
+                        // Y-44 & Unificazione Pit Loss: il costo della sosta e' calcolato tramite CarPitData
+                        // usando la Extended Pit Zone (misurata da OpponentTracker o fallback geometrico).
                         double fuelToAdd = fuel != null ? fuel.FuelToAdd : 0.0;
-                        double dbTireTime = radar != null ? radar.DbTireChangeTime : 0.0;
-                        double playerStationaryTime = Math.Max(fuelToAdd / fillRate, dbTireTime);
+                        bool isTiresChanged = (tyreScope == TyreSelectionScope.All4 ||
+                                               tyreScope == TyreSelectionScope.Fronts ||
+                                               tyreScope == TyreSelectionScope.Rears ||
+                                               tyreScope == TyreSelectionScope.Left ||
+                                               tyreScope == TyreSelectionScope.Right);
+                        double tireTime = isTiresChanged ? (radar?.DbTireChangeTime ?? 0.0) : 0.0;
+                        double playerStationaryTime = CarPitData.CalculateStationaryTime(
+                            state.CarClassId,
+                            fuelToAdd,
+                            radar?.MeasuredFuelFillRate ?? 0.0,
+                            tireTime,
+                            jackBufferSec: 2.0);
 
                         double pitZoneFraction = 0.0;
                         if (radar != null && radar.CurrentTrack != null)
@@ -1139,12 +1145,16 @@ namespace SimRIG
                                 radar.CurrentTrack.ExclusionMargin);
                         }
 
-                        double playerPitLoss = RaceTimeProjection.PitLossSec(
-                            radar?.PitTransitTime ?? 0.0,
-                            radar?.PitInOutAccDecTime ?? 0.0,
-                            playerStationaryTime,
+                        double extendedRacingTime = CarPitData.CalculateExtendedRacingTime(
+                            tracker?.ClassBestExtendedPitZoneTime ?? 0.0,
                             pitZoneFraction,
                             activePlayerPace);
+
+                        double playerPitLoss = CarPitData.CalculateTotalPitLoss(
+                            playerStationaryTime,
+                            radar?.PitTransitTime ?? 0.0,
+                            radar?.PitInOutAccDecTime ?? 0.0,
+                            extendedRacingTime);
                         int playerRemainingStops = 0;
 
                         double effectivePlayerTank = fuel?.TankLapsRemaining ?? 99.0;

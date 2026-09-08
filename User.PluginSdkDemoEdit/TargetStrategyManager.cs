@@ -686,7 +686,6 @@ namespace SimRIG
 
                     double profileRefuelRate = CarPitData.GetProfile(state.CarClassId).RefuelRate;
                     double refuelRate = radar.MeasuredFuelFillRate > 0 ? radar.MeasuredFuelFillRate : profileRefuelRate;
-                    double fuelTime = refuelRate > 0 ? (fuel.FuelToAdd / refuelRate) : 0.0;
 
                     double tireMult = GetTireMultiplier(tyres.CurrentScope,
                                                        radar.CalibratedTyreMultiplierHalf,
@@ -698,20 +697,27 @@ namespace SimRIG
                     double pitLaneZoneRacingTime = pitDistance > 0 ? (pitDistance / racingSpeedMs) : 0.0;
                     CurrentTarget.PitLaneZoneRacingTime = pitLaneZoneRacingTime;
 
-                    // Calcolo raffinato basato sulla Extended Pit Zone
-                    double extendedDistance = pitDistance + (0.10 * trackLen);
-                    double fallbackExtendedRacingTime = extendedDistance / racingSpeedMs;
-                    double extendedRacingTime = tracker.ClassBestExtendedPitZoneTime > 0.0 ? tracker.ClassBestExtendedPitZoneTime : fallbackExtendedRacingTime;
+                    // Calcolo unificato basato sulla Extended Pit Zone
+                    double extendedRacingTime = CarPitData.CalculateExtendedRacingTime(
+                        tracker.ClassBestExtendedPitZoneTime,
+                        pitDistance,
+                        trackLen,
+                        tracker.ClassTopSpeed);
 
                     double accDecTime = CurrentTarget.InOutPitAccDecTime;
 
-                    bool isSeqPit = CarPitData.GetProfile(state.CarClassId).IsSequential;
-                    double playerStationaryTime = isSeqPit ? (fuelTime + tireTime) : Math.Max(fuelTime, tireTime);
-                    if (playerStationaryTime > 0.0) playerStationaryTime += 2.0; // +2.0s tempo morto martinetti
+                    double playerStationaryTime = CarPitData.CalculateStationaryTime(
+                        state.CarClassId,
+                        fuel.FuelToAdd,
+                        radar.MeasuredFuelFillRate,
+                        tireTime,
+                        jackBufferSec: 2.0);
 
-                    double playerTotalPitLaneTime = playerStationaryTime + radar.PitTransitTime;
-                    double playerProjectedExtendedTime = playerTotalPitLaneTime + accDecTime;
-                    double playerTotalPitLoss = Math.Max(0.0, playerProjectedExtendedTime - extendedRacingTime);
+                    double playerTotalPitLoss = CarPitData.CalculateTotalPitLoss(
+                        playerStationaryTime,
+                        radar.PitTransitTime,
+                        accDecTime,
+                        extendedRacingTime);
 
                     // Previsione carburante da aggiungere e sosta stazionaria per il target
                     double fuelPerLap = fuel.AverageFuelPerLap > 0 ? fuel.AverageFuelPerLap : 3.0;
@@ -733,12 +739,18 @@ namespace SimRIG
 
                     if (targetNeedsPit)
                     {
-                        targetStationaryTime = refuelRate > 0 ? (targetFuelToAdd / refuelRate) : 0.0;
-                        if (targetStationaryTime > 0.0) targetStationaryTime += 2.0; // +2.0s tempo morto martinetti
+                        targetStationaryTime = CarPitData.CalculateStationaryTime(
+                            oppData.CarClass,
+                            targetFuelToAdd,
+                            radar.MeasuredFuelFillRate,
+                            0.0,
+                            jackBufferSec: 2.0);
 
-                        double targetTotalPitLaneTime = targetStationaryTime + radar.PitTransitTime;
-                        double targetProjectedExtendedTime = targetTotalPitLaneTime + accDecTime;
-                        targetTotalPitLoss = Math.Max(0.0, targetProjectedExtendedTime - extendedRacingTime);
+                        targetTotalPitLoss = CarPitData.CalculateTotalPitLoss(
+                            targetStationaryTime,
+                            radar.PitTransitTime,
+                            accDecTime,
+                            extendedRacingTime);
                     }
 
                     CurrentTarget.EstimatedStationaryTime = targetStationaryTime;
@@ -1147,12 +1159,18 @@ namespace SimRIG
 
                             if (logTargetNeedsPit)
                             {
-                                logTargetStationaryTime = refuelRate > 0 ? (logTargetFuelToAdd / refuelRate) : 0.0;
-                                if (logTargetStationaryTime > 0.0) logTargetStationaryTime += 2.0;
+                                logTargetStationaryTime = CarPitData.CalculateStationaryTime(
+                                    logOppData.CarClass,
+                                    logTargetFuelToAdd,
+                                    refuelRate,
+                                    0.0,
+                                    jackBufferSec: 2.0);
 
-                                double logTargetTotalPitLaneTime = logTargetStationaryTime + radar.PitTransitTime;
-                                double logTargetProjectedExtendedTime = logTargetTotalPitLaneTime + accDecTime;
-                                logTargetTotalPitLoss = Math.Max(0.0, logTargetProjectedExtendedTime - extendedRacingTime);
+                                logTargetTotalPitLoss = CarPitData.CalculateTotalPitLoss(
+                                    logTargetStationaryTime,
+                                    radar.PitTransitTime,
+                                    accDecTime,
+                                    extendedRacingTime);
                             }
 
                             double logProjectedMergeGap = logTargetSignedGap + playerTotalPitLoss - logTargetTotalPitLoss;

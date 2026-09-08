@@ -1985,21 +1985,24 @@ namespace SimRIG
             PluginManager.SetPropertyValue("SimRIG.Pit.FuelCapacityInTireTime", t, Math.Round(_fuelCapacityInTireTimeCache, 1));
             PluginManager.SetPropertyValue("SimRIG.Pit.InOutPitAccDecTime", t, Math.Round(PitRadar.PitInOutAccDecTime, 2));
 
-            double profileRefuelRate = CarPitData.GetProfile(CurrentState.CarClassId).RefuelRate;
-            double refuelRate = PitRadar.MeasuredFuelFillRate > 0 ? PitRadar.MeasuredFuelFillRate : profileRefuelRate;
-            double projectedFuelTime = refuelRate > 0 ? (FuelManager.Calculations.FuelToAdd / refuelRate) : 0.0;
-            double projectedTireTime = TyreManager.GetSelectedTireTime(CurrentState.CarClassId);
             bool isSeqPit = CarPitData.GetProfile(CurrentState.CarClassId).IsSequential;
-            double totalStationaryTimeVal = isSeqPit ? (projectedFuelTime + projectedTireTime) : Math.Max(projectedFuelTime, projectedTireTime);
-            if (totalStationaryTimeVal > 0.0) totalStationaryTimeVal += 2.0; // +2.0s tempo morto martinetti
+            double projectedTireTime = TyreManager.GetSelectedTireTime(CurrentState.CarClassId);
+            double totalStationaryTimeVal = CarPitData.CalculateStationaryTime(
+                CurrentState.CarClassId,
+                FuelManager.Calculations.FuelToAdd,
+                PitRadar.MeasuredFuelFillRate,
+                projectedTireTime,
+                jackBufferSec: 2.0);
 
             double extRacingTimeVal = OpponentTracker.ClassBestExtendedPitZoneTime > 0.0
                 ? OpponentTracker.ClassBestExtendedPitZoneTime
                 : (tgt.PitLaneZoneRacingTime > 0.0 ? tgt.PitLaneZoneRacingTime : PitRadar.PitTransitTime);
 
-            double totalPitLaneTimeVal = totalStationaryTimeVal + PitRadar.PitTransitTime;
-            double projExtendedTimeVal = totalPitLaneTimeVal + PitRadar.PitInOutAccDecTime;
-            double totalPitLossVal = Math.Max(0.0, projExtendedTimeVal - extRacingTimeVal);
+            double totalPitLossVal = CarPitData.CalculateTotalPitLoss(
+                totalStationaryTimeVal,
+                PitRadar.PitTransitTime,
+                PitRadar.PitInOutAccDecTime,
+                extRacingTimeVal);
 
             PluginManager.SetPropertyValue("SimRIG.Pit.TotalStationaryTime", t, Math.Round(totalStationaryTimeVal, 1));
             PluginManager.SetPropertyValue("SimRIG.Pit.TotalStationaryTimeStr", t, $"{totalStationaryTimeVal:F1}s");

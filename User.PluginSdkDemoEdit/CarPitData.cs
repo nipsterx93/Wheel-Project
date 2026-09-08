@@ -1,4 +1,4 @@
-﻿// -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
 
 // FILE: CarPitData.cs
 
@@ -112,7 +112,87 @@ namespace SimRIG
 
         }
 
+
+
+        /// <summary>
+
+        /// Calcola il tempo previsto di sosta da fermo (StationaryTime) in base al profilo della classe vettura,
+
+        /// gestendo sia le soste simultanee (es. GT3/LMP2/GTP: max(fuel, tyres)) sia quelle sequenziali
+
+        /// (es. Porsche Cup / Open Wheel: fuel + tyres) e includendo il buffer di accoppiamento martinetti (default 2.0s).
+
+        /// </summary>
+
+        public static double CalculateStationaryTime(string carClassId, double fuelToAdd, double measuredFuelFillRate, double tireTime, double jackBufferSec = 2.0)
+
+        {
+
+            var profile = GetProfile(carClassId);
+
+            double refuelRate = measuredFuelFillRate > 0.0 ? measuredFuelFillRate : profile.RefuelRate;
+
+            double fuelTime = refuelRate > 0.0 ? (fuelToAdd / refuelRate) : 0.0;
+
+            double stationary = profile.IsSequential ? (fuelTime + tireTime) : System.Math.Max(fuelTime, tireTime);
+
+            if (stationary > 0.0) stationary += jackBufferSec;
+
+            return stationary;
+        }
+
+        /// <summary>
+        /// Calcola il tempo di percorrenza in pista della zona esterna parallela ai box (ExtendedRacingTime).
+        /// Se disponibile, usa la misura reale cronometrata dalla classe (<paramref name="classBestExtendedPitZoneTime"/>);
+        /// in alternativa calcola la stima da distanza/velocità o frazione di giro.
+        /// </summary>
+        public static double CalculateExtendedRacingTime(double classBestExtendedPitZoneTime, double pitDistanceMeters, double trackLengthMeters, double classTopSpeedKmh)
+        {
+            if (classBestExtendedPitZoneTime > 0.0)
+            {
+                return classBestExtendedPitZoneTime;
+            }
+
+            double racingSpeedMs = classTopSpeedKmh > 0.0 ? (classTopSpeedKmh / 3.6) : (250.0 / 3.6);
+            double extendedDistance = pitDistanceMeters + (0.10 * trackLengthMeters);
+            return (racingSpeedMs > 0.0 && extendedDistance > 0.0) ? (extendedDistance / racingSpeedMs) : 0.0;
+        }
+
+        /// <summary>
+        /// Calcola il tempo di percorrenza in pista della zona box usando la frazione geometrica del tracciato e il passo sul giro.
+        /// Se disponibile la misura reale cronometrata (<paramref name="classBestExtendedPitZoneTime"/>), ha priorità assoluta.
+        /// </summary>
+        public static double CalculateExtendedRacingTime(double classBestExtendedPitZoneTime, double pitZoneLapFraction, double lapPace)
+        {
+            if (classBestExtendedPitZoneTime > 0.0)
+            {
+                return classBestExtendedPitZoneTime;
+            }
+
+            if (pitZoneLapFraction > 0.0 && lapPace > 0.0)
+            {
+                return pitZoneLapFraction * lapPace;
+            }
+
+            return 0.0;
+        }
+
+        /// <summary>
+        /// Calcola la perdita totale netta ai box (TotalPitLoss):
+        /// (StationaryTime + PitTransitTime + AccDecTime) - ExtendedRacingTime.
+        /// </summary>
+        public static double CalculateTotalPitLoss(double stationaryTime, double pitTransitTime, double accDecTime, double extendedRacingTime)
+        {
+            double stationary = System.Math.Max(0.0, stationaryTime);
+            double timeInZone = System.Math.Max(0.0, pitTransitTime) + System.Math.Max(0.0, accDecTime);
+            double extended = System.Math.Max(0.0, extendedRacingTime);
+
+            if (extended >= timeInZone)
+            {
+                return stationary + timeInZone;
+            }
+
+            return System.Math.Max(0.0, stationary + (timeInZone - extended));
+        }
     }
-
 }
-
