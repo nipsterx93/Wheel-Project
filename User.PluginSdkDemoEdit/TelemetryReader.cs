@@ -507,20 +507,17 @@ namespace SimRIG
             // Gara attiva: SessionStateStatus >= 4
             if (!state.RaceStartLineCrossed)
             {
-                bool isStandingStart = state.Metadata.IsStandingStart == true ||
-                                       (_lastSessionStatusForFuel == 2 && state.SpeedKmh < 15.0);
-
                 bool crossedFinishLine = false;
                 if (_lastLapForFuel > 0 && state.CurrentLap > _lastLapForFuel)
                 {
                     crossedFinishLine = true;
                 }
-                else if (_lastTrackPosForFuel > 0.80 && state.TrackPositionPercent < 0.20)
+                else if (_lastTrackPosForFuel > 0.85 && state.TrackPositionPercent < 0.15)
                 {
                     crossedFinishLine = true;
                 }
 
-                if (isStandingStart || crossedFinishLine)
+                if (crossedFinishLine)
                 {
                     state.RaceStartLineCrossed = true;
                     state.RaceStartLap = state.CurrentLap;
