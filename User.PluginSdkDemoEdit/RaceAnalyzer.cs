@@ -295,6 +295,7 @@ namespace SimRIG
 
         public SectorTracker PlayerExtendedSectorRacingZone { get; private set; } = new SectorTracker { Name = "PlayerExtendedSectorRacingZone" };
         public SectorTracker PlayerExtendedPitZone { get; private set; } = new SectorTracker { Name = "PlayerExtendedPitZone" };
+        public SectorTracker PlayerPitZone { get; private set; } = new SectorTracker { Name = "PlayerPitZone" };
 
         public List<double> RecentPrePitSectors { get; } = new List<double>();
         public double PrePitNormalizedAverage { get; set; } = 0.0;
@@ -452,6 +453,21 @@ namespace SimRIG
 
                     if (radar != null)
                     {
+                        PlayerPitZone.Update(
+                            state.TrackPositionPercent,
+                            state.SessionTimeLeftSec,
+                            false, // isCarInPit - purely raw stopwatch
+                            radar.IsInPitLaneZone(state.TrackPositionPercent),
+                            radar.GetPitZoneWeight(),
+                            0.0, // currentFuel
+                            0.0, // trackTemp
+                            0.0, // baselineTemp
+                            state.CurrentLap,
+                            state.TrackLengthMeters,
+                            false, // tiresChanged
+                            log
+                        );
+
                         PlayerExtendedPitZone.Update(
                             state.TrackPositionPercent,
                             state.SessionTimeLeftSec,
@@ -492,6 +508,7 @@ namespace SimRIG
             {
                 PlayerExtendedSectorRacingZone.Reset();
                 PlayerExtendedPitZone.Reset();
+                PlayerPitZone.Reset();
             }
 
 
@@ -2394,6 +2411,7 @@ namespace SimRIG
             NormalizedTimes.Reset();
             PlayerExtendedSectorRacingZone.Reset();
             PlayerExtendedPitZone.Reset();
+            PlayerPitZone.Reset();
 
             RecentPrePitSectors.Clear();
             PrePitNormalizedAverage = 0.0;

@@ -174,6 +174,7 @@ namespace SimRIG
         public bool IsInsideGeofence { get; set; } = false;
         public bool HasExitedPitZoneAtLeastOnce { get; set; } = false;
         public double? LowSpeedStartSec { get; set; } = null;
+        public double? HighSpeedStartSec { get; set; } = null;
         public bool IsSpatiallyInsideStrict { get; set; } = false;
         public double SpatialStrictEntryTimeSec { get; set; } = 0.0;
         public bool StrictPitValidInTransit { get; set; } = false;
@@ -190,6 +191,7 @@ namespace SimRIG
         public double LastOpponentStrictPitLaneTime { get; set; } = 0.0;
 
         public double[] MicrosectorTimestamps { get; } = new double[OpponentTracker.TimestampBucketCount];
+        public SectorTracker PitZone { get; set; } = new SectorTracker { Name = "PitZone" };
         public SectorTracker ExtendedSectorRacingZone { get; set; } = new SectorTracker { Name = "ExtendedSectorRacingZone" };
         public SectorTracker ExtendedPitZone { get; set; } = new SectorTracker { Name = "ExtendedPitZone" };
 
@@ -538,6 +540,7 @@ namespace SimRIG
         public double ClassAverageSectorPaceDropRaw { get; private set; } = 0.0;
 
         public double ClassBestExtendedPitZoneTime { get; private set; } = 0.0;
+        public double ClassBestPitZoneRacingTime { get; private set; } = 0.0;
 
         public bool OpponentPittedInWet { get; set; } = false;
 
@@ -561,7 +564,8 @@ namespace SimRIG
             double raceStartingFuel,
             double maxTank,
             double effectiveClassFuelBurn,
-            double playerBestPitZoneTime,
+            double playerBestStrictPitZoneTime,
+            double playerBestExtendedPitZoneTime,
             double raceLapsRemaining,
             LogManager log,
             double fuelWeightCoef = 0.03,
@@ -764,18 +768,24 @@ namespace SimRIG
             var activeOpponents = state.Opponents.Where(o => o.TrackPositionPercent.HasValue).ToList();
             if (activeOpponents.Count == 0) return;
 
-            double classBestPitZoneTime = playerBestPitZoneTime > 0.0 ? playerBestPitZoneTime : 999.0;
+            double classBestStrictPitTime = playerBestStrictPitZoneTime > 0.0 ? playerBestStrictPitZoneTime : 999.0;
+            double classBestExtendedPitTime = playerBestExtendedPitZoneTime > 0.0 ? playerBestExtendedPitZoneTime : 999.0;
             foreach (var opp in _telemetry.Values)
             {
-                if (opp.CarClass == state.CarClassId && opp.ExtendedPitZone.BestRawTime > 0.0)
+                if (opp.CarClass == state.CarClassId)
                 {
-                    if (opp.ExtendedPitZone.BestRawTime < classBestPitZoneTime)
+                    if (opp.PitZone.BestRawTime > 0.0 && opp.PitZone.BestRawTime < classBestStrictPitTime)
                     {
-                        classBestPitZoneTime = opp.ExtendedPitZone.BestRawTime;
+                        classBestStrictPitTime = opp.PitZone.BestRawTime;
+                    }
+                    if (opp.ExtendedPitZone.BestRawTime > 0.0 && opp.ExtendedPitZone.BestRawTime < classBestExtendedPitTime)
+                    {
+                        classBestExtendedPitTime = opp.ExtendedPitZone.BestRawTime;
                     }
                 }
             }
-            ClassBestExtendedPitZoneTime = classBestPitZoneTime < 999.0 ? classBestPitZoneTime : 0.0;
+            ClassBestPitZoneRacingTime = classBestStrictPitTime < 999.0 ? classBestStrictPitTime : 0.0;
+            ClassBestExtendedPitZoneTime = classBestExtendedPitTime < 999.0 ? classBestExtendedPitTime : 0.0;
 
 
 
@@ -880,16 +890,26 @@ namespace SimRIG
                         CarClass = opp.CarClass,
                         LastPosPct = opp.TrackPositionPercent ?? 0,
                         LastTimeSec = currentSessionClock,
-                        FuelAfterLastPit = opponentStartingFuel
+                        FuelAfterLastPit = opponentStartingFuel,
+                        EstimatedFuel = opponentStartingFuel,
+                        EstimatedFuelTank = opponentStartingFuel
                     };
                 }
-
-
 
                 var tData = _telemetry[opp.Name];
                 if (string.IsNullOrEmpty(tData.CarClass) && !string.IsNullOrEmpty(opp.CarClass))
                 {
                     tData.CarClass = opp.CarClass;
+                }
+
+                if (tData.PitCount == 0 && tData.FuelAfterLastPit == 0.0 && opponentStartingFuel > 0.0)
+                {
+                    tData.FuelAfterLastPit = opponentStartingFuel;
+                    if (tData.EstimatedFuel == 0.0)
+                    {
+                        tData.EstimatedFuel = opponentStartingFuel;
+                        tData.EstimatedFuelTank = opponentStartingFuel;
+                    }
                 }
 
                 if (tData.IsInsideGeofence)
@@ -1243,6 +1263,7 @@ namespace SimRIG
 
                         if (tData.LastValidSpeedKmh < pitSpeedThreshold)
                         {
+                            tData.HighSpeedStartSec = null;
                             if (tData.LowSpeedStartSec == null)
                             {
                                 tData.LowSpeedStartSec = currentSessionClock;
@@ -1256,19 +1277,51 @@ namespace SimRIG
                         }
                         else
                         {
-                            tData.LowSpeedStartSec = null;
+                            // Debounce spike: se la velocità supera la soglia (jitter di pacchetto replay/rete),
+                            // non resettare LowSpeedStartSec immediatamente ma attendi 0.4s di persistenza ad alta velocità
+                            if (tData.LowSpeedStartSec != null)
+                            {
+                                if (tData.HighSpeedStartSec == null)
+                                {
+                                    tData.HighSpeedStartSec = currentSessionClock;
+                                }
+
+                                if (Math.Abs(currentSessionClock - tData.HighSpeedStartSec.Value) >= 0.4)
+                                {
+                                    tData.LowSpeedStartSec = null;
+                                    tData.HighSpeedStartSec = null;
+                                }
+                            }
+                            else
+                            {
+                                tData.HighSpeedStartSec = null;
+                            }
                         }
 
-                        // Criterio C: Tempo nel geofence esteso > Soglia, abilitato solo se record di classe calibrato (> 0.0)
-                        if (!isInsideGeofence && ClassBestExtendedPitZoneTime > 0.0)
+                        // Criterio C: Paracadute di durata nel geofence.
+                        // Non dipende da LastValidSpeedKmh (che a inizio/fine pit lane può subire spike di deltaPos).
+                        // Se il tempo trascorso nella zona pit (tData.PitZone o tempo da EntryTimeSec) supera la soglia di classe (+4.0s)
+                        // o la soglia di sicurezza minima (15.0s), la vettura è confermata ai box.
+                        if (!isInsideGeofence)
                         {
-                            double currentExtendedPitTime = tData.ExtendedPitZone.IsInside ? tData.ExtendedPitZone.GetCurrentTime(currentSessionClock) : 0.0;
-                            double threshold = ClassBestExtendedPitZoneTime + 5.0;
+                            double currentPitTime = 0.0;
+                            if (tData.PitZone.IsInside)
+                            {
+                                currentPitTime = tData.PitZone.GetCurrentTime(currentSessionClock);
+                            }
+                            else if (tData.IsSpatiallyInsideStrict)
+                            {
+                                currentPitTime = Math.Abs(currentSessionClock - tData.SpatialStrictEntryTimeSec);
+                            }
 
-                            if (tData.LastValidSpeedKmh < pitSpeedThreshold + 5.0 && currentExtendedPitTime > threshold)
+                            double durationThreshold = ClassBestPitZoneRacingTime > 0.0
+                                ? (ClassBestPitZoneRacingTime + 4.0)
+                                : (ClassBestExtendedPitZoneTime > 0.0 ? (ClassBestExtendedPitZoneTime + 5.0) : 15.0);
+
+                            if (currentPitTime > durationThreshold)
                             {
                                 isInsideGeofence = true;
-                                triggerReason = $"Duration ({currentExtendedPitTime:F1}s > {threshold:F1}s @ {tData.LastValidSpeedKmh:F1} km/h)";
+                                triggerReason = $"Duration ({currentPitTime:F1}s > {durationThreshold:F1}s)";
                             }
                         }
                     }
@@ -1276,6 +1329,7 @@ namespace SimRIG
                 else
                 {
                     tData.LowSpeedStartSec = null;
+                    tData.HighSpeedStartSec = null;
                 }
 
                 if (isInsideGeofence && !tData.IsInsideGeofence)
@@ -1337,10 +1391,13 @@ namespace SimRIG
                     }
 
                     double totalTransitTime = Math.Abs(currentSessionClock - tData.EntryTimeSec);
-                    double adaptiveThreshold = ClassBestExtendedPitZoneTime > 0.0 ? (ClassBestExtendedPitZoneTime + 5.0) : 15.0;
+                    double adaptiveThreshold = ClassBestPitZoneRacingTime > 0.0
+                        ? (ClassBestPitZoneRacingTime + 4.0)
+                        : (ClassBestExtendedPitZoneTime > 0.0 ? (ClassBestExtendedPitZoneTime + 5.0) : 15.0);
 
-                    if (tData.StrictPitValidInTransit)
+                    if (tData.StrictPitValidInTransit || totalTransitTime > adaptiveThreshold)
                     {
+                        tData.StrictPitValidInTransit = true;
                         tData.ExitTimeSec = currentSessionClock;
 
                         double tTyres = radar.DbTireChangeTime; // default 26.0
@@ -1562,7 +1619,20 @@ namespace SimRIG
                         tData.IsSpatiallyInsideStrict = false;
                         if (!tData.StrictPitValidInTransit)
                         {
-                            log.Log(LogModule.OPPONENTS, LogType.FLOW, "Opponent Spatial Transit Discarded", $"{tData.Name} | Main straight passage.");
+                            double totalSpatialTransitTime = Math.Abs(currentSessionClock - tData.SpatialStrictEntryTimeSec);
+                            double spatialAdaptiveThreshold = ClassBestPitZoneRacingTime > 0.0
+                                ? (ClassBestPitZoneRacingTime + 4.0)
+                                : (ClassBestExtendedPitZoneTime > 0.0 ? (ClassBestExtendedPitZoneTime + 5.0) : 15.0);
+
+                            if (totalSpatialTransitTime > spatialAdaptiveThreshold)
+                            {
+                                log.Log(LogModule.OPPONENTS, LogType.EVENT, "Opponent Spatial Transit Retroactively Validated",
+                                    $"{tData.Name} | TotalTransitTime: {totalSpatialTransitTime:F1}s > Threshold: {spatialAdaptiveThreshold:F1}s");
+                            }
+                            else
+                            {
+                                log.Log(LogModule.OPPONENTS, LogType.FLOW, "Opponent Spatial Transit Discarded", $"{tData.Name} | Main straight passage ({totalSpatialTransitTime:F1}s <= {spatialAdaptiveThreshold:F1}s).");
+                            }
                         }
                         tData.SpatialStrictEntryTimeSec = 0.0;
                     }
@@ -2022,6 +2092,21 @@ namespace SimRIG
                         tData.SectorPaceDropDueToTyres = tData.NormalizedTimes.SectorPaceDrop;
                         tData.SectorPaceDropDueToTyresRaw = tData.RawTimes.SectorPaceDrop;
                     }
+
+                    tData.PitZone.Update(
+                        currentPos,
+                        currentSessionClock,
+                        false, // isCarInPit - purely raw stopwatch
+                        radar.IsInPitLaneZone(currentPos),
+                        radar.GetPitZoneWeight(),
+                        0.0, // fuel
+                        0.0, // trackTemp
+                        0.0, // baselineTemp
+                        rawCurrentLap,
+                        trackLen,
+                        false, // tiresChanged
+                        log
+                    );
 
                     bool wasInsideExtendedPit = tData.ExtendedPitZone.IsInside;
 

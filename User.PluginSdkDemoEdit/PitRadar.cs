@@ -1,4 +1,4 @@
-﻿// -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
 // FILE: PitRadar.cs
 // VERSION: Fix errori 43 (Restored and Extended)
 // -------------------------------------------------------------------------
@@ -273,6 +273,19 @@ namespace SimRIG
 				num3 = 0.1;
 			}
 			return num3;
+		}
+
+		public double GetPitZoneWeight()
+		{
+			if (!HasValidCleanSectorBounds())
+			{
+				return 0.1;
+			}
+			double num = PitEntryPct;
+			double num2 = PitExitPct;
+			double diff = num2 >= num ? (num2 - num) : ((1.0 - num) + num2);
+			if (diff <= 0.0) diff = 0.05;
+			return Math.Max(0.01, Math.Min(0.5, diff));
 		}
 	}
 
@@ -929,6 +942,15 @@ namespace SimRIG
 	{
 		if (state == null) return false;
 		return state.IsInPitBox || state.SpeedKmh < StationarySpeedKmh;
+	}
+
+	public double GetPitZoneWeight()
+	{
+		if (_currentTrack == null)
+		{
+			return 0.1;
+		}
+		return _currentTrack.GetPitZoneWeight();
 	}
 
 	public bool IsInExtendedPitLaneZone(double pos)

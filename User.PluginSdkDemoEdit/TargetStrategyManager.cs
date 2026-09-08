@@ -706,7 +706,9 @@ namespace SimRIG
 
                     double pitDistance = radar.PitDistanceMeters;
                     double racingSpeedMs = tracker.ClassTopSpeed > 0 ? (tracker.ClassTopSpeed / 3.6) : (250.0 / 3.6);
-                    double pitLaneZoneRacingTime = pitDistance > 0 ? (pitDistance / racingSpeedMs) : 0.0;
+                    double pitLaneZoneRacingTime = tracker.ClassBestPitZoneRacingTime > 0.0
+                        ? tracker.ClassBestPitZoneRacingTime
+                        : (pitDistance > 0 ? (pitDistance / racingSpeedMs) : 0.0);
                     CurrentTarget.PitLaneZoneRacingTime = pitLaneZoneRacingTime;
 
                     // Calcolo unificato basato sulla Extended Pit Zone

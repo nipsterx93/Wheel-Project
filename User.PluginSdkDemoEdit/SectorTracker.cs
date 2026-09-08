@@ -109,7 +109,7 @@ namespace SimRIG
 
                     double sectorTime = Math.Abs(now - EntryTime);
 
-                    if (isCompleteTransit && sectorTime > 5.0 && sectorTime < 300.0)
+                    if (isCompleteTransit && sectorTime > 3.0 && sectorTime < 300.0)
                     {
                         LastTransitTime = sectorTime;
                         double fuelPenalty = RaceTimeProjection.FuelWeightPenaltySec(currentFuel, fuelWeightCoef) * sectorWeight;
@@ -160,6 +160,11 @@ namespace SimRIG
                                         BestRawTime = sectorTime;
                                         BestRawTimeLapCount = lapsOnTyres;
                                     }
+                                }
+                                else if (lapsOnTyres >= 1 && (BestRawTime == 0.0 || sectorTime < BestRawTime))
+                                {
+                                    BestRawTime = sectorTime;
+                                    BestRawTimeLapCount = lapsOnTyres;
                                 }
 
                                 WornNormalHistory.Add(normalizedSectorTime);

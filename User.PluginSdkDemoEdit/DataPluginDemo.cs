@@ -370,6 +370,7 @@ namespace SimRIG
             pm.AddProperty("SimRIG.Session.ClassSectorPaceDropDueToTyres", t, 0.0);
             pm.AddProperty("SimRIG.Session.ClassSectorPaceDropDueToTyresRaw", t, 0.0);
             pm.AddProperty("SimRIG.Session.PlayerMicrosector", t, 0);
+            pm.AddProperty("SimRIG.Session.ClassBestPitZoneRacingTime", t, 0.0);
             pm.AddProperty("SimRIG.Session.ClassBestExtendedPitZoneTime", t, 0.0);
             // Y-9: limite di pit lane appreso osservando le vetture in corsia, per traccia+classe.
             // 0.0 finché non è stato imparato: la dash deve trattare lo zero come "non noto".
@@ -1259,7 +1260,7 @@ namespace SimRIG
                         $"Rain10m: {CurrentState.RainIntensity10Min:F2} | Rain30m: {CurrentState.RainIntensity30Min:F2}");
                 }
 
-                OpponentTracker.Update(data, Settings, TyreManager.CurrentScope, CurrentState, PitRadar, data.NewData.SessionTimeLeft.TotalSeconds, CurrentState.RaceStartingFuel, CurrentState.MaxFuelCapacity, FuelManager.Calculations.AverageFuelPerLap, RaceAnalyzer.PlayerExtendedPitZone.BestRawTime, RaceAnalyzer.Results.RaceLapsRemaining, LogManager, Settings.FuelWeightCoef, Settings.TempCoef);
+                OpponentTracker.Update(data, Settings, TyreManager.CurrentScope, CurrentState, PitRadar, data.NewData.SessionTimeLeft.TotalSeconds, CurrentState.RaceStartingFuel, CurrentState.MaxFuelCapacity, FuelManager.Calculations.AverageFuelPerLap, RaceAnalyzer.PlayerPitZone.BestRawTime, RaceAnalyzer.PlayerExtendedPitZone.BestRawTime, RaceAnalyzer.Results.RaceLapsRemaining, LogManager, Settings.FuelWeightCoef, Settings.TempCoef);
                 CurrentState.CrossoverAlertState = OpponentTracker.CrossoverAlertState;
                 CurrentState.CrossoverDeltaSeconds = OpponentTracker.CrossoverDeltaSeconds;
 
@@ -1750,6 +1751,7 @@ namespace SimRIG
             PluginManager.SetPropertyValue("SimRIG.Session.ClassSectorPaceDropDueToTyres", t, Math.Round(OpponentTracker.ClassAverageSectorPaceDrop, 2));
             PluginManager.SetPropertyValue("SimRIG.Session.ClassSectorPaceDropDueToTyresRaw", t, Math.Round(OpponentTracker.ClassAverageSectorPaceDropRaw, 2));
             PluginManager.SetPropertyValue("SimRIG.Session.PlayerMicrosector", t, (int)(CurrentState.TrackPositionPercent * 100));
+            PluginManager.SetPropertyValue("SimRIG.Session.ClassBestPitZoneRacingTime", t, Math.Round(OpponentTracker.ClassBestPitZoneRacingTime, 3));
             PluginManager.SetPropertyValue("SimRIG.Session.ClassBestExtendedPitZoneTime", t, Math.Round(OpponentTracker.ClassBestExtendedPitZoneTime, 3));
 
             double learnedPitLimit = PitRadar.GetPitLaneSpeedLimit(CurrentState.CarClassId);
