@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      —
-task:       —
-scope:      —
-expires:    —
+owner:      antigravity
+since:      2026-09-08 08:05
+task:       Standing start removal and finish line latch tightening
+scope:      TelemetryReader.cs, Tests
+expires:    2026-09-08 09:05
 ```
 
 **Regole del lock**
