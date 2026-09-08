@@ -47,6 +47,44 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-08 13:20] antigravity → chiunque entri dopo (Claude in particolare)
+
+**Task:** Unificazione formule di Pit Loss e tempo da fermo (CarPitData) tra RaceAnalyzer, TargetStrategyManager e DataPluginDemo
+**Piano:** `.ai/plans/2026-09-03-inventario-passo-e-sosta.md`
+**Commit:** `14e9a08` (codice e test), questo (handoff e rilascio lock)
+
+### Fatto
+- `User.PluginSdkDemoEdit/CarPitData.cs:127-197`:
+  - Implementato `CalculateStationaryTime`: calcola il tempo da fermo distinguendo tra sosta simultanea (GT3/LMP2/GTP: `Max(fuel, tyres)`) e sequenziale (PCUP/OpenWheel: `fuel + tyres`) con buffer martinetti (+2.0s se sosta > 0).
+  - Implementato `CalculateExtendedRacingTime` (con overload geometrico e per velocità): prioritizza la misura cronometrata reale della classe da `OpponentTracker.ClassBestExtendedPitZoneTime`, con fallback sulla frazione di tracciato box per passo sul giro.
+  - Implementato `CalculateTotalPitLoss`: unifica il calcolo della perdita netta ai box con guard di sicurezza `extended >= timeInZone` per evitare azzeramenti anomali o sottrazioni errate con telemetria incompleta.
+- `User.PluginSdkDemoEdit/RaceAnalyzer.cs:1125-1150`:
+  - Sostituita la formula manuale semplificata che ignorava `IsSequential` e il buffer jack con `CarPitData.CalculateStationaryTime`, `CarPitData.CalculateExtendedRacingTime` e `CarPitData.CalculateTotalPitLoss`.
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:695-715, 735-745, 1160-1170`:
+  - Sostituiti i blocchi di calcolo inline duplicati per `playerTotalPitLoss`, `targetTotalPitLoss` e nel monitor merge gap con le chiamate centralizzate a `CarPitData`.
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs:1990-2005`:
+  - Sostituito il calcolo inline di `totalStationaryTimeVal` e `totalPitLossVal` con le chiamate unificate a `CarPitData`.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/PitLossUnitTests.cs`:
+  - Aggiunti 3 unit test dedicati: `Test_CalculateStationaryTime_Centralized`, `Test_CalculateExtendedRacingTime_Centralized`, `Test_CalculateTotalPitLoss_Centralized`.
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Criterio di successo: **327 PASS (100%)**.
+
+### Stato
+- ✅ Compila (0 errori, 1 warning CS0219 noto)
+- ✅ 327 PASS (100%)
+
+### Per chi entra
+**Prossimo passo:** Verifica del merge gap post-sosta (`ProjectedMergeGap` / `TargetStrategyManager.cs`) su replay reali e continuazione della Fase B della roadmap (`2026-08-24-roadmap.md`).
+**NON toccare:** `CarPitData.cs` e la logica di calcolo centrale senza test di non-regressione.
+**Attenzione a:** L'unificazione di PitLoss non altera le proiezioni di fine gara né il consumo carburante su Road Atlanta (35 giri / 31 L) e Misano (26 giri / 16 L), poiché la variazione su `playerL_left` è inferiore a 0.05 giri (sotto la soglia di sensibilità del round up).
+
+---
+
 ## [2026-09-08 12:45] antigravity → chiunque entri dopo (Claude in particolare)
 
 **Task:** Validazione sul campo stima consumo con mediana e latch traguardo via su Road Atlanta e Misano
@@ -360,45 +398,6 @@ Atteso: stessi 5 file in entrambe le cartelle, `diff` senza output (contenuto id
 **Prossimo passo:** nessuno obbligato — la skill è di consultazione. Se si riprende **Y-14** (tempo cambio gomme), `pit-stop-decomposition.md` ha la tecnica di scomposizione pronta da usare come riferimento, non come decisione già presa. Restano validi Fase B della roadmap (`2026-08-24-roadmap.md`) e la riscrittura di `STRATEGY_ENGINE_GUIDE.md` (Fase D) come prossimi passi di contenuto.
 **NON toccare:** non è stato deciso nulla su Y-14 in questo turno — solo documentata una tecnica.
 **Attenzione a:** le due copie della skill (`.claude/skills/` e `.agent/skills/`) sono duplicati testuali voluti, non linkati — se una viene corretta in futuro (es. un refinement di `robust-statistics.md`), l'altra va aggiornata a mano, stesso rischio già noto per `/new-session`/`/handoff`.
-
----
-
-## [2026-09-06 10:40] claude → chiunque entri dopo (Antigravity in particolare)
-
-**Task:** Equivalente Antigravity di `/new-session` e `/handoff`, dopo che Andreas ha fatto notare che esistevano solo per Claude Code. Nessun punto Y toccato: infrastruttura.
-**Piano:** continuazione diretta dei due turni precedenti (setup coworking).
-**Commit:** `144fd0e`, `bbd1ddb`
-
-### Fatto
-- Verificato via web search (non indovinato) lo schema dei comandi custom di Antigravity 2.0:
-  `.agent/workflows/*.md`, frontmatter YAML con solo `description`, corpo con passi a checkbox,
-  invocazione `/nome-file`. **Diverso** dal formato di Claude Code (`.claude/commands/*.md`) e
-  diverso anche dalle skill `SKILL.md` (quelle sì standard aperto condiviso fra i due tool).
-- `.agent/workflows/new-session.md`, `.agent/workflows/handoff.md`: stesso contenuto delle
-  versioni Claude Code, riscritto nel formato Antigravity. Non ho usato l'annotazione `// turbo`
-  per l'auto-run dei comandi: le due fonti consultate non concordavano sulla sintassi esatta
-  (`// turbo:` vs `// turbo`), meglio ometterla che scrivere qualcosa di sbagliato.
-- `.claude/commands/{new-session,handoff}.md`: aggiunta una nota di rimando reciproco verso
-  l'equivalente Antigravity, così le due versioni non divergono senza che nessuno se ne accorga.
-
-### Come verificare
-Non c'è build/test da eseguire. Per Antigravity: aprire una sessione su questo repo e digitare
-`/new-session` — deve comparire fra i workflow disponibili. Stesso discorso per `/handoff`.
-
-### Stato
-- ✅ Compila (nessun file di codice C# toccato)
-- ⏭️ Test non eseguiti (nessuna modifica alla logica del plugin)
-
-### Per chi entra
-**Prossimo passo:** Andreas deve verificare in pratica (restart di entrambi i tool) che sia
-`/new-session`/`/handoff` in Claude Code sia i due equivalenti in Antigravity siano davvero
-invocabili — nessuna delle due controparti ha ancora avuto una conferma diretta in questo repo,
-solo pipe-test e, per l'hook del lock, un trigger reale.
-**NON toccare:** nessuna area di codice interessata da questo turno.
-**Attenzione a:** se in futuro il contenuto di uno dei quattro file cambia (Claude o Antigravity,
-new-session o handoff), l'altro va aggiornato di conseguenza — è scritto come promemoria in cima
-a ciascuno dei quattro file, ma nessun meccanismo lo forza automaticamente.
-
 
 ---
 

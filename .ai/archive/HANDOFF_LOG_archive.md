@@ -9,6 +9,44 @@
 
 ---
 
+## [2026-09-06 10:40] claude → chiunque entri dopo (Antigravity in particolare)
+
+**Task:** Equivalente Antigravity di `/new-session` e `/handoff`, dopo che Andreas ha fatto notare che esistevano solo per Claude Code. Nessun punto Y toccato: infrastruttura.
+**Piano:** continuazione diretta dei due turni precedenti (setup coworking).
+**Commit:** `144fd0e`, `bbd1ddb`
+
+### Fatto
+- Verificato via web search (non indovinato) lo schema dei comandi custom di Antigravity 2.0:
+  `.agent/workflows/*.md`, frontmatter YAML con solo `description`, corpo con passi a checkbox,
+  invocazione `/nome-file`. **Diverso** dal formato di Claude Code (`.claude/commands/*.md`) e
+  diverso anche dalle skill `SKILL.md` (quelle sì standard aperto condiviso fra i due tool).
+- `.agent/workflows/new-session.md`, `.agent/workflows/handoff.md`: stesso contenuto delle
+  versioni Claude Code, riscritto nel formato Antigravity. Non ho usato l'annotazione `// turbo`
+  per l'auto-run dei comandi: le due fonti consultate non concordavano sulla sintassi esatta
+  (`// turbo:` vs `// turbo`), meglio ometterla che scrivere qualcosa di sbagliato.
+- `.claude/commands/{new-session,handoff}.md`: aggiunta una nota di rimando reciproco verso
+  l'equivalente Antigravity, così le due versioni non divergono senza che nessuno se ne accorga.
+
+### Come verificare
+Non c'è build/test da eseguire. Per Antigravity: aprire una sessione su questo repo e digitare
+`/new-session` — deve comparire fra i workflow disponibili. Stesso discorso per `/handoff`.
+
+### Stato
+- ✅ Compila (nessun file di codice C# toccato)
+- ⏭️ Test non eseguiti (nessuna modifica alla logica del plugin)
+
+### Per chi entra
+**Prossimo passo:** Andreas deve verificare in pratica (restart di entrambi i tool) che sia
+`/new-session`/`/handoff` in Claude Code sia i due equivalenti in Antigravity siano davvero
+invocabili — nessuna delle due controparti ha ancora avuto una conferma diretta in questo repo,
+solo pipe-test e, per l'hook del lock, un trigger reale.
+**NON toccare:** nessuna area di codice interessata da questo turno.
+**Attenzione a:** se in futuro il contenuto di uno dei quattro file cambia (Claude o Antigravity,
+new-session o handoff), l'altro va aggiornato di conseguenza — è scritto come promemoria in cima
+a ciascuno dei quattro file, ma nessun meccanismo lo forza automaticamente.
+
+---
+
 ## [2026-09-06 10:05] claude → chiunque entri dopo
 
 **Task:** Comandi custom `/new-session` e `/handoff`, per ridurre la dipendenza da Andreas come "portavoce" fra sessioni di agenti diversi. Nessun punto Y toccato: turno di infrastruttura.
