@@ -47,6 +47,46 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-08 12:45] antigravity → chiunque entri dopo (Claude in particolare)
+
+**Task:** Validazione sul campo stima consumo con mediana e latch traguardo via su Road Atlanta e Misano
+**Piano:** —
+**Commit:** questo
+
+### Fatto
+- **Road Atlanta (Replay `20260908_112922`)**:
+  - Gara da 35 giri totali stabilizzati.
+  - Latch iniziale a verde sul traguardo: `48.19 L`.
+  - Giro 12 segna `2.14 L` di consumo anomalo per scia / lift.
+  - Al Giro 13, con la mediana a 5 campioni (`[2.14, 2.22, 2.26, 2.27, 2.28]`), la stima mobile ha selezionato `2.26 L` (contro `2.236 L` della vecchia media aritmetica), assorbendo l'outlier al 100%.
+  - Durante tutto l'In-Lap (Giro 14), `FuelToAdd` è rimasto stabilmente ancorato a **`31.00 L`** (in precedenza raccomandava solo `30.00 L`).
+  - Nel replay sono stati riforniti realmente 31 L: tagliato il traguardo finale con **`0.20 L`** di riserva residua. Con 30 L la vettura sarebbe rimasta a secco prima dell'ultima curva.
+- **Misano (Replay `20260908_120759`)**:
+  - Gara da 26 giri totali.
+  - Latch sul traguardo di verde con `50.15 L`.
+  - Consumo medio su Stint 1 stabile tra `2.50 L` e `2.54 L/giro`.
+  - Durante l'In-Lap (Giro 19), per tutti i 33 secondi di avvicinamento ai box `FuelToAdd` ha segnato costantemente **`16.00 L`** (33 campioni su 33).
+  - Riforniti realmente 16.0 L nel replay: tagliato il traguardo al Giro 26 con **`0.19 L`** residui.
+  - Zero errori o warning di sistema nei log.
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/User.PluginSdkDemo.Tests.csproj" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Criterio di successo: **324 PASS (100%)**.
+
+### Stato
+- ✅ Compila (0 errori, 1 warning CS0219 noto)
+- ✅ 324 PASS
+
+### Per chi entra
+**Prossimo passo:** Analisi delle proiezioni del tempo alla bandiera (`ComputeFlagMoment` / Y-38 / Y-40) e impatto del ritardo della sosta (`PitLoss`) sul conteggio giri prima che il leader si fermi (come osservato a Misano con il passaggio da 27 a 26 giri dopo la sosta del leader).
+**NON toccare:** `FuelManager.cs` nelle sezioni di detection del pit, stima con mediana e latch traguardo via.
+**Attenzione a:** In `ComputeFlagMoment`, le soste future degli avversari non vengono sottratte (per evitare di stimare soste errate a 40 vetture); di conseguenza, gare a tempo con sosta obbligatoria tendono a sovrastimare di 1 giro il totale finché il leader non sconta la perdita fisica ai box.
+
+---
+
 ## [2026-09-08 11:35] antigravity → chiunque entri dopo (Claude in particolare)
 
 **Task:** Stima del consumo robusta con mediana su finestra a 5 giri (anti-draft / anti-lift)
@@ -359,50 +399,6 @@ solo pipe-test e, per l'hook del lock, un trigger reale.
 new-session o handoff), l'altro va aggiornato di conseguenza — è scritto come promemoria in cima
 a ciascuno dei quattro file, ma nessun meccanismo lo forza automaticamente.
 
----
-
-## [2026-09-06 10:05] claude → chiunque entri dopo
-
-**Task:** Comandi custom `/new-session` e `/handoff`, per ridurre la dipendenza da Andreas come "portavoce" fra sessioni di agenti diversi. Nessun punto Y toccato: turno di infrastruttura.
-**Piano:** continuazione diretta del turno precedente (setup coworking Claude/Antigravity).
-**Commit:** `375d7c6`, `118b24a`
-
-### Fatto
-- `.claude/commands/new-session.md`: comando che, invocato con `/new-session [tema opzionale]`,
-  fa leggere `AGENTS.md` → `PROJECT_STATE.md` (lock + punti aperti) → `HANDOFF_LOG.md` (ultime
-  voci) → `STRATEGY_ENGINE_GUIDE.md`, nello stesso ordine già fissato da `NEW_SESSION_PROMPT.md`,
-  poi chiede il report standard (fase/roadmap, prossimo passo, decisioni in sospeso, incoerenze).
-  Se viene passato un tema, aggancia anche il piano pertinente in `.ai/plans/`.
-- `.claude/commands/handoff.md`: comando che guida la chiusura turno — voce in `HANDOFF_LOG.md`
-  dal template esistente, controllo del conteggio voci con potatura dell'undicesima in
-  `archive/HANDOFF_LOG_archive.md` se serve, rilascio del lock in `PROJECT_STATE.md`, promemoria
-  esplicito di controllare eventuali numeri scritti a mano rimasti disallineati altrove nello
-  stesso file, commit separato per l'handoff.
-- Ho **dogfoodato** `/handoff` a mano in questo stesso turno per chiuderlo (non ho potuto invocarlo
-  come slash command vero perché appena creato in questa sessione — verosimilmente serve un
-  reload, come già osservato per l'hook del turno precedente): spostata la voce più vecchia
-  (2026-09-03 21:15) in `archive/HANDOFF_LOG_archive.md`, aggiunta questa in cima.
-
-### Come verificare
-Non c'è build/test da eseguire (nessun file di codice toccato). Per verificare che i comandi siano
-riconosciuti: aprire una sessione Claude Code nuova su questo repo e digitare `/new-session` —
-deve comparire nell'elenco degli slash command con la descrizione scritta sopra.
-
-### Stato
-- ✅ Compila (nessun file di codice C# toccato in questo turno)
-- ⏭️ Test non eseguiti (nessuna modifica alla logica del plugin)
-
-### Per chi entra
-**Prossimo passo (proposto, non deciso):** verificare in una sessione fresca che `/new-session` e
-`/handoff` siano effettivamente invocabili (il reload dei comandi custom non è stato confermato in
-questo turno, solo dedotto per analogia con l'hook). Poi, quando Andreas installa Superpowers
-(`/plugin install superpowers@claude-plugins-official`), controllare dove scrive di default la sua
-skill di brainstorming e agganciarla a `.ai/plans/`. In coda, la skill di dominio motorsport.
-**NON toccare:** nessuna area di codice interessata da questo turno.
-**Attenzione a:** questi due comandi sono specifici di Claude Code — se Antigravity vuole
-l'equivalente, va scritto nel suo formato di comandi custom (vedi Gemini CLI: `.gemini/commands/*.toml`
-per Gemini CLI standalone; Antigravity ha un proprio meccanismo di "custom slash workflows" ancora
-da verificare in dettaglio), non copiato alla lettera.
 
 ---
 

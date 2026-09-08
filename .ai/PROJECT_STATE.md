@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      antigravity
-since:      2026-09-08 12:45
-task:       aggiornamento documentazione validazione replay road atlanta e misano
-scope:      .ai/
-expires:    2026-09-08 13:45
+owner:      NONE
+since:      —
+task:       —
+scope:      —
+expires:    —
 ```
 
 **Regole del lock**
@@ -66,9 +66,10 @@ poteva più correggere). Il rimedio comune è in ADR-005.
 > L'indice dei punti chiusi resta più in basso in questo file: serve a sapere **che** un punto esiste
 > ed è chiuso, senza caricarne il testo. Quando ti serve il *perché*, apri l'archivio a quell'ID.
 
-**Come è stato verificato tutto:** build 0 errori, **322 test PASS** (erano 111 al setup, 186 al
+**Come è stato verificato tutto:** build 0 errori, **324 test PASS** (erano 111 al setup, 186 al
 24 agosto, 295 dopo Y-52 passo 1, 311 dopo Y-52 passo 2, 314 dopo sblocco dump `SessionDataReader`,
-321 dopo allineamento CarClassID/suffissi, 322 dopo sincronizzazione start line crossing latch; ⚠️ vedi Y-54: il backtest sul replay
+321 dopo allineamento CarClassID/suffissi, 322 dopo sincronizzazione start line crossing latch,
+324 dopo stima consumo robusta con mediana mobile e validazione su Road Atlanta e Misano; ⚠️ vedi Y-54: il backtest sul replay
 reale si salta in silenzio se il file non c'è, quindi il numero da solo non dice quanta copertura
 sia davvero girata), e per ogni
 correzione la **regressione neutralizzata** — si disattiva il fix e si controlla che il test diventi

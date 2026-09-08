@@ -9,6 +9,51 @@
 
 ---
 
+## [2026-09-06 10:05] claude → chiunque entri dopo
+
+**Task:** Comandi custom `/new-session` e `/handoff`, per ridurre la dipendenza da Andreas come "portavoce" fra sessioni di agenti diversi. Nessun punto Y toccato: turno di infrastruttura.
+**Piano:** continuazione diretta del turno precedente (setup coworking Claude/Antigravity).
+**Commit:** `375d7c6`, `118b24a`
+
+### Fatto
+- `.claude/commands/new-session.md`: comando che, invocato con `/new-session [tema opzionale]`,
+  fa leggere `AGENTS.md` → `PROJECT_STATE.md` (lock + punti aperti) → `HANDOFF_LOG.md` (ultime
+  voci) → `STRATEGY_ENGINE_GUIDE.md`, nello stesso ordine già fissato da `NEW_SESSION_PROMPT.md`,
+  poi chiede il report standard (fase/roadmap, prossimo passo, decisioni in sospeso, incoerenze).
+  Se viene passato un tema, aggancia anche il piano pertinente in `.ai/plans/`.
+- `.claude/commands/handoff.md`: comando che guida la chiusura turno — voce in `HANDOFF_LOG.md`
+  dal template esistente, controllo del conteggio voci con potatura dell'undicesima in
+  `archive/HANDOFF_LOG_archive.md` se serve, rilascio del lock in `PROJECT_STATE.md`, promemoria
+  esplicito di controllare eventuali numeri scritti a mano rimasti disallineati altrove nello
+  stesso file, commit separato per l'handoff.
+- Ho **dogfoodato** `/handoff` a mano in questo stesso turno per chiuderlo (non ho potuto invocarlo
+  come slash command vero perché appena creato in questa sessione — verosimilmente serve un
+  reload, come già osservato per l'hook del turno precedente): spostata la voce più vecchia
+  (2026-09-03 21:15) in `archive/HANDOFF_LOG_archive.md`, aggiunta questa in cima.
+
+### Come verificare
+Non c'è build/test da eseguire (nessun file di codice toccato). Per verificare che i comandi siano
+riconosciuti: aprire una sessione Claude Code nuova su questo repo e digitare `/new-session` —
+deve comparire nell'elenco degli slash command con la descrizione scritta sopra.
+
+### Stato
+- ✅ Compila (nessun file di codice C# toccato in questo turno)
+- ⏭️ Test non eseguiti (nessuna modifica alla logica del plugin)
+
+### Per chi entra
+**Prossimo passo (proposto, non deciso):** verificare in una sessione fresca che `/new-session` e
+`/handoff` siano effettivamente invocabili (il reload dei comandi custom non è stato confermato in
+questo turno, solo dedotto per analogia con l'hook). Poi, quando Andreas installa Superpowers
+(`/plugin install superpowers@claude-plugins-official`), controllare dove scrive di default la sua
+skill di brainstorming e agganciarla a `.ai/plans/`. In coda, la skill di dominio motorsport.
+**NON toccare:** nessuna area di codice interessata da questo turno.
+**Attenzione a:** questi due comandi sono specifici di Claude Code — se Antigravity vuole
+l'equivalente, va scritto nel suo formato di comandi custom (vedi Gemini CLI: `.gemini/commands/*.toml`
+per Gemini CLI standalone; Antigravity ha un proprio meccanismo di "custom slash workflows" ancora
+da verificare in dettaglio), non copiato alla lettera.
+
+---
+
 ## [2026-09-06 09:10] claude → chiunque entri dopo (Andreas, Antigravity, Codex)
 
 **Task:** Setup coworking Claude/Antigravity — hook di lock-enforcement, permessi progetto, tabella Ruoli senza divisione per compiti, protocollo di brainstorming in AGENTS.md. Nessun punto Y toccato: turno di infrastruttura, non di correzione.
