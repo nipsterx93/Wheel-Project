@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      null
-task:       null
-scope:      null
-expires:    null
+owner:      antigravity
+since:      2026-09-08 14:26
+task:       merge gap simmetrico e target lock action per road atlanta
+scope:      User.PluginSdkDemoEdit/TargetStrategyManager.cs, User.PluginSdkDemoEdit/DataPluginDemo.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/MergeGapUnitTests.cs, .ai/
+expires:    2026-09-08 16:26
 ```
 
 **Regole del lock**
