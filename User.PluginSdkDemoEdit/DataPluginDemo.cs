@@ -257,6 +257,43 @@ namespace SimRIG
                 _rightLeaderboardPageOffset = _rightLeaderboardPageOffset > 0 ? _rightLeaderboardPageOffset - 1 : 3;
             });
 
+            pluginManager.AddAction("Target_ToggleLock", this.GetType(), (a, b) => {
+                if (!string.IsNullOrEmpty(TargetStrategyManager.LatchedTargetName))
+                {
+                    TargetStrategyManager.LatchedTargetName = null;
+                    SetCornerMessage(0, "TGT UNLOCKED", 1500);
+                }
+                else
+                {
+                    var current = TargetStrategyManager.CurrentTarget;
+                    if (current != null && !string.IsNullOrEmpty(current.Name) && current.Name != "NO TARGET" && current.Name != "PLAYER")
+                    {
+                        TargetStrategyManager.LatchedTargetName = current.Name;
+                        SetCornerMessage(0, $"LOCK: {current.Name}", 1500);
+                    }
+                    else
+                    {
+                        SetCornerMessage(0, "NO CAR TO LOCK", 1500);
+                    }
+                }
+            });
+
+            pluginManager.AddAction("Target_NextTarget", this.GetType(), (a, b) => {
+                TargetStrategyManager.LatchedTargetName = null;
+                _targetSelectionIndex++;
+                int maxIndex = 6 + (CurrentState.Opponents?.Count ?? 0);
+                if (_targetSelectionIndex > maxIndex) _targetSelectionIndex = 0;
+                SetCornerMessage(0, $"TGT: {GetTargetModeName(_targetSelectionIndex)}", 1500);
+            });
+
+            pluginManager.AddAction("Target_PrevTarget", this.GetType(), (a, b) => {
+                TargetStrategyManager.LatchedTargetName = null;
+                _targetSelectionIndex--;
+                int maxIndex = 6 + (CurrentState.Opponents?.Count ?? 0);
+                if (_targetSelectionIndex < 0) _targetSelectionIndex = maxIndex;
+                SetCornerMessage(0, $"TGT: {GetTargetModeName(_targetSelectionIndex)}", 1500);
+            });
+
             RegisterSimHubProperties(pluginManager);
 
             ProfileManager.Init();

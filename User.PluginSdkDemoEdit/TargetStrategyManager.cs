@@ -210,6 +210,18 @@ namespace SimRIG
 
         public string LatchedTargetName { get; set; } = null;
 
+        /// <summary>
+        /// Calcola il gap proiettato al rientro in pista considerando se ciascuna vettura deve ancora effettuare la sosta.
+        /// Positivo = Player dietro al Target, Negativo = Player davanti al Target.
+        /// Quando entrambe hanno gia' effettuato la sosta o possono finire senza fermarsi, coincide con il SignedGap reale.
+        /// </summary>
+        public static double CalculateProjectedMergeGap(double signedGap, bool playerNeedsPit, double playerPitLoss, bool targetNeedsPit, double targetPitLoss)
+        {
+            double effPlayerLoss = playerNeedsPit ? playerPitLoss : 0.0;
+            double effTargetLoss = targetNeedsPit ? targetPitLoss : 0.0;
+            return signedGap + effPlayerLoss - effTargetLoss;
+        }
+
         private StrategyDecision _lastStrategyDecision = StrategyDecision.None;
         private bool _lastUndercutViable = false;
         private bool _lastOvercutViable = false;
@@ -1083,17 +1095,29 @@ namespace SimRIG
                     }
                     
                     // La proiezione del merge gap sul target è il distacco fisico di rientro in pista (positivo: dietro, negativo: davanti)
-                    double projectedPhysicalMergeGap = CurrentTarget.SignedGapSeconds + playerTotalPitLoss - targetTotalPitLoss;
+                    // Se entrambe hanno completato la sosta / non devono fermarsi, coincide con il SignedGap reale.
+                    bool playerNeedsPit = !canFinishWithoutPitting;
+                    double effectivePlayerPitLoss = playerNeedsPit ? playerTotalPitLoss : 0.0;
+                    double effectiveTargetPitLoss = targetNeedsPit ? targetTotalPitLoss : 0.0;
+                    double projectedPhysicalMergeGap = CalculateProjectedMergeGap(CurrentTarget.SignedGapSeconds, playerNeedsPit, playerTotalPitLoss, targetNeedsPit, targetTotalPitLoss);
                     CurrentTarget.ProjectedMergeGap = projectedPhysicalMergeGap;
 
                     // Log dedicato di monitoraggio MergeGap aggiornato ogni 10 secondi (attivo solo quando SessionState == 4)
-                    // Mantiene sempre il focus su Egor nel Log anche se l'utente naviga su altri target a schermo
+                    // Mantiene sempre il focus su LatchedTargetName se presente, altrimenti segue targetOpp
                     bool timeElapsed = (DateTime.UtcNow - _lastMergeGapLogWallTime).TotalSeconds >= 10.0 || _lastMergeGapLogWallTime == DateTime.MinValue;
                     if (state.SessionStateStatus == 4 && timeElapsed)
                     {
                         _lastMergeGapLogWallTime = DateTime.UtcNow;
 
-                        var logTargetOpp = state.Opponents.FirstOrDefault(o => !o.IsPlayer && (o.Name.IndexOf("Egor", StringComparison.OrdinalIgnoreCase) >= 0 || o.Name.IndexOf("Ogorodnicov", StringComparison.OrdinalIgnoreCase) >= 0 || o.Name.IndexOf("Ogorodnikov", StringComparison.OrdinalIgnoreCase) >= 0)) ?? targetOpp;
+                        GameReaderCommon.Opponent logTargetOpp = null;
+                        if (!string.IsNullOrEmpty(LatchedTargetName))
+                        {
+                            logTargetOpp = state.Opponents.FirstOrDefault(o => !o.IsPlayer && o.Name.Equals(LatchedTargetName, StringComparison.OrdinalIgnoreCase));
+                        }
+                        if (logTargetOpp == null)
+                        {
+                            logTargetOpp = targetOpp;
+                        }
 
                         if (logTargetOpp != null && tracker.TrackedOpponents.TryGetValue(logTargetOpp.Name, out var logOppData))
                         {
@@ -1173,7 +1197,10 @@ namespace SimRIG
                                     extendedRacingTime);
                             }
 
-                            double logProjectedMergeGap = logTargetSignedGap + playerTotalPitLoss - logTargetTotalPitLoss;
+                            bool logPlayerNeedsPit = !canFinishWithoutPitting;
+                            double logEffectivePlayerPitLoss = logPlayerNeedsPit ? playerTotalPitLoss : 0.0;
+                            double logEffectiveTargetPitLoss = logTargetNeedsPit ? logTargetTotalPitLoss : 0.0;
+                            double logProjectedMergeGap = CalculateProjectedMergeGap(logTargetSignedGap, logPlayerNeedsPit, playerTotalPitLoss, logTargetNeedsPit, logTargetTotalPitLoss);
 
                             int playerPitCount = raceResult.PlayerPitCount;
                             int targetPitCount = (logTargetOpp.PitCount.HasValue) ? logTargetOpp.PitCount.Value : 0;
@@ -1186,13 +1213,13 @@ namespace SimRIG
                                 $"[MERGE_GAP_MONITOR] SessionTimeLeft: {state.SessionTimeLeftSec:F1}s | Lap: {state.CurrentLap} | Target: {logTargetOpp.Name}\n" +
                                 $"----------------------------------------------------------------------------------------\n" +
                                 $"DRIVERS:\n" +
-                                $"  Player: Pos: P{playerPos} | Pits: {playerPitCount} | FuelLaps: {playerFuelLaps:F1} | FuelFillRate: {refuelRate:F2} L/s\n" +
+                                $"  Player: Pos: P{playerPos} | Pits: {playerPitCount} | FuelLaps: {playerFuelLaps:F1} | FuelFillRate: {refuelRate:F2} L/s | PlayerNeedsPit: {logPlayerNeedsPit}\n" +
                                 $"  Target: Pos: P{targetPos} | Pits: {targetPitCount} | FuelLaps: {logTargetFuelLaps:F1} | RemLaps: {raceResult.RaceLapsRemaining:F1} | TargetNeedsPit: {logTargetNeedsPit}\n" +
                                 $"PIT LOSS TIMINGS:\n" +
-                                $"  Player (+{playerTotalPitLoss:F2}s): Staz: {playerStationaryTime:F2}s (incl. 2s) | Transit: {radar.PitTransitTime:F2}s | AccDec: {accDecTime:F2}s | ExtZone: {extendedRacingTime:F2}s\n" +
-                                $"  Target (+{logTargetTotalPitLoss:F2}s) : Staz: {logTargetStationaryTime:F2}s | Transit: {radar.PitTransitTime:F2}s | AccDec: {accDecTime:F2}s | ExtZone: {extendedRacingTime:F2}s\n" +
+                                $"  Player (+{logEffectivePlayerPitLoss:F2}s): Staz: {playerStationaryTime:F2}s (incl. 2s) | Transit: {radar.PitTransitTime:F2}s | AccDec: {accDecTime:F2}s | ExtZone: {extendedRacingTime:F2}s\n" +
+                                $"  Target (+{logEffectiveTargetPitLoss:F2}s) : Staz: {logTargetStationaryTime:F2}s | Transit: {radar.PitTransitTime:F2}s | AccDec: {accDecTime:F2}s | ExtZone: {extendedRacingTime:F2}s\n" +
                                 $"RESULT:\n" +
-                                $"  LiveSignedGap: {logTargetSignedGap:F2}s -> ProjectedMergeGap: {logProjectedMergeGap:F2}s ({logTargetSignedGap:F2} + {playerTotalPitLoss:F2} - {logTargetTotalPitLoss:F2})\n" +
+                                $"  LiveSignedGap: {logTargetSignedGap:F2}s -> ProjectedMergeGap: {logProjectedMergeGap:F2}s ({logTargetSignedGap:F2} + {logEffectivePlayerPitLoss:F2} - {logEffectiveTargetPitLoss:F2})\n" +
                                 $"========================================================================================\n";
 
                             log.Log(LogModule.MERGEGAP, LogType.FLOW, logMsg);
