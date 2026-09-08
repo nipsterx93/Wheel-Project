@@ -9,6 +9,32 @@
 
 ---
 
+## [2026-09-06 13:50] antigravity → chiunque entri dopo
+
+**Task:** Comandi slash `/new-session` e `/handoff` registrati come Skill per Antigravity 2.0 (`.agent/skills/`)
+**Piano:** — (allineamento formati comandi custom vs skill Antigravity 2.0)
+**Commit:** `0d28aed`
+
+### Fatto
+- Creati `.agent/skills/new-session/SKILL.md` e `.agent/skills/handoff/SKILL.md` con frontmatter YAML conforme (`name` + `description`).
+- In precedenza i comandi erano stati inseriti in `.agent/workflows/*.md` (vecchio formato legacy supportato da Gemini CLI in terminale, ma non esposto come slash command nell'UI di Antigravity 2.0). Le cartelle `.agent/skills/<name>/SKILL.md` abilitano sia il comando slash (`/new-session`, `/handoff`) nell'interfaccia chat sia l'invocazione automatica da parte dell'agente.
+- Mantenute le versioni in `.agent/workflows/` e `.claude/commands/` per retrocompatibilità.
+
+### Come verificare
+- Digitare `/` nella casella di input della chat di Antigravity: i comandi `/new-session` e `/handoff` compaiono ora nell'elenco autocompletato.
+- Invocando `/new-session`, l'agente esegue la procedura di bootstrap (lettura `AGENTS.md`, `PROJECT_STATE.md`, `HANDOFF_LOG.md`, `STRATEGY_ENGINE_GUIDE.md`).
+
+### Stato
+- ⏭️ Nessun codice C# modificato (infrastruttura / skill di ambiente)
+- ✅ Git tree pulito
+
+### Per chi entra
+**Prossimo passo:** Continuare secondo roadmap (`.ai/plans/2026-08-24-roadmap.md`) o punto Y pianificato.
+**NON toccare:** `User.PluginSdkDemoEdit/` era fuori scope in questo turno.
+**Attenzione a:** Mantenere sincronizzati i file di bootstrap e handoff se ne viene modificato il contenuto (`.claude/commands/`, `.agent/workflows/`, `.agent/skills/`).
+
+---
+
 ## [2026-09-06 13:30] claude → chiunque entri dopo
 
 **Task:** Skill di dominio condivisa `motorsport-telemetry-engineering`, da una ricerca approfondita fornita dall'utente su fisica carburante, scomposizione pit stop, statistica robusta e filtraggio del passo. Nessun punto Y toccato: turno di infrastruttura/conoscenza, non di correzione codice — niente lock preso, nessun file in `User.PluginSdkDemoEdit/` modificato.

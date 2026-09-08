@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      antigravity
-since:      2026-09-08T22:04:00+02:00
-task:       pit zone timers & pit detection cascade fix
-scope:      User.PluginSdkDemoEdit/OpponentTracker.cs, User.PluginSdkDemoEdit/PitRadar.cs, User.PluginSdkDemoEdit/TargetStrategyManager.cs, User.PluginSdkDemoEdit/DataPluginDemo.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/
-expires:    2026-09-09T00:04:00+02:00
+owner:      NONE
+since:      null
+task:       null
+scope:      null
+expires:    null
 ```
 
 **Regole del lock**
