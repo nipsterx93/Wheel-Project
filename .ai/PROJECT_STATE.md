@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      —
-task:       —
-scope:      —
-expires:    —
+owner:      antigravity
+since:      2026-09-08 12:45
+task:       aggiornamento documentazione validazione replay road atlanta e misano
+scope:      .ai/
+expires:    2026-09-08 13:45
 ```
 
 **Regole del lock**
