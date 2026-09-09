@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      2026-09-09T15:15:00
-task:       NONE
-scope:      NONE
-expires:    NONE
+owner:      antigravity
+since:      2026-09-09T23:25:00
+task:       Expose Player and Target TrackSurface properties and replay array fallback
+scope:      User.PluginSdkDemoEdit/DataPluginDemo.cs, User.PluginSdkDemoEdit/IracingTelemetryBridge.cs, User.PluginSdkDemoEdit/OpponentTracker.cs, User.PluginSdkDemoEdit/TargetStrategyManager.cs, User.PluginSdkDemoEdit/SessionState.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/
+expires:    2026-09-10T01:25:00
 ```
 
 **Regole del lock**
