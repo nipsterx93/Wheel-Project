@@ -37,6 +37,8 @@ namespace User.PluginSdkDemo.Tests
             Test_IracingTelemetryBridge_MockValues();
             Test_SelectTarget_P1_P2_InMulticlass();
             Test_ReplayFallback_RetroactiveTransitValidatesStop();
+            Test_IracingTelemetryBridge_PluginManagerReplayFallback();
+            Test_TargetState_TrackSurface_Properties();
 
             Console.WriteLine("[TEST SUCCESS] All Native iRacing Tracking Tests Passed!");
         }
@@ -299,6 +301,85 @@ namespace User.PluginSdkDemo.Tests
             Assert(!tData.NeedsPitStop, "NeedsPitStop must be false after sufficient refueling");
 
             Pass("Replay fallback retroactive pit validation replenishes fuel and increments PitCount");
+        }
+
+        private class DataCorePlugin { }
+
+        private static void Test_IracingTelemetryBridge_PluginManagerReplayFallback()
+        {
+            var bridge = new IracingTelemetryBridge();
+            var pm = new SimHub.Plugins.PluginManager();
+
+            int[] replayTrackSurfaces = new int[64];
+            for (int i = 0; i < 64; i++) replayTrackSurfaces[i] = -1; // NotInWorld
+            replayTrackSurfaces[0] = 2; // AproachingPits
+            replayTrackSurfaces[1] = 3; // OnTrack
+            replayTrackSurfaces[9] = 1; // InPitStall
+
+            bool[] replayPitRoad = new bool[64];
+            replayPitRoad[0] = true;
+            replayPitRoad[9] = true;
+
+            int[] replayPitCount = new int[64];
+            replayPitCount[9] = 2;
+
+            int[] replayClassPos = new int[64];
+            replayClassPos[9] = 4;
+
+            float[] replayLapDist = new float[64];
+            replayLapDist[9] = 0.05f;
+
+            pm.AddProperty("GameRawData.Telemetry.CarIdxTrackSurface", typeof(DataCorePlugin), replayTrackSurfaces);
+            pm.AddProperty("GameRawData.Telemetry.CarIdxOnPitRoad", typeof(DataCorePlugin), replayPitRoad);
+            pm.AddProperty("GameRawData.Telemetry.CarIdxPitStopCount", typeof(DataCorePlugin), replayPitCount);
+            pm.AddProperty("GameRawData.Telemetry.CarIdxClassPosition", typeof(DataCorePlugin), replayClassPos);
+            pm.AddProperty("GameRawData.Telemetry.CarIdxLapDistPct", typeof(DataCorePlugin), replayLapDist);
+
+            bridge.Update(null, pm);
+
+            Assert(bridge.IsAvailable, "Bridge should be available via PluginManager replay fallback");
+            Assert(bridge.GetTrackSurface(9) == IracingTrackSurface.InPitStall, "CarIdx 9 should be InPitStall from replay array");
+            Assert(bridge.IsInPitStall(9), "CarIdx 9 IsInPitStall should be true");
+            Assert(bridge.IsOnPitRoad(9), "CarIdx 9 IsOnPitRoad should be true");
+            Assert(bridge.GetTrackSurface(0) == IracingTrackSurface.AproachingPits, "CarIdx 0 should be AproachingPits");
+            Assert(bridge.GetTrackSurface(1) == IracingTrackSurface.OnTrack, "CarIdx 1 should be OnTrack");
+            Assert(bridge.GetTrackSurface(15) == IracingTrackSurface.NotInWorld, "CarIdx 15 should be NotInWorld");
+            Assert(bridge.GetPitStopCount(9) == 2, "CarIdx 9 PitCount should be 2");
+            Assert(bridge.GetClassPosition(9) == 4, "CarIdx 9 ClassPosition should be 4");
+            Assert(Math.Abs(bridge.GetLapDistPct(9) - 0.05f) < 1e-4, "CarIdx 9 LapDistPct should be 0.05");
+
+            Assert(IracingTelemetryBridge.GetTrackSurfaceString(IracingTrackSurface.InPitStall) == "InPitStall", "TrackSurfaceString should be InPitStall");
+            Assert(IracingTelemetryBridge.GetTrackSurfaceString(IracingTrackSurface.OnTrack) == "OnTrack", "TrackSurfaceString should be OnTrack");
+            Assert(IracingTelemetryBridge.GetTrackSurfaceString(IracingTrackSurface.AproachingPits) == "ApproachingPits", "TrackSurfaceString should be ApproachingPits");
+            Assert(IracingTelemetryBridge.GetTrackSurfaceString(IracingTrackSurface.OffTrack) == "OffTrack", "TrackSurfaceString should be OffTrack");
+            Assert(IracingTelemetryBridge.GetTrackSurfaceString(IracingTrackSurface.NotInWorld) == "NotInWorld", "TrackSurfaceString should be NotInWorld");
+
+            Pass("IracingTelemetryBridge correctly extracts telemetry from PluginManager replay arrays");
+        }
+
+        private static void Test_TargetState_TrackSurface_Properties()
+        {
+            var target = new TargetState();
+            Assert(target.TrackSurface == IracingTrackSurface.NotInWorld, "Initial TrackSurface should be NotInWorld");
+            Assert(target.TrackSurfaceCode == -1, "Initial TrackSurfaceCode should be -1");
+            Assert(target.TrackSurfaceString == "NotInWorld", "Initial TrackSurfaceString should be NotInWorld");
+            Assert(!target.IsInPitStall, "Initial IsInPitStall should be false");
+            Assert(!target.IsOnPitRoad, "Initial IsOnPitRoad should be false");
+
+            target.TrackSurface = IracingTrackSurface.InPitStall;
+            target.IsOnPitRoad = true;
+            Assert(target.IsInPitStall, "IsInPitStall should be true when TrackSurface is InPitStall");
+            Assert(target.TrackSurfaceCode == 1, "TrackSurfaceCode should be 1 for InPitStall");
+            Assert(target.TrackSurfaceString == "InPitStall", "TrackSurfaceString should be InPitStall");
+            Assert(target.IsOnPitRoad, "IsOnPitRoad should be true");
+
+            target.TrackSurface = IracingTrackSurface.OnTrack;
+            target.IsOnPitRoad = false;
+            Assert(!target.IsInPitStall, "IsInPitStall should be false when TrackSurface is OnTrack");
+            Assert(target.TrackSurfaceCode == 3, "TrackSurfaceCode should be 3 for OnTrack");
+            Assert(target.TrackSurfaceString == "OnTrack", "TrackSurfaceString should be OnTrack");
+
+            Pass("TargetState TrackSurface and PitRoad properties reflect correctly");
         }
     }
 }

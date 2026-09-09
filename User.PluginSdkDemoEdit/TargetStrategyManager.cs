@@ -74,6 +74,12 @@ namespace SimRIG
 
         public string Diagnosis { get; set; } = "ANALYZING";
 
+        public IracingTrackSurface TrackSurface { get; set; } = IracingTrackSurface.NotInWorld;
+        public int TrackSurfaceCode => (int)TrackSurface;
+        public string TrackSurfaceString => IracingTelemetryBridge.GetTrackSurfaceString(TrackSurface);
+        public bool IsInPitStall => TrackSurface == IracingTrackSurface.InPitStall;
+        public bool IsOnPitRoad { get; set; } = false;
+
 
 
         /// <summary>
@@ -485,6 +491,8 @@ namespace SimRIG
                         ? (trkInit.ClassPosition > 0 ? trkInit.ClassPosition : trkInit.NativeClassPosition)
                         : (targetOpp.PositionInClass > 0 ? targetOpp.PositionInClass : targetOpp.Position);
                     CurrentTarget.ClassPosition = initialClassPos;
+                    CurrentTarget.TrackSurface = trkInit != null ? trkInit.TrackSurface : IracingTrackSurface.NotInWorld;
+                    CurrentTarget.IsOnPitRoad = trkInit != null && trkInit.IsOnPitRoad;
 
                     // Reset completo, non invalidazione temporanea: il valore torna a 0.0 (spec §10).
                     _relativePace.Reset();
@@ -726,6 +734,8 @@ namespace SimRIG
                     CurrentTarget.TargetSectorMovingAverageRaw = oppData.RawTimes.SectorMovingAverage;
 
                     CurrentTarget.PitCount = oppData.PitCount;
+                    CurrentTarget.TrackSurface = oppData.TrackSurface;
+                    CurrentTarget.IsOnPitRoad = oppData.IsOnPitRoad;
 
                     CurrentTarget.CurrentTank = oppData.EstimatedFuel;
                     CurrentTarget.EstimatedFuelTank = oppData.EstimatedFuelTank;

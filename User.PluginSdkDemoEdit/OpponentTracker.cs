@@ -588,13 +588,19 @@ namespace SimRIG
             double raceLapsRemaining,
             LogManager log,
             double fuelWeightCoef = 0.03,
-            double tempCoef = 0.05)
+            double tempCoef = 0.05,
+            SimHub.Plugins.PluginManager pluginManager = null)
 
         {
-            IracingBridge.Update(data?.NewData?.GetRawDataObject());
+            IracingBridge.Update(data?.NewData?.GetRawDataObject(), pluginManager);
 
             if (!state.IsGameRunning || state.Opponents == null || state.Opponents.Count == 0) return;
             PlayerData.CarClass = state.CarClassId;
+            PlayerData.CarIdx = state.PlayerCarIdx;
+            PlayerData.TrackSurface = IracingBridge.GetTrackSurface(state.PlayerCarIdx);
+            PlayerData.IsOnPitRoad = IracingBridge.IsOnPitRoad(state.PlayerCarIdx);
+            state.PlayerTrackSurface = PlayerData.TrackSurface;
+            state.PlayerIsOnPitRoad = PlayerData.IsOnPitRoad;
 
             // Aggiornamento posizioni di classe dinamiche (robusto per multiclasse)
             var classGroups = state.Opponents

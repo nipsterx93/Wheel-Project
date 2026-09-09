@@ -29,8 +29,9 @@ namespace SimRIG
         public int[] CarIdxLap { get; private set; }
         public int[] CarIdxLapCompleted { get; private set; }
 
-        public void Update(object rawObject)
+        public void Update(object rawObject, SimHub.Plugins.PluginManager pm = null)
         {
+            bool populatedFromSample = false;
             if (rawObject is iRacingSDK.DataSample sample && sample.Telemetry != null)
             {
                 var tel = sample.Telemetry;
@@ -41,15 +42,95 @@ namespace SimRIG
                 CarIdxLapDistPct = tel.CarIdxLapDistPct;
                 CarIdxLap = tel.CarIdxLap;
                 CarIdxLapCompleted = tel.CarIdxLapCompleted;
-                IsAvailable = CarIdxOnPitRoad != null;
+                populatedFromSample = (CarIdxOnPitRoad != null || CarIdxTrackSurface != null);
             }
-            else
+
+            // Fallback per Replay SimHub (.telemetry.json) tramite PluginManager
+            if (!populatedFromSample && pm != null)
             {
-                // Non azzeriamo IsAvailable se stiamo usando mock data manuale nei test
-                if (rawObject == null && CarIdxOnPitRoad == null)
+                var rawSurfaces = pm.GetPropertyValue("DataCorePlugin.GameRawData.Telemetry.CarIdxTrackSurface");
+                if (rawSurfaces is iRacingSDK.TrackLocation[] locations)
                 {
-                    IsAvailable = false;
+                    CarIdxTrackSurface = locations;
                 }
+                else if (rawSurfaces is Array arrSurf)
+                {
+                    if (CarIdxTrackSurface == null || CarIdxTrackSurface.Length != arrSurf.Length)
+                        CarIdxTrackSurface = new iRacingSDK.TrackLocation[arrSurf.Length];
+                    for (int i = 0; i < arrSurf.Length; i++)
+                    {
+                        CarIdxTrackSurface[i] = (iRacingSDK.TrackLocation)Convert.ToInt32(arrSurf.GetValue(i));
+                    }
+                }
+
+                var rawPitRoad = pm.GetPropertyValue("DataCorePlugin.GameRawData.Telemetry.CarIdxOnPitRoad");
+                if (rawPitRoad is bool[] bools)
+                {
+                    CarIdxOnPitRoad = bools;
+                }
+                else if (rawPitRoad is Array arrPit)
+                {
+                    if (CarIdxOnPitRoad == null || CarIdxOnPitRoad.Length != arrPit.Length)
+                        CarIdxOnPitRoad = new bool[arrPit.Length];
+                    for (int i = 0; i < arrPit.Length; i++)
+                    {
+                        CarIdxOnPitRoad[i] = Convert.ToBoolean(arrPit.GetValue(i));
+                    }
+                }
+
+                var rawPitCount = pm.GetPropertyValue("DataCorePlugin.GameRawData.Telemetry.CarIdxPitStopCount");
+                if (rawPitCount is int[] pitCounts)
+                {
+                    CarIdxPitStopCount = pitCounts;
+                }
+                else if (rawPitCount is Array arrCount)
+                {
+                    if (CarIdxPitStopCount == null || CarIdxPitStopCount.Length != arrCount.Length)
+                        CarIdxPitStopCount = new int[arrCount.Length];
+                    for (int i = 0; i < arrCount.Length; i++)
+                    {
+                        CarIdxPitStopCount[i] = Convert.ToInt32(arrCount.GetValue(i));
+                    }
+                }
+
+                var rawClassPos = pm.GetPropertyValue("DataCorePlugin.GameRawData.Telemetry.CarIdxClassPosition");
+                if (rawClassPos is int[] classPositions)
+                {
+                    CarIdxClassPosition = classPositions;
+                }
+                else if (rawClassPos is Array arrPos)
+                {
+                    if (CarIdxClassPosition == null || CarIdxClassPosition.Length != arrPos.Length)
+                        CarIdxClassPosition = new int[arrPos.Length];
+                    for (int i = 0; i < arrPos.Length; i++)
+                    {
+                        CarIdxClassPosition[i] = Convert.ToInt32(arrPos.GetValue(i));
+                    }
+                }
+
+                var rawLapDist = pm.GetPropertyValue("DataCorePlugin.GameRawData.Telemetry.CarIdxLapDistPct");
+                if (rawLapDist is float[] lapDists)
+                {
+                    CarIdxLapDistPct = lapDists;
+                }
+                else if (rawLapDist is Array arrDist)
+                {
+                    if (CarIdxLapDistPct == null || CarIdxLapDistPct.Length != arrDist.Length)
+                        CarIdxLapDistPct = new float[arrDist.Length];
+                    for (int i = 0; i < arrDist.Length; i++)
+                    {
+                        CarIdxLapDistPct[i] = Convert.ToSingle(arrDist.GetValue(i));
+                    }
+                }
+            }
+
+            if (CarIdxOnPitRoad != null || CarIdxTrackSurface != null)
+            {
+                IsAvailable = true;
+            }
+            else if (rawObject == null && pm == null)
+            {
+                IsAvailable = false;
             }
         }
 
@@ -111,6 +192,18 @@ namespace SimRIG
             CarIdxClassPosition = classPosition;
             CarIdxLapDistPct = lapDistPct;
             IsAvailable = true;
+        }
+
+        public static string GetTrackSurfaceString(IracingTrackSurface surface)
+        {
+            switch (surface)
+            {
+                case IracingTrackSurface.OnTrack: return "OnTrack";
+                case IracingTrackSurface.InPitStall: return "InPitStall";
+                case IracingTrackSurface.AproachingPits: return "ApproachingPits";
+                case IracingTrackSurface.OffTrack: return "OffTrack";
+                default: return "NotInWorld";
+            }
         }
     }
 }

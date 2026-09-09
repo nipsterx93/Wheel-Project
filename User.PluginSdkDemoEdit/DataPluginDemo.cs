@@ -441,6 +441,10 @@ namespace SimRIG
             pm.AddProperty("SimRIG.Target.Name", t, "--");
             pm.AddProperty("SimRIG.Target.Position", t, 0);
             pm.AddProperty("SimRIG.Target.ClassPosition", t, 0);
+            pm.AddProperty("SimRIG.Target.TrackSurface", t, "NotInWorld");
+            pm.AddProperty("SimRIG.Target.TrackSurfaceCode", t, -1);
+            pm.AddProperty("SimRIG.Target.IsInPitStall", t, false);
+            pm.AddProperty("SimRIG.Target.IsOnPitRoad", t, false);
             pm.AddProperty("SimRIG.Target.GapSeconds", t, 0.0);
             pm.AddProperty("SimRIG.Target.GapString", t, "");
             pm.AddProperty("SimRIG.Target.RelativePace", t, 0.0);
@@ -581,6 +585,10 @@ namespace SimRIG
             pm.AddProperty("SimRIG.Player.Diagnosis", t, "ANALYZING");
             pm.AddProperty("SimRIG.Player.SelectedTyreCompound", t, "DRY");
             pm.AddProperty("SimRIG.Player.ClassPosition", t, 0);
+            pm.AddProperty("SimRIG.Player.TrackSurface", t, "NotInWorld");
+            pm.AddProperty("SimRIG.Player.TrackSurfaceCode", t, -1);
+            pm.AddProperty("SimRIG.Player.IsInPitStall", t, false);
+            pm.AddProperty("SimRIG.Player.IsOnPitRoad", t, false);
 
             pm.AddProperty("SimRIG.Pit.StationaryTimeLoss", t, 0.0);
             pm.AddProperty("SimRIG.Pit.TransitTime", t, 0.0);
@@ -1262,7 +1270,7 @@ namespace SimRIG
                         $"Rain10m: {CurrentState.RainIntensity10Min:F2} | Rain30m: {CurrentState.RainIntensity30Min:F2}");
                 }
 
-                OpponentTracker.Update(data, Settings, TyreManager.CurrentScope, CurrentState, PitRadar, data.NewData.SessionTimeLeft.TotalSeconds, CurrentState.RaceStartingFuel, CurrentState.MaxFuelCapacity, FuelManager.Calculations.AverageFuelPerLap, RaceAnalyzer.PlayerPitZone.BestRawTime, RaceAnalyzer.PlayerExtendedPitZone.BestRawTime, RaceAnalyzer.Results.RaceLapsRemaining, LogManager, Settings.FuelWeightCoef, Settings.TempCoef);
+                OpponentTracker.Update(data, Settings, TyreManager.CurrentScope, CurrentState, PitRadar, data.NewData.SessionTimeLeft.TotalSeconds, CurrentState.RaceStartingFuel, CurrentState.MaxFuelCapacity, FuelManager.Calculations.AverageFuelPerLap, RaceAnalyzer.PlayerPitZone.BestRawTime, RaceAnalyzer.PlayerExtendedPitZone.BestRawTime, RaceAnalyzer.Results.RaceLapsRemaining, LogManager, Settings.FuelWeightCoef, Settings.TempCoef, PluginManager);
                 CurrentState.CrossoverAlertState = OpponentTracker.CrossoverAlertState;
                 CurrentState.CrossoverDeltaSeconds = OpponentTracker.CrossoverDeltaSeconds;
 
@@ -1797,6 +1805,10 @@ namespace SimRIG
             PluginManager.SetPropertyValue("SimRIG.Target.Name", t, tgt.Name);
             PluginManager.SetPropertyValue("SimRIG.Target.Position", t, tgt.ClassPosition);
             PluginManager.SetPropertyValue("SimRIG.Target.ClassPosition", t, tgt.ClassPosition);
+            PluginManager.SetPropertyValue("SimRIG.Target.TrackSurface", t, tgt.TrackSurfaceString);
+            PluginManager.SetPropertyValue("SimRIG.Target.TrackSurfaceCode", t, tgt.TrackSurfaceCode);
+            PluginManager.SetPropertyValue("SimRIG.Target.IsInPitStall", t, tgt.IsInPitStall);
+            PluginManager.SetPropertyValue("SimRIG.Target.IsOnPitRoad", t, tgt.IsOnPitRoad);
             PluginManager.SetPropertyValue("SimRIG.Target.GapSeconds", t, Math.Round(tgt.GapSeconds, 1));
             PluginManager.SetPropertyValue("SimRIG.Target.GapString", t, tgt.GapString);
             PluginManager.SetPropertyValue("SimRIG.Target.RelativePace", t, Math.Round(tgt.RelativePace, 3));
@@ -2010,6 +2022,10 @@ namespace SimRIG
             PluginManager.SetPropertyValue("SimRIG.Player.Diagnosis", t, OpponentTracker.PlayerData.Diagnosis);
             PluginManager.SetPropertyValue("SimRIG.Player.SelectedTyreCompound", t, TyreManager.SelectedWetCompound ? "WET" : "DRY");
             PluginManager.SetPropertyValue("SimRIG.Player.ClassPosition", t, CurrentState.PositionInClass > 0 ? CurrentState.PositionInClass : CurrentState.Position);
+            PluginManager.SetPropertyValue("SimRIG.Player.TrackSurface", t, IracingTelemetryBridge.GetTrackSurfaceString(OpponentTracker.PlayerData.TrackSurface));
+            PluginManager.SetPropertyValue("SimRIG.Player.TrackSurfaceCode", t, (int)OpponentTracker.PlayerData.TrackSurface);
+            PluginManager.SetPropertyValue("SimRIG.Player.IsInPitStall", t, OpponentTracker.PlayerData.TrackSurface == IracingTrackSurface.InPitStall);
+            PluginManager.SetPropertyValue("SimRIG.Player.IsOnPitRoad", t, OpponentTracker.PlayerData.IsOnPitRoad);
 
             PluginManager.SetPropertyValue("SimRIG.Pit.StationaryTimeLoss", t, Math.Round(PitRadar.LastStationaryTime, 1));
             PluginManager.SetPropertyValue("SimRIG.Pit.TransitTime", t, Math.Round(PitRadar.PitTransitTime, 2));

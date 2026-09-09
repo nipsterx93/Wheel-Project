@@ -53,6 +53,8 @@ namespace SimRIG
         public string CarClassId { get; set; } = "DEFAULT";
         public string CarModel { get; set; } = "DEFAULT";
         public int PlayerCarIdx { get; set; } = -1;
+        public IracingTrackSurface PlayerTrackSurface { get; set; } = IracingTrackSurface.NotInWorld;
+        public bool PlayerIsOnPitRoad { get; set; } = false;
 
         public double SpeedKmh { get; set; } = 0.0;
         public int Rpm { get; set; } = 0;
