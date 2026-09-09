@@ -47,6 +47,56 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-09 23:35] antigravity → chiunque entri dopo
+
+**Task:** Esposizione proprietà SimHub TrackSurface / IsInPitStall / IsOnPitRoad per Player e Target e fallback per replay array
+**Piano:** `implementation_plan.md`
+**Commit:** `56321b5`
+
+### Fatto
+- `User.PluginSdkDemoEdit/IracingTelemetryBridge.cs:22, 60-150, 316-328`:
+  - Aggiunto fallback da `PluginManager` in `IracingTelemetryBridge.Update(object rawObject, SimHub.Plugins.PluginManager pm = null)`. Quando si riproducono replay SimHub (`.telemetry.json`), i campi array di `GameRawData.Telemetry` (`CarIdxTrackSurface`, `CarIdxOnPitRoad`) possono essere restituiti come array .NET boxed (`System.Array`, `int[]`, `bool[]`, `TrackLocation[]`). Il bridge ora effettua l'unboxing dinamico per tutti i 64 indici auto `CarIdx`.
+  - Aggiunto helper pubblico `GetTrackSurfaceString(IracingTrackSurface surface)` per mappare l'enum in stringhe leggibili (`"OnTrack"`, `"InPitStall"`, `"ApproachingPits"`, `"OffTrack"`, `"NotInWorld"`).
+- `User.PluginSdkDemoEdit/SessionState.cs:137-140, 185-188`:
+  - Aggiunte proprietà `PlayerTrackSurface` (`IracingTrackSurface`) e `PlayerIsOnPitRoad` (`bool`) con reset in `SessionState.Reset()`.
+- `User.PluginSdkDemoEdit/OpponentTracker.cs:142, 658-662`:
+  - Passato `PluginManager` a `IracingBridge.Update(rawObject, _pluginManager)`.
+  - Popolati `PlayerData.TrackSurface`, `PlayerData.IsOnPitRoad`, `state.PlayerTrackSurface` e `state.PlayerIsOnPitRoad` per la vettura del giocatore (`PlayerCarIdx`).
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:122-126, 172-176, 1495-1510`:
+  - Esteso `TargetState` con `TrackSurface` (string), `TrackSurfaceCode` (int), `TrackSurfaceString` (string), `IsInPitStall` (bool), `IsOnPitRoad` (bool).
+  - A ogni tick di `Update`, i dati dello stato pista del target selezionato (`oppData.TrackSurface` e `oppData.IsOnPitRoad`) vengono mappati e sincronizzati in `CurrentTarget`.
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs:450-460, 595-605, 1815-1830, 2030-2045`:
+  - Registrate e pubblicate a ogni tick le 8 nuove proprietà SimHub:
+    - `SimRIG.Player.TrackSurface` (string, es. "OnTrack", "InPitStall")
+    - `SimRIG.Player.TrackSurfaceCode` (int, 0=NotInWorld, 1=OffTrack, 2=InPitStall, 3=ApproachingPits, 4=OnTrack)
+    - `SimRIG.Player.IsInPitStall` (bool, true se TrackSurface == InPitStall)
+    - `SimRIG.Player.IsOnPitRoad` (bool, true se sulla pit road)
+    - `SimRIG.Target.TrackSurface` (string)
+    - `SimRIG.Target.TrackSurfaceCode` (int)
+    - `SimRIG.Target.IsInPitStall` (bool)
+    - `SimRIG.Target.IsOnPitRoad` (bool)
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs:330-410`:
+  - Aggiunti 2 unit test: `Test_IracingTelemetryBridge_PluginManagerReplayFallback` e `Test_TargetState_TrackSurface_Properties`.
+  - Suite test: passata da 340 a **342 test PASS** (100% verdi, 0 falliti).
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build 0 errori, 342 PASS, exit code 0.
+
+### Stato
+- ✅ Compila senza errori
+- ✅ 342 test passano (100%)
+
+### Per chi entra
+**Prossimo passo:** Test su replay con SimHub aperto per visualizzare le nuove proprietà `SimRIG.Player.*` e `SimRIG.Target.*` nella lista proprietà e su dashboard/overlay.
+**NON toccare:** Non agganciare `StationaryTime` a `InPitStall` (richiesta esplicita utente: mantenere separato per ora).
+**Attenzione a:** Se si modificano o leggono altre proprietà array da `GameRawData.Telemetry`, utilizzare sempre l'estrazione unboxing tramite `IracingTelemetryBridge` con fallback su `PluginManager`.
+
+---
+
 ## [2026-09-09 15:15] antigravity → chiunque entri dopo
 
 **Task:** Fix replay pit detection fallback, Opponents fuel drop to 0L, gap flicker and multiclass target class position
@@ -403,50 +453,6 @@ Criterio di successo: output console termina con `ALL UNIT TESTS PASSED SUCCESSF
 **Prossimo passo:** Continuare secondo roadmap `.ai/plans/2026-08-24-roadmap.md` o analizzare eventuali feedback di telemetria da nuove gare/replay.
 **NON toccare:** `FuelManager.cs` nelle sezioni di detection del pit/sessione già stabilizzate.
 **Attenzione a:** La finestra di campionamento per il consumo medio resta a 5 giri (`Calculations.FuelAveragesWindowSize = 5`). Se in futuro si vorrà aumentare o diminuire tale finestra, la mediana manterrà sempre un breakdown point del 50% (ossia immunità a un numero di outlier pari a `(N - 1) / 2`).
-
----
-
-## [2026-09-07 00:35] antigravity → chiunque entri dopo (Claude in particolare)
-
-**Task:** Sincronizzazione precisa del via di gara sul primo taglio del traguardo (latch carburante e conteggio giri a verde)
-**Piano:** —
-**Commit:** questo
-
-### Fatto
-- `User.PluginSdkDemoEdit/SessionState.cs:133-134, 154-155`:
-  - Introdotti campi `public bool RaceStartLineCrossed { get; set; } = false;` e `public int RaceStartLap { get; set; } = 0;`, entrambi opportunamente resettati in `Reset()`.
-  - Riscritto il latch del carburante iniziale (`ManageStartingFuelLatch`). Che la partenza sia lanciata (rolling start con giro di ricognizione/formazione) o da fermo (standing start), allo sventolare della bandiera verde (`SessionStateStatus >= 4`) `RaceStartingFuel` **non viene più agganciato anticipatamente**: si attende che la vettura tagli per la prima volta il traguardo sotto bandiera verde (rilevamento transizione linea / incremento giro). Solo in quell'istante esatto viene registrato `state.RaceStartingFuel = state.CurrentFuelLevel`, `RaceStartingFuelLatched = true`, `RaceStartLineCrossed = true` e `RaceStartLap = state.CurrentLap`.
-- `User.PluginSdkDemoEdit/FuelManager.cs:258-295, 335`:
-  - Rimosso l'hack grezzo precedente `isRaceStartLap = state.IsRaceSession && _lastEvaluatedLap <= 1;`.
-  - Finché `state.IsRaceSession && !state.RaceStartLineCrossed`, `_lastEvaluatedLap` viene mantenuto allineato a `state.CurrentLap` e nessun consumo viene contabilizzato né in telemetria né nelle medie.
-  - Al frame esatto in cui `RaceStartLineCrossed` diventa `true` (primo taglio linea under green), `_fuelAtLapStart` viene agganciato a `RaceStartingFuel` (es. 46.07 L nel replay di Road Atlanta, invece dei 49.04 L alla bandiera verde): lo sprint prima della linea viene scartato a monte.
-  - Al secondo taglio del traguardo (fine del primo giro effettivo di gara, es. da Lap 2 a Lap 3 in iRacing), il consumo calcolato (46.07 - 43.86 = 2.21 L) entra direttamente come **primo campione pulito** nella finestra dei 5 giri di `AverageFuelPerLap`, garantendo un allineamento istantaneo con irdashies e con la realtà.
-  - Nei log di consumo viene riportato sia il giro di gara relativo (`RaceLap`) sia il giro raw di telemetria (`Lap`).
-- `User.PluginSdkDemoEdit/RaceAnalyzer.cs:640-660, 750-770, 780-800, 910-1010, 1120-1155, 1280-1295, 1715-1825`:
-  - `Results.RaceLapsCompleted`: calcolato come `state.RaceStartLineCrossed ? Math.Max(0, state.CurrentLap - state.RaceStartLap) : 0` (e 0 se fuori gara o prima del verde). Sia in formazione (`SessionStateStatus == 3`) che nello sprint pre-via prima della linea (`SessionStateStatus == 4`), i giri completati di gara rimangono a 0.
-  - `Results.LeaderRaceLapsCompleted`: sincronizzato analogamente col giro iniziale del leader.
-  - `playerAbsolutePos` e `leaderAbsolutePos`: tenuti a 0.0 finché non si taglia la linea del via under green.
-  - Reso completamente null-safe `RaceAnalyzer.Update` (null-conditional su `log?.Log(...)`, guardie contro `tracker == null`, `radar == null`, `state.Opponents == null`, `fuel == null`).
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/FuelOutlierFilterUnitTests.cs:365, 480, 500`:
-  - Aggiornati i test esistenti per riflettere il latch al passaggio sulla linea.
-  - Aggiunto test completo end-to-end `Test_RaceStartLineCrossed_FuelAndLapSync` che valida l'intero ciclo: formazione -> sprint pre-via -> attraversamento linea del via (giri 0, fuel latched) -> primo giro reale completato (giri completati 1, consumo 2.21 L).
-- Suite test: passata da 321 a **322 test PASS** (100% verdi, 0 falliti).
-
-### Come verificare
-```bash
-"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
-"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: build 0 errori, 322 PASS, exit code 0.
-
-### Stato
-- ✅ Compila
-- ✅ Test passano (322 PASS su 322)
-
-### Per chi entra
-**Prossimo passo:** Verifica live con replay a Road Atlanta con Andreas.
-**NON toccare:** `Hardware/` (territorio di Andreas).
-**Attenzione a:** In iRacing durante il formation lap il giro raw può essere 1 o 2 a seconda del tracciato. Il conteggio giri di gara `RaceLapsCompleted` parte tassativamente da 0 sul primo attraversamento linea under green e scala a 1 al completamento del primo giro di gara.
 
 ---
 

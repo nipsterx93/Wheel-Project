@@ -9,6 +9,50 @@
 
 ---
 
+## [2026-09-07 00:35] antigravity → chiunque entri dopo (Claude in particolare)
+
+**Task:** Sincronizzazione precisa del via di gara sul primo taglio del traguardo (latch carburante e conteggio giri a verde)
+**Piano:** —
+**Commit:** `506c1c8`
+
+### Fatto
+- `User.PluginSdkDemoEdit/SessionState.cs:133-134, 154-155`:
+  - Introdotti campi `public bool RaceStartLineCrossed { get; set; } = false;` e `public int RaceStartLap { get; set; } = 0;`, entrambi opportunamente resettati in `Reset()`.
+  - Riscritto il latch del carburante iniziale (`ManageStartingFuelLatch`). Che la partenza sia lanciata (rolling start con giro di ricognizione/formazione) o da fermo (standing start), allo sventolare della bandiera verde (`SessionStateStatus >= 4`) `RaceStartingFuel` **non viene più agganciato anticipatamente**: si attende che la vettura tagli per la prima volta il traguardo sotto bandiera verde (rilevamento transizione linea / incremento giro). Solo in quell'istante esatto viene registrato `state.RaceStartingFuel = state.CurrentFuelLevel`, `RaceStartingFuelLatched = true`, `RaceStartLineCrossed = true` e `RaceStartLap = state.CurrentLap`.
+- `User.PluginSdkDemoEdit/FuelManager.cs:258-295, 335`:
+  - Rimosso l'hack grezzo precedente `isRaceStartLap = state.IsRaceSession && _lastEvaluatedLap <= 1;`.
+  - Finché `state.IsRaceSession && !state.RaceStartLineCrossed`, `_lastEvaluatedLap` viene mantenuto allineato a `state.CurrentLap` e nessun consumo viene contabilizzato né in telemetria né nelle medie.
+  - Al frame esatto in cui `RaceStartLineCrossed` diventa `true` (primo taglio linea under green), `_fuelAtLapStart` viene agganciato a `RaceStartingFuel` (es. 46.07 L nel replay di Road Atlanta, invece dei 49.04 L alla bandiera verde): lo sprint prima della linea viene scartato a monte.
+  - Al secondo taglio del traguardo (fine del primo giro effettivo di gara, es. da Lap 2 a Lap 3 in iRacing), il consumo calcolato (46.07 - 43.86 = 2.21 L) entra direttamente come **primo campione pulito** nella finestra dei 5 giri di `AverageFuelPerLap`, garantendo un allineamento istantaneo con irdashies e con la realtà.
+  - Nei log di consumo viene riportato sia il giro di gara relativo (`RaceLap`) sia il giro raw di telemetria (`Lap`).
+- `User.PluginSdkDemoEdit/RaceAnalyzer.cs:640-660, 750-770, 780-800, 910-1010, 1120-1155, 1280-1295, 1715-1825`:
+  - `Results.RaceLapsCompleted`: calcolato come `state.RaceStartLineCrossed ? Math.Max(0, state.CurrentLap - state.RaceStartLap) : 0` (e 0 se fuori gara o prima del verde). Sia in formazione (`SessionStateStatus == 3`) che nello sprint pre-via prima della linea (`SessionStateStatus == 4`), i giri completati di gara rimangono a 0.
+  - `Results.LeaderRaceLapsCompleted`: sincronizzato analogamente col giro iniziale del leader.
+  - `playerAbsolutePos` e `leaderAbsolutePos`: tenuti a 0.0 finché non si taglia la linea del via under green.
+  - Reso completamente null-safe `RaceAnalyzer.Update` (null-conditional su `log?.Log(...)`, guardie contro `tracker == null`, `radar == null`, `state.Opponents == null`, `fuel == null`).
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/FuelOutlierFilterUnitTests.cs:365, 480, 500`:
+  - Aggiornati i test esistenti per riflettere il latch al passaggio sulla linea.
+  - Aggiunto test completo end-to-end `Test_RaceStartLineCrossed_FuelAndLapSync` che valida l'intero ciclo: formazione -> sprint pre-via -> attraversamento linea del via (giri 0, fuel latched) -> primo giro reale completato (giri completati 1, consumo 2.21 L).
+- Suite test: passata da 321 a **322 test PASS** (100% verdi, 0 falliti).
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build 0 errori, 322 PASS, exit code 0.
+
+### Stato
+- ✅ Compila
+- ✅ Test passano (322 PASS su 322)
+
+### Per chi entra
+**Prossimo passo:** Verifica live con replay a Road Atlanta con Andreas.
+**NON toccare:** `Hardware/` (territorio di Andreas).
+**Attenzione a:** In iRacing durante il formation lap il giro raw può essere 1 o 2 a seconda del tracciato. Il conteggio giri di gara `RaceLapsCompleted` parte tassativamente da 0 sul primo attraversamento linea under green e scala a 1 al completamento del primo giro di gara.
+
+---
+
 ## [2026-09-06 18:55] antigravity → chiunque entri dopo (Claude in particolare)
 
 **Task:** Risoluzione mancato seeding passo leader da YAML e contaminazione media consumo al via (esclusione assoluta Giro 1)
