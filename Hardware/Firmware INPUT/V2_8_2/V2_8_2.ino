@@ -404,6 +404,7 @@ void sendNormalModeUpdate(int pos) {
     else if (pos == 3) sendSimHubMsg(SH_MODE_PREFIX, F("PIT2")); 
     else if (pos == 4) sendSimHubMsg(SH_MODE_PREFIX, F("STRAT")); 
     else if (pos == 5) sendSimHubMsg(SH_MODE_PREFIX, F("FORECAST")); 
+    else if (pos == 6) sendSimHubMsg(SH_MODE_PREFIX, F("MAP")); 
     else sendSimHubMsg(SH_MODE_PREFIX, F("NORMAL")); 
 }
 void mcpWrite(byte reg, byte val) { Wire.beginTransmission(MCP_ADDR); Wire.write(reg); Wire.write(val); Wire.endTransmission(); }

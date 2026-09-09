@@ -9,6 +9,41 @@
 
 ---
 
+## [2026-09-06 14:30] antigravity → chiunque entri dopo (Claude in particolare)
+
+**Task:** Y-52 — Sblocco dump `SimRigMetadata.json` via estrazione `SessionData` reale da SimHub e riallineamento completo della roadmap
+**Piano:** `.ai/plans/2026-08-24-roadmap.md` (aggiornato)
+**Commit:** `e408396`
+
+### Fatto
+- **Diagnosi del mancato dump:** Individuato il motivo per cui `SimRigMetadata.json` non veniva mai scritto su disco nei replay reali. SimHub non popola la stringa YAML grezza nelle 4 proprietà `DataCorePlugin.GameRawData.SessionInfo*` testate da `TelemetryReader.cs:107-110`. SimHub integra `iRacingSDK.dll` che effettua il parsing interno dello YAML in oggetti .NET (`SessionData`, `DriverInfo`, `WeekendInfo`) e pubblica le proprietà strutturate su `DataCorePlugin.GameRawData.SessionData.*` (compresi i singoli piloti `Drivers00`..`Drivers63`).
+- `User.PluginSdkDemoEdit/SessionDataReader.cs` (nuovo) — Modulo robusto e privo di eccezioni che estrae tutti i metadati (`PlayerEstimatedPaceSec`, `DriverPitTrkPct`, `FuelDensityKgPerLitre`, `PlayerMaxFuelLitres`, `PitSpeedLimitKmh`, `StandingStart`, `IncidentLimit`, `FastRepairsAvailable`, `DryTireSetLimit`, `DriverEstimatedPaceSec`, `ClassEstimatedPaceSec`, `DriverMaxFuelPct`) sia via reflection dall'oggetto nativo iRacing (`GameData.NewData.GetRawDataObject()`) sia dal property bag di SimHub come fallback. Include parsing sicuro per percentuali (`ParsePercentage`, sia scala 0-1 che 0-100) e velocità con unità (`SpeedKmh`, kph e mph).
+- `User.PluginSdkDemoEdit/TelemetryReader.cs` — `RefreshSessionMetadata`: aggiunto fallback automatico su `SessionDataReader` quando lo YAML raw è assente o vuoto, e metodo `DumpMetadata` per scrivere `SimRigMetadata.json` anche serializzando `SessionMetadata` in JSON qualora la stringa YAML non sia fornita dal simulatore.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.csproj` — Registrato `SessionDataReader.cs` tra i file compilati.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/SessionMetadataUnitTests.cs` — Aggiunti 3 unit test dedicati a `SessionDataReader` (`Test_SessionDataReader_ParsePercentage`, `Test_SessionDataReader_SpeedKmh`, `Test_SessionDataReader_ReadFromRawObject`). Suite test passata da 311 a **314 test PASS**.
+- `.ai/plans/2026-08-24-roadmap.md` — Aggiornata la roadmap datata 2026-08-24: definita la situazione attuale (fase reattiva di bugfix chiusa con 314 test, Fase A completata a codice in attesa di test live, obiettivo attivo Y-52 passi 1-4, seguito da Fase B per verifica undercut/overcut su dati reali di gara).
+- `.ai/PROJECT_STATE.md` — Aggiornato conteggio test a 314 PASS, aggiornato stato Y-52 e rilasciato il lock.
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit `0`, **314 PASS**.
+Eseguendo un replay in SimHub, `SimRigMetadata.json` viene ora scritto nella cartella del plugin (o in `MetadataDumpFolder`).
+
+### Stato
+- ✅ Compila senza errori (MSBuild VS2022 Community)
+- ✅ 314 test PASS (0 falliti)
+- ✅ `SimRigMetadata.json` sbloccato
+
+### Per chi entra
+**Prossimo passo:** Continuare con **Y-52 Passo 3**: calcolo della metrica piazzola box via `DriverPitTrkPct` * track length, e **Passo 4** (densità carburante reale `FuelDensityKgPerLitre`, incident limit, standing start).
+**NON toccare:** `Hardware/` (territorio Andreas, Y-53) e i file `*_LEGACY.cs`.
+**Attenzione a:** Mantenere `state.Metadata` popolato come singleton in `SessionState` via `CopyInto` anziché riassegnare il riferimento, per preservare tutti i consumatori esistenti.
+
+---
+
 ## [2026-09-06 13:50] antigravity → chiunque entri dopo
 
 **Task:** Comandi slash `/new-session` e `/handoff` registrati come Skill per Antigravity 2.0 (`.agent/skills/`)
