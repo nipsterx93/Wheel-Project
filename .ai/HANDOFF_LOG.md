@@ -47,6 +47,34 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-09 13:30] antigravity → chiunque entri dopo
+
+**Task:** Firmware INPUT V2.8.2 — aggiunta stato TEST su Rotary POS 7
+**Piano:** —
+**Commit:** `questo`
+
+### Fatto
+- `Hardware/Firmware INPUT/V2_8_2/V2_8_2.ino:408`:
+  - Aggiunto stato `TEST` su posizione rotary 7 in `sendNormalModeUpdate(int pos)` (`else if (pos == 7) sendSimHubMsg(SH_MODE_PREFIX, F("TEST"));`), posizionato subito dopo `MAP` (pos 6). Il firmware invia ora `WMODE:TEST` verso SimHub quando il Rotary 1 viene ruotato in posizione 7. Nessun'altra logica modificata.
+- Compilazione firmware verificata con `arduino-cli` con 0 errori (24.758 byte programma, 1.364 byte variabili globali).
+
+### Come verificare
+```bash
+& "C:\Users\Andreas\AppData\Local\Programs\Arduino IDE\resources\app\lib\backend\resources\arduino-cli.exe" compile --fqbn arduino:avr:leonardo "Hardware/Firmware INPUT/V2_8_2"
+```
+Atteso: compilazione completata con 0 errori.
+
+### Stato
+- ✅ Firmware compila pulito con `arduino-cli` (0 errori)
+- ✅ 338 test PASS C# (invariati)
+
+### Per chi entra
+**Prossimo passo:** Test su volante fisico ruotando il selettore Rotary 1 su posizione 7 e verifica ricezione proprietà `SimRIG.Mode` = `"TEST"` in SimHub.
+**NON toccare:** `Hardware/` rimane territorio di Andreas.
+**Attenzione a:** Il conteggio test corrente del plugin C# è 338 PASS.
+
+---
+
 ## [2026-09-09 12:15] antigravity → chiunque entri dopo
 
 **Task:** Telemetria nativa iRacing per Opponents: latch Fuel a giro 4, scomposizione soste box e stabilizzazione gap
@@ -413,38 +441,6 @@ Atteso: build 0 errori, 321 PASS, exit code 0.
 **Prossimo passo:** Verifica su replay reale con Andreas a Road Atlanta.
 **NON toccare:** `Hardware/` (territorio di Andreas).
 **Attenzione a:** In gara (`IsRaceSession`), il primo giro lanciato valido che entra in media è il completamento del Giro 2.
-
----
-
-## [2026-09-06 17:35] antigravity → chiunque entri dopo (Claude in particolare)
-
-**Task:** Risoluzione contaminazione consumo medio al via e protezione baseline passo da outlap/formazione
-**Piano:** —
-**Commit:** `<sha>`
-
-### Fatto
-- `User.PluginSdkDemoEdit/FuelManager.cs:99` — Introdotta costante `FUEL_AVERAGE_WINDOW_LAPS = 5` per `AverageFuelPerLap` mantenendo `MAX_CLEAN_HISTORY_LAPS = 10` per l'Interquartile Range (IQR). Il consumo medio calcola ora la media aritmetica sui 5 giri più recenti accettati, garantendo un rapido allineamento a irdashies e ai cambi di ritmo in pista.
-- `User.PluginSdkDemoEdit/FuelManager.cs:277, 298, 326, 382` — Introdotto flag `_lapStartedBeforeGreen`: se la gara parte dalla griglia o giro di ricognizione/parade (`SessionStateStatus < 4`), il Giro 1 viene contrassegnato come `isRaceStartLap` e il suo consumo (spesso anomalo per lancio o parzialità) aggiorna la telemetria istantanea `LastLapFuelUsed` ma **non entra mai in `_recentLaps`** né nella media `AverageFuelPerLap`.
-- `User.PluginSdkDemoEdit/RaceAnalyzer.cs:1240, 2150` — Introdotto metodo di plausibilità `RaceAnalyzer.IsPlausibleBaselineLap(lapTime, playerEstimatedPaceSec, classEstimatedPaceSec, trackLengthMeters)`. In `AnalyzePlayerLap`, i tempi sul giro che superano il 120% del passo atteso (come i 109.744 s del giro di formazione a Road Atlanta rispetto a 77.047 s attesi) o inferiori al 60% vengono esclusi dall'aggiornare `NormalizedTimes.LapBaseline`. Questo impedisce il crollo istantaneo delle proiezioni del totale giri da 35 a 26 giri.
-- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:535, 766, 1126` — Sostituita la cascata ad-hoc di calcolo del tempo di riferimento che controllava per primo `state.LastLapTimeSec > 10.0` (prendendo 109.744 s) con `RaceAnalyzer.ResolvePlayerPace` che rispetta la gerarchia canonica (baseline normalizzata > best lap di sessione > stima YAML del pilota > stima YAML di classe > ripiego fisico).
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/PredictedPaceUnitTests.cs:460` — Aggiunti test di regressione `Test_IsPlausibleBaselineLap_RejectsFormationAndOutlaps` e `Test_IsPlausibleBaselineLap_AcceptsNormalRacingLaps`.
-- Suite test: passata da 318 a **320 test PASS** (100% verdi, 0 falliti).
-
-### Come verificare
-```bash
-"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
-"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: exit `0`, **320 PASS**.
-
-### Stato
-- ✅ Compila senza errori (solution completa compilata e deployata in `%SIMHUB_INSTALL_PATH%`)
-- ✅ 320 test passano (100%)
-
-### Per chi entra
-**Prossimo passo:** Verifica dal vivo su replay dei log per confermare che `AverageFuelPerLap` e le proiezioni restino allineate e stabili sin dal via.
-**NON toccare:** `Hardware/` (riservato ad Andreas).
-**Attenzione a:** La baseline del passo in `RaceAnalyzer` ora rifiuta outlap e giri lenti (> +20% del passo atteso YAML/fisico); il carburante del giro 1 di formazione viene letto in `LastLapFuelUsed` ma non contamina `AverageFuelPerLap`.
 
 ---
 
