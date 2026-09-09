@@ -108,6 +108,11 @@ namespace SimRIG
 
                             if (!string.IsNullOrEmpty(userName))
                             {
+                                if (cIdx >= 0)
+                                {
+                                    meta.CarIdxByUserName[userName] = cIdx;
+                                    meta.UserNameByCarIdx[cIdx] = userName;
+                                }
                                 if (classEstLap.HasValue && classEstLap.Value >= 10.0)
                                     meta.DriverEstimatedPaceSec[userName] = classEstLap.Value;
                                 if (bopPct.HasValue && bopPct.Value > 0.0)
@@ -229,6 +234,11 @@ namespace SimRIG
                     var carClassIdObj = pm.GetPropertyValue(prefix + "CarClassID");
                     var cIdxObj = pm.GetPropertyValue(prefix + "CarIdx");
                     int cIdx = (cIdxObj != null && int.TryParse(cIdxObj.ToString(), out int ci)) ? ci : -1;
+                    if (cIdx >= 0)
+                    {
+                        meta.CarIdxByUserName[name] = cIdx;
+                        meta.UserNameByCarIdx[cIdx] = name;
+                    }
 
                     var estLapObj = pm.GetPropertyValue(prefix + "CarClassEstLapTime");
                     if (estLapObj != null && double.TryParse(estLapObj.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out double cp) && cp >= 10.0)

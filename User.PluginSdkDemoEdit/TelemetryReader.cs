@@ -123,6 +123,8 @@ namespace SimRIG
             state.BestLapTimeSec = data.NewData.BestLapTime.TotalSeconds;
 
             state.Position = data.NewData.Position;
+            var playerOpp = data.NewData.Opponents?.FirstOrDefault(o => o.IsPlayer);
+            state.PositionInClass = (playerOpp != null && playerOpp.PositionInClass > 0) ? playerOpp.PositionInClass : state.Position;
             state.IsInPitLane = (data.NewData.IsInPitLane == 1);
 
             state.Flag_Yellow = data.NewData.Flag_Yellow;
@@ -690,6 +692,8 @@ namespace SimRIG
             foreach (var kv in from.ClassEstimatedPaceSec) into.ClassEstimatedPaceSec[kv.Key] = kv.Value;
             foreach (var kv in from.DriverEstimatedPaceSec) into.DriverEstimatedPaceSec[kv.Key] = kv.Value;
             foreach (var kv in from.DriverMaxFuelPct) into.DriverMaxFuelPct[kv.Key] = kv.Value;
+            foreach (var kv in from.CarIdxByUserName) into.CarIdxByUserName[kv.Key] = kv.Value;
+            foreach (var kv in from.UserNameByCarIdx) into.UserNameByCarIdx[kv.Key] = kv.Value;
 
             into.PlayerEstimatedPaceSec = from.PlayerEstimatedPaceSec;
             into.FuelDensityKgPerLitre = from.FuelDensityKgPerLitre;

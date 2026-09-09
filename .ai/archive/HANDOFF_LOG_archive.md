@@ -9,6 +9,41 @@
 
 ---
 
+## [2026-09-06 16:45] antigravity → chiunque entri dopo (Claude in particolare)
+
+**Task:** Affinamento Seeding al via: silenzio metriche in griglia pre-gara e freeze FuelToAdd a 0.0 nel Giro 1
+**Piano:** `.ai/plans/2026-09-06-seeding-metriche-fuel-design.md`
+**Commit:** `5a6d33c`
+
+### Fatto
+- `User.PluginSdkDemoEdit/RaceAnalyzer.cs:685` — Aggiunta condizione `state.SessionStateStatus < 4 || (state.IsTimeLimited && state.SessionTimeLeftSec < 0.0)` al guard iniziale di `UpdateRaceState`: prima del semaforo verde o prima che il countdown a tempo sia attivo, tutte le proiezioni (`RaceLapsRemaining`, `RaceTotalLaps`, `ProjectedPosAtCheckered`, ecc.) sono azzerate, `IsLapsPredictionValid = false` e lo stabilizer del tempo viene resettato a `-1.0`.
+- `User.PluginSdkDemoEdit/RaceAnalyzer.cs:2237` — Esteso `IsLapsPredictionValid` con parametri opzionali `int sessionStateStatus = 4, double sessionTimeLeftSec = 0.0` per garantire che in sessione di gara lo stato sia `>= 4` (verde) e il conto alla rovescia sia `>= 0.0`.
+- `User.PluginSdkDemoEdit/FuelManager.cs:270, 285` — Introdotto tracciamento `_lastSessionStateStatus` e sincronizzazione del via: in griglia e ricognizione (`SessionStateStatus < 4`) gli accumulatori di bandiera gialla e pit lane restano puliti; alla transizione al verde (`SessionStateStatus >= 4`) il consumo di Lap 1 si ancora a `state.RaceStartingFuel` (escludendo consumi da fermo o del giro di formazione).
+- `User.PluginSdkDemoEdit/FuelManager.cs:405` — `Calculations.IsPredictionValid`: richiede `state.SessionStateStatus >= 4` in gara. Nel Giro 1 (`CurrentLap <= 1`) `IsPredictionValid` resta `false` e `FuelToAdd` rimane congelato a `0.0` (invece di mostrare stime imprecise). Al completamento del Giro 1 (ingresso in Giro 2), `AverageFuelPerLap` riceve il primo consumo reale pulito, `IsPredictionValid` passa a `true` e `FuelToAdd` si popola.
+- `User.PluginSdkDemoEdit/FuelManager.cs:565` — `ResetSession()`: azzera esplicitamente anche `_lastSessionStateStatus`.
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs:1088, 1106` — Aggiunto `FuelManager.ResetSession()` in caso di cambio stato/tipo sessione e salti temporali nei replay.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/PredictedPaceUnitTests.cs` — Aggiunti 2 unit test (`Test_IsLapsPredictionValid_FalsePreGreenFlag_WhenSessionStateStatusLessThan4`, `Test_IsLapsPredictionValid_FalseWhenTimeLimitedCountdownNegative`).
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/FuelOutlierFilterUnitTests.cs` — Aggiunti 2 unit test (`Test_FuelManager_Lap1_FreezeFuelToAdd`, `Test_FuelManager_Grid_ParadeLap_IgnoredAndGreenFlagLatched`).
+- Suite test: passata da 314 a **318 test PASS** (0 falliti).
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit `0`, **318 PASS**.
+
+### Stato
+- ✅ Compila senza errori (solo 1 warning preesistente non correlato in ReplayBacktestIntegrationTest)
+- ✅ 318 test passano (100%)
+
+### Per chi entra
+**Prossimo passo:** Verifica dal vivo / su replay dei log di gara (o proseguimento su Y-52 Passo 3 per `DriverPitTrkPct`).
+**NON toccare:** `Hardware/` (riservato ad Andreas).
+**Attenzione a:** In griglia prima del via `SimRIG.Session.IsLapsPredictionValid` e `SimRIG.Strategy.IsPredictionValid` sono entrambi `false`, `FuelToAdd` e i giri previsti sono `0.0`. Al semaforo verde le metriche si attivano con i seed YAML/best lap; al termine del giro 1 il fuel si popola con il consumo telemetrico reale.
+
+---
+
 ## [2026-09-06 14:30] antigravity → chiunque entri dopo (Claude in particolare)
 
 **Task:** Y-52 — Sblocco dump `SimRigMetadata.json` via estrazione `SessionData` reale da SimHub e riallineamento completo della roadmap

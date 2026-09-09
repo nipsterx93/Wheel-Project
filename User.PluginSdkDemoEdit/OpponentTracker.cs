@@ -184,6 +184,16 @@ namespace SimRIG
 
         public bool HasCountedPitThisTransit { get; set; } = false;
 
+        public int CarIdx { get; set; } = -1;
+        public bool IsOnPitRoad { get; set; } = false;
+        public IracingTrackSurface TrackSurface { get; set; } = IracingTrackSurface.NotInWorld;
+        public int NativePitStopCount { get; set; } = 0;
+        public int NativeClassPosition { get; set; } = 0;
+        public float NativeLapDistPct { get; set; } = 0f;
+        public double InPitStallStartTimeSec { get; set; } = 0.0;
+        public bool WasInPitStall { get; set; } = false;
+        public bool NeedsPitStop { get; set; } = true;
+
         public bool LastPitTiresChanged { get; set; } = true;
         public double LastPitTransitTimeSec { get; set; } = 0.0;
         public double LastPitStationaryTimeSec { get; set; } = 0.0;
@@ -550,6 +560,8 @@ namespace SimRIG
 
 
 
+        public IracingTelemetryBridge IracingBridge { get; } = new IracingTelemetryBridge();
+
         public OpponentTracker() { }
 
 
@@ -572,6 +584,7 @@ namespace SimRIG
             double tempCoef = 0.05)
 
         {
+            IracingBridge.Update(data?.NewData?.GetRawDataObject());
 
             if (!state.IsGameRunning || state.Opponents == null || state.Opponents.Count == 0) return;
             PlayerData.CarClass = state.CarClassId;
@@ -951,15 +964,26 @@ namespace SimRIG
                     continue;
                 }
 
+                // La capienza e' una proprieta' della **vettura**, non della classe: nella stessa
+                // classe GT3 convivono 100 L (BMW M4), 104 L (Ferrari 296) e 110 L (Mustang,
+                // McLaren). `opponentMaxTank` la ricava dal database per modello e ci applica il BoP
+                // di sessione.
+                var dbRecord = radar.Database.Tracks.FirstOrDefault(t => t.TrackID == state.TrackId && t.CarClass == tData.CarClass);
+                double classRecordMaxTank = dbRecord != null ? dbRecord.MaxTank : 0.0;
+                double classMaxTank = ResolveOpponentMaxTank(opponentMaxTank, classRecordMaxTank, carRecognisedInDb);
+
                 // Calcolo live del carburante a bordo e delle finestre di sosta per tutte le vetture
                 double classFuelBurn = 0.0;
                 double yellowFuelBurn = 0.0;
+
+                // Vincolo User Step 4376: La mediana del Player richiede almeno 3 giri completati (giro corrente >= 4)
+                bool isPlayerFuelLatchReady = (data?.NewData?.CompletedLaps ?? 0) >= 3;
 
                 if (!string.IsNullOrEmpty(state.CarClassId) && state.CarClassId != "DEFAULT")
                 {
                     if (tData.CarClass == state.CarClassId)
                     {
-                        if (effectiveClassFuelBurn > 0.0 && playerMaxTankBoP > 0.0)
+                        if (isPlayerFuelLatchReady && effectiveClassFuelBurn > 0.0 && playerMaxTankBoP > 0.0)
                         {
                             classFuelBurn = (opponentMaxTank * effectiveClassFuelBurn) / playerMaxTankBoP;
                             if (formationLapBurn > 0.0)
@@ -971,6 +995,19 @@ namespace SimRIG
                                 yellowFuelBurn = classFuelBurn * 0.6;
                             }
                         }
+                        else
+                        {
+                            double initialEstBurn = (dbRecord != null && dbRecord.FuelPerLap > 0.0) ? dbRecord.FuelPerLap : 0.0;
+                            if (initialEstBurn > 0.0 && playerMaxTankBoP > 0.0)
+                            {
+                                classFuelBurn = (opponentMaxTank * initialEstBurn) / playerMaxTankBoP;
+                            }
+                            else
+                            {
+                                classFuelBurn = initialEstBurn > 0.0 ? initialEstBurn : 2.5;
+                            }
+                            yellowFuelBurn = classFuelBurn * 0.6;
+                        }
                     }
                     else
                     {
@@ -978,18 +1015,6 @@ namespace SimRIG
                         yellowFuelBurn = 1.8;
                     }
                 }
-
-                // La capienza e' una proprieta' della **vettura**, non della classe: nella stessa
-                // classe GT3 convivono 100 L (BMW M4), 104 L (Ferrari 296) e 110 L (Mustang,
-                // McLaren). `opponentMaxTank` la ricava dal database per modello e ci applica il BoP
-                // di sessione — e finora veniva ricalcolata correttamente e poi **buttata via** dal
-                // record di traccia+classe tre righe dopo, appiattendo fino a 10 L di differenza.
-                // Il record di classe resta come ripiego solo quando la vettura non e' riconosciuta
-                // nel database: li' `baseCap` e' una costante per famiglia (120 GT3 / 89 GTP /
-                // 96.9 LMP2 / 40 F4) e un dato di traccia misurato e' comunque meglio.
-                var dbRecord = radar.Database.Tracks.FirstOrDefault(t => t.TrackID == state.TrackId && t.CarClass == tData.CarClass);
-                double classRecordMaxTank = dbRecord != null ? dbRecord.MaxTank : 0.0;
-                double classMaxTank = ResolveOpponentMaxTank(opponentMaxTank, classRecordMaxTank, carRecognisedInDb);
 
                 // Logghiamo i dettagli dell'avversario e dei consumi
                 if (!string.IsNullOrEmpty(opp.Name))
@@ -1041,16 +1066,16 @@ namespace SimRIG
                     if (tData.EstimatedFuel < 0.0) tData.EstimatedFuel = 0.0;
                 }
 
-                if (tData.IsInsideGeofence) // Se è confermato nei box, consideriamo il serbatoio pieno per la proiezione futura
-                {
-                    tData.EstimatedFuelTank = classMaxTank;
-                }
-                else
-                {
-                    tData.EstimatedFuelTank = Math.Max(0.0, tData.EstimatedFuel);
-                }
+                tData.EstimatedFuelTank = Math.Max(0.0, tData.EstimatedFuel);
                 tData.EstimatedPitWindow = currentBurn > 0.0 ? (tData.EstimatedFuelTank / currentBurn) : 99.0;
                 tData.EstimatedPitWindowTargetLap = tData.LapCount + tData.EstimatedPitWindow;
+
+                int oppLapCount = tData.HighestLapSeen > 0 ? tData.HighestLapSeen : (opp.CurrentLap ?? 0);
+                double oppLapsRemaining = Math.Max(0.0, (raceLapsRemaining > 0 ? raceLapsRemaining : (state.TotalLaps - oppLapCount)));
+                if (currentBurn > 0.0 && state.IsRaceSession)
+                {
+                    tData.NeedsPitStop = tData.EstimatedFuel < ((oppLapsRemaining + 0.3) * currentBurn);
+                }
 
                 double deltaPos = currentPos - tData.LastPosPct;
 
@@ -1197,23 +1222,79 @@ namespace SimRIG
 
 
 
+                int carIdx = state.Metadata.GetCarIdxFor(opp.Name);
+                if (carIdx < 0 && int.TryParse(opp.Id, out int parsedId))
+                {
+                    carIdx = parsedId;
+                }
+                tData.CarIdx = carIdx;
+
+                bool wasOnPitRoad = tData.IsOnPitRoad;
+                bool isNativeAvailable = IracingBridge.IsAvailable && carIdx >= 0;
+                if (isNativeAvailable)
+                {
+                    bool nativeOnPitRoad = IracingBridge.IsOnPitRoad(carIdx);
+                    var nativeTrackSurface = IracingBridge.GetTrackSurface(carIdx);
+                    int nativePitCount = IracingBridge.GetPitStopCount(carIdx);
+                    int nativeClassPos = IracingBridge.GetClassPosition(carIdx);
+                    float nativeLapDistPct = IracingBridge.GetLapDistPct(carIdx);
+
+                    tData.IsOnPitRoad = nativeOnPitRoad;
+                    tData.TrackSurface = nativeTrackSurface;
+                    tData.NativePitStopCount = nativePitCount;
+                    tData.NativeClassPosition = nativeClassPos;
+                    tData.NativeLapDistPct = nativeLapDistPct;
+
+                    // Calibrazione Geofence collegata a CarIdxOnPitRoad
+                    if (!wasOnPitRoad && nativeOnPitRoad)
+                    {
+                        double entrySample = nativeLapDistPct > 0 ? (double)nativeLapDistPct : currentPos;
+                        radar.RecordPitEntrySample(entrySample, CalibrationConfidence.EstimatedOpponent, log);
+                    }
+                    else if (wasOnPitRoad && !nativeOnPitRoad)
+                    {
+                        double exitSample = nativeLapDistPct > 0 ? (double)nativeLapDistPct : currentPos;
+                        radar.RecordPitExitSample(exitSample, CalibrationConfidence.EstimatedOpponent, log);
+                    }
+
+                    // Sincronizzazione pit stop count ufficiale iRacing
+                    if (nativePitCount > tData.PitCount)
+                    {
+                        tData.PitCount = nativePitCount;
+                        tData.LastStopLap = rawCurrentLap;
+                    }
+
+                    // Cronometro InPitStall
+                    if (nativeTrackSurface == IracingTrackSurface.InPitStall)
+                    {
+                        if (!tData.WasInPitStall)
+                        {
+                            tData.WasInPitStall = true;
+                            tData.InPitStallStartTimeSec = currentSessionClock;
+                            tData.StopStartTimeSec = currentSessionClock;
+                            log?.Log(LogModule.OPPONENTS, LogType.EVENT, "Opponent In Pit Stall Started", $"{tData.Name} | Clock: {currentSessionClock:F2}s");
+                        }
+                        tData.StationaryTimeSec = Math.Abs(currentSessionClock - tData.InPitStallStartTimeSec);
+                    }
+                    else if (tData.WasInPitStall)
+                    {
+                        tData.WasInPitStall = false;
+                        tData.StationaryTimeSec = Math.Abs(currentSessionClock - tData.InPitStallStartTimeSec);
+                        tData.LastPitStationaryTimeSec = tData.StationaryTimeSec;
+                        tData.StopStartTimeSec = null;
+                        log?.Log(LogModule.OPPONENTS, LogType.EVENT, "Opponent In Pit Stall Finished", $"{tData.Name} | StationaryTime: {tData.StationaryTimeSec:F2}s");
+                    }
+                }
+
                 bool isSpatiallyInsideGeofence = false;
 
                 if (pitEntryPct != -1.0 && pitExitPct != -1.0)
-
                 {
-
                     if (pitEntryPct < pitExitPct)
-
                         isSpatiallyInsideGeofence = currentPos >= pitEntryPct && currentPos <= pitExitPct;
-
                     else
-
                         isSpatiallyInsideGeofence = currentPos >= pitEntryPct || currentPos <= pitExitPct;
-
                 }
-
-
 
                 // Spatial Entry Trigger and Strict Pit lane stopwatch initialization
                 bool isRaceNotStartedYet = state.IsRaceSession && !state.RaceStarted;
@@ -1236,7 +1317,15 @@ namespace SimRIG
                 bool isInsideGeofence = false;
                 string triggerReason = "";
 
-                if (state.IsSessionActive && isSpatiallyInsideGeofence && !isRaceNotStartedYet && tData.HasExitedPitZoneAtLeastOnce)
+                if (isNativeAvailable)
+                {
+                    if (tData.IsOnPitRoad)
+                    {
+                        isInsideGeofence = true;
+                        triggerReason = "iRacing Native (CarIdxOnPitRoad)";
+                    }
+                }
+                else if (state.IsSessionActive && isSpatiallyInsideGeofence && !isRaceNotStartedYet && tData.HasExitedPitZoneAtLeastOnce)
                 {
                     if (tData.IsInsideGeofence)
                     {
@@ -1348,6 +1437,25 @@ namespace SimRIG
                         tData.EstimatedFuelTank = tData.EstimatedFuel;
                         log.Log(LogModule.SYSTEM, LogType.EVENT, "Opponent Inlap Fuel Deduction",
                             $"{tData.Name} | FuelBefore: {beforeFuel:F2}L | Deduction: {inlapFuelDeduction:F2}L | FuelAfter: {tData.EstimatedFuel:F2}L");
+
+                        // Calcolo FuelToAdd intelligente per arrivare a fine gara (User Step 4376)
+                        int currentOppLap = tData.HighestLapSeen > 0 ? tData.HighestLapSeen : (opp.CurrentLap ?? 0);
+                        double lapsRemaining = Math.Max(0.0, (raceLapsRemaining > 0 ? raceLapsRemaining : (state.TotalLaps - currentOppLap)));
+                        double fuelResiduo = Math.Max(0.0, tData.EstimatedFuel);
+                        double safetyLitres = classFuelBurn > 0 ? classFuelBurn * 0.5 : 2.0;
+                        double fuelNeeded = (lapsRemaining * classFuelBurn) + safetyLitres;
+                        double smartFuelToAdd = Math.Min(classMaxTank - fuelResiduo, Math.Max(0.0, fuelNeeded - fuelResiduo));
+                        tData.LastPitFuelAdded = smartFuelToAdd;
+                        tData.LastRefuelLap = currentOppLap;
+                        tData.FuelAfterLastPit = Math.Min(classMaxTank, fuelResiduo + smartFuelToAdd);
+                        tData.EstimatedFuel = tData.FuelAfterLastPit;
+                        tData.EstimatedFuelTank = tData.FuelAfterLastPit;
+                        if (tData.EstimatedFuel >= lapsRemaining * classFuelBurn)
+                        {
+                            tData.NeedsPitStop = false;
+                        }
+                        log.Log(LogModule.OPPONENTS, LogType.EVENT, "Opponent Smart Refuel Projection",
+                            $"{tData.Name} | LapsRem: {lapsRemaining:F1} | Burn: {classFuelBurn:F2} | Residuo: {fuelResiduo:F1}L | Needed: {fuelNeeded:F1}L | FuelToAdd: {smartFuelToAdd:F1}L | PostPit: {tData.FuelAfterLastPit:F1}L | NeedsPit: {tData.NeedsPitStop}");
 
                         if (state.TrackWetnessLevel >= 1)
                         {
@@ -1497,6 +1605,12 @@ namespace SimRIG
                             tData.FuelAfterLastPit = Math.Min(classMaxTank, tData.EstimatedFuel + estimatedFuelAdded);
                             tData.EstimatedFuel = tData.FuelAfterLastPit;
                             tData.EstimatedFuelTank = tData.FuelAfterLastPit;
+                            int exitOppLap = tData.HighestLapSeen > 0 ? tData.HighestLapSeen : (opp.CurrentLap ?? 0);
+                            double exitLapsRem = Math.Max(0.0, (raceLapsRemaining > 0 ? raceLapsRemaining : (state.TotalLaps - exitOppLap)));
+                            if (classFuelBurn > 0.0 && state.IsRaceSession)
+                            {
+                                tData.NeedsPitStop = tData.EstimatedFuel < ((exitLapsRem + 0.3) * classFuelBurn);
+                            }
                         }
 
                         tData.LastPitTiresChanged = opponentTiresChanged;
@@ -1508,6 +1622,18 @@ namespace SimRIG
                             $"Name: {tData.Name} | TotalTime: {totalTransitTime:F1}s | StatTime: {tData.StationaryTimeSec:F1}s | " +
                             $"EstFuelAdded: {estimatedFuelAdded:F1}L | tFuel: {tFuel:F1}s | tTyres: {tTyres:F1}s | " +
                             $"Layout: {(isSequential ? "Sequential" : "Simultaneous")} | TiresChanged: {opponentTiresChanged}");
+
+                        // Scorporo Pit Loss (User Step 4376: RawExtendedPitZoneTime = TempoMisurato - TempoStationary)
+                        double observedExtendedTransit = tData.ExtendedPitZone.LastTransitTime > 0.0
+                            ? tData.ExtendedPitZone.LastTransitTime
+                            : totalTransitTime;
+                        double statDuration = tData.StationaryTimeSec;
+                        double rawExtendedTime = Math.Max(0.0, observedExtendedTransit - statDuration);
+                        double refuelDuration = tData.LastPitFuelAdded / fillRate;
+                        double empiricalDeadTime = Math.Max(0.0, statDuration - refuelDuration);
+
+                        log.Log(LogModule.OPPONENTS, LogType.EVENT, "Pit Loss Dissection",
+                            $"{tData.Name} | ObservedTransit: {observedExtendedTransit:F2}s | Stationary: {statDuration:F2}s | RawExtended: {rawExtendedTime:F2}s | RefuelEst: {refuelDuration:F2}s | JackingDeadTime: {empiricalDeadTime:F2}s");
 
                         // Apprendimento automatico del limite di velocità della pitlane
                         double maxSpeed = tData.MaxSpeedInPitThisTransit;

@@ -68,6 +68,7 @@ namespace SimRIG
         public double BestLapTimeSec { get; set; } = 0.0;
 
         public int Position { get; set; } = 0;
+        public int PositionInClass { get; set; } = 0;
         public bool IsInPitLane { get; set; } = false;
         public bool IsInPitBox { get; set; } = false;
 

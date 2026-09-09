@@ -998,6 +998,37 @@ namespace SimRIG
 		return _currentTrack.PitExitPct;
 	}
 
+	public void RecordPitEntrySample(double entryPct, CalibrationConfidence confidence = CalibrationConfidence.EstimatedOpponent, LogManager log = null)
+	{
+		if (_currentTrack == null || entryPct <= 0.0 || entryPct > 1.0) return;
+		_entryConsensus.Add(entryPct);
+		CalibrationConfidence level = _entryConsensus.HasConsensus ? CalibrationConfidence.Confirmed : confidence;
+		if (CanOverwrite(_currentTrack.GeofenceConfidence, level) || _currentTrack.PitEntryPct <= 0.0 || _currentTrack.PitEntryPct == -1.0)
+		{
+			_currentTrack.PitEntryPct = _entryConsensus.Value;
+			_currentTrack.GeofenceSampleCount = _entryConsensus.AgreeingCount;
+			SaveDatabase();
+			log?.Log(LogModule.RADAR, LogType.EVENT, "Pit Entry Pct Auto-Calibrated (Native)",
+				$"{_entryConsensus.Value:F3} | confidence={level} | sample={entryPct:F3}");
+		}
+	}
+
+	public void RecordPitExitSample(double exitPct, CalibrationConfidence confidence = CalibrationConfidence.EstimatedOpponent, LogManager log = null)
+	{
+		if (_currentTrack == null || exitPct <= 0.0 || exitPct > 1.0) return;
+		_exitConsensus.Add(exitPct);
+		CalibrationConfidence level = _exitConsensus.HasConsensus ? CalibrationConfidence.Confirmed : confidence;
+		if (CanOverwrite(_currentTrack.GeofenceConfidence, level) || _currentTrack.PitExitPct <= 0.0 || _currentTrack.PitExitPct == -1.0)
+		{
+			_currentTrack.PitExitPct = _exitConsensus.Value;
+			_currentTrack.GeofenceConfidence = level;
+			_currentTrack.GeofenceSampleCount = Math.Min(_entryConsensus.AgreeingCount, _exitConsensus.AgreeingCount);
+			SaveDatabase();
+			log?.Log(LogModule.RADAR, LogType.EVENT, "Pit Exit Pct Auto-Calibrated (Native)",
+				$"{_exitConsensus.Value:F3} | confidence={level} | sample={exitPct:F3}");
+		}
+	}
+
 	public double GetExtendedPitEntryPct()
 	{
 		if (_currentTrack == null)

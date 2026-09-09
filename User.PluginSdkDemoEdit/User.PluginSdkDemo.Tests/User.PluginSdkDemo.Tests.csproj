@@ -33,6 +33,10 @@
       <HintPath>$(SIMHUB_INSTALL_PATH)GameReaderCommon.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="iRacingSDK">
+      <HintPath>$(SIMHUB_INSTALL_PATH)iRacingSDK.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
       <HintPath>$(SIMHUB_INSTALL_PATH)Newtonsoft.Json.dll</HintPath>
     </Reference>
@@ -91,6 +95,7 @@
     <Compile Include="UnitTests\SessionMetadataUnitTests.cs" />
     <Compile Include="UnitTests\PredictedPaceUnitTests.cs" />
     <Compile Include="UnitTests\PitZoneStopwatchAndOpponentCascadeUnitTests.cs" />
+    <Compile Include="UnitTests\NativeIracingOpponentTrackingUnitTests.cs" />
     <Compile Include="IntegrationTests\ReplayBacktestIntegrationTest.cs" />
     <Compile Include="IntegrationTests\MisanoHuracanGT3ReplayTest.cs" />
     <Compile Include="Replay\SimHubReplayRAMReader.cs" />
@@ -101,6 +106,7 @@
 XCOPY /Y /R "%SIMHUB_INSTALL_PATH%\SimHub.Plugins.dll" "$(TargetDir)"
 XCOPY /Y /R "%SIMHUB_INSTALL_PATH%\SimHub.Logging.dll" "$(TargetDir)"
 XCOPY /Y /R "%SIMHUB_INSTALL_PATH%\WoteverCommon.dll" "$(TargetDir)"
-XCOPY /Y /R "%SIMHUB_INSTALL_PATH%\log4net.dll" "$(TargetDir)"</PostBuildEvent>
+XCOPY /Y /R "%SIMHUB_INSTALL_PATH%\log4net.dll" "$(TargetDir)"
+XCOPY /Y /R "%SIMHUB_INSTALL_PATH%\iRacingSDK.dll" "$(TargetDir)"</PostBuildEvent>
   </PropertyGroup>
 </Project>

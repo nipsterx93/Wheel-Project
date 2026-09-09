@@ -62,6 +62,14 @@ namespace SimRIG
         public Dictionary<string, double> DriverMaxFuelPct { get; }
             = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>Mappa nome pilota (UserName) -> CarIdx (indice iRacing 0..63).</summary>
+        public Dictionary<string, int> CarIdxByUserName { get; }
+            = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Mappa CarIdx -> nome pilota (UserName).</summary>
+        public Dictionary<int, string> UserNameByCarIdx { get; }
+            = new Dictionary<int, string>();
+
         /// <summary>
         /// Densita' del carburante di questa vettura, in kg per litro. Serve a convertire i litri
         /// in chilogrammi, perche' la penalita' di peso e' in secondi <b>per chilogrammo</b>
@@ -116,6 +124,8 @@ namespace SimRIG
             ClassEstimatedPaceSec.Clear();
             DriverEstimatedPaceSec.Clear();
             DriverMaxFuelPct.Clear();
+            CarIdxByUserName.Clear();
+            UserNameByCarIdx.Clear();
             PlayerEstimatedPaceSec = null;
             FuelDensityKgPerLitre = null;
             PlayerMaxFuelLitres = null;
@@ -192,6 +202,25 @@ namespace SimRIG
                 return pct;
             }
             return null;
+        }
+
+        /// <summary>
+        /// Restituisce il CarIdx associato al pilota (con supporto alla normalizzazione),
+        /// oppure -1 se non trovato.
+        /// </summary>
+        public int GetCarIdxFor(string driverName)
+        {
+            if (string.IsNullOrEmpty(driverName)) return -1;
+            if (CarIdxByUserName.TryGetValue(driverName, out int idx))
+            {
+                return idx;
+            }
+            string norm = NormalizeDriverName(driverName);
+            if (norm != driverName && CarIdxByUserName.TryGetValue(norm, out idx))
+            {
+                return idx;
+            }
+            return -1;
         }
     }
 }

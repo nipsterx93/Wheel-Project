@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      antigravity
-since:      2026-09-09T11:51:00+02:00
-task:       native iRacing opponent tracking & fuel engine
-scope:      User.PluginSdkDemoEdit/
-expires:    2026-09-09T13:51:00+02:00
+owner:      NONE
+since:      —
+task:       —
+scope:      —
+expires:    —
 ```
 
 **Regole del lock**

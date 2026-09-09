@@ -47,6 +47,50 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-09 12:15] antigravity → chiunque entri dopo
+
+**Task:** Telemetria nativa iRacing per Opponents: latch Fuel a giro 4, scomposizione soste box e stabilizzazione gap
+**Piano:** `.ai/plans/2026-09-09-native-iracing-opponent-tracking-and-fuel-engine.md`
+**Commit:** `questo`
+
+### Fatto
+- `User.PluginSdkDemoEdit/IracingTelemetryBridge.cs` (nuovo) — Modulo ponte nativo per telemetria iRacing a 60Hz da `DataSample.Telemetry`:
+  - `CarIdxOnPitRoad` (bool[]): rilevamento istantaneo ingresso/uscita pit lane avversari.
+  - `CarIdxTrackSurface` (TrackLocation[]): `InPitStall` (1) per cronometro tempo di sosta stazionario, `AproachingPits` (2), `OnTrack` (3).
+  - `CarIdxPitStopCount` (int[]), `CarIdxClassPosition` (int[]), `CarIdxLapDistPct` (float[]).
+- `User.PluginSdkDemoEdit/SessionMetadata.cs` e `SessionDataReader.cs` — Mappatura bidirezionale `CarIdxByUserName` / `UserNameByCarIdx` per risoluzione O(1) tra nome avversario e carIdx nativo.
+- `User.PluginSdkDemoEdit/PitRadar.cs` — Metodi `RecordPitEntrySample(pct)` e `RecordPitExitSample(pct)` integrati col consenso per apprendere automaticamente le soglie geometriche pit lane da `CarIdxOnPitRoad`.
+- `User.PluginSdkDemoEdit/OpponentTracker.cs`:
+  - **Fuel Latch a Giro 4:** La mediana del Player ora viene agganciata solo dopo il completamento di almeno 3 giri (`CompletedLaps >= 3`, giro corrente >= 4), evitando che il giro 1 (2.12L anomalo rispetto alla mediana successiva di 2.26L) avveleni i consumi degli avversari.
+  - **EstimatedFuelTank non azzerato:** Sostituito l'artificioso `EstimatedFuelTank = classMaxTank` con `Math.Max(0.0, EstimatedFuel)`.
+  - **Smart Refueling all'ingresso box:** Quando l'avversario entra nei box (`tData.IsOnPitRoad == true`), il carburante aggiunto viene calcolato esattamente come `Math.Min(classMaxTank - residuo, fuelNeeded - residuo)` per finire la gara con margine; se il carburante copre i giri rimanenti, `NeedsPitStop = false`, evitando il doppio conteggio della sosta in `ProjectedMergeGap`.
+  - **Cronometro Stazionario Diretto:** Misurato con precisione quando `TrackSurface == InPitStall`.
+  - **Scomposizione Pit Loss all'uscita box:** Calcolato `RawExtendedPitZoneTime = ObservedTransit - StationaryTimeSec` e isolato l'overhead empirico dei martinetti (`EmpiricalDeadTime = StationaryTime - (FuelToAdd / FillRate)`).
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs`:
+  - **Class Position Nativo:** Assegnato `CurrentTarget.ClassPosition` tramite `targetTrackData.NativeClassPosition > 0 ? targetTrackData.NativeClassPosition : targetOpp.PositionInClass`, risolvendo il ranking mostrato sempre in assoluto.
+  - **Stabilizzazione Gap e MergeGap:** Introdotto `NormalizeLapDifference` che neutralizza lo spike spurio di $\pm 1.0$ giro al traguardo senza ripiegare a modulo 0.5 giri. I gap $> 0.5$ giri (come Aake Korte) conservano il segno corretto e continuo (+ per Player dietro, - per Player davanti).
+  - **Soppressione Microsettori in Pit Lane:** Quando l'avversario è in corsia box (`IsOnPitRoad == true`), la telemetria a microsettori ad alta velocità viene soppressa a favore della progressione continua `Math.Abs(posDiff * refLapTime)`, eliminando i violenti sfarfallamenti tra 90s e 15s.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs` (nuovo) — 6 unit test a copertura di latch carburante, smart refueling, scomposizione soste, stabilizzazione gap e ponte telemetrico.
+- Suite test: passata da 332 a **338 test PASS** (0 falliti).
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: exit `0`, **338 PASS**.
+
+### Stato
+- ✅ Compila senza errori (solo 1 warning preesistente in ReplayBacktestIntegrationTest)
+- ✅ 338 test passano (100%)
+
+### Per chi entra
+**Prossimo passo:** Test su replay reale in SimHub (es. Road Atlanta) per verificare visivamente i dati di telemetria avversari, tempi sosta e stabilità gap su HUD.
+**NON toccare:** `Hardware/` (riservato ad Andreas).
+**Attenzione a:** `iRacingSDK.dll` viene copiato in `bin/Debug` tramite PostBuildEvent del `.csproj`. Nei test mock o simulatori non-iRacing, `IracingTelemetryBridge` degrada dolcemente alla telemetria euristiche standard.
+
+---
+
 ## [2026-09-09 08:55] antigravity → chiunque entri dopo
 
 **Task:** Firmware INPUT V2.8.2 — aggiunta stato MAP su Rotary POS 6, versionamento PaddleClutch.h e chiusura Y-53
@@ -401,41 +445,6 @@ Atteso: exit `0`, **320 PASS**.
 **Prossimo passo:** Verifica dal vivo su replay dei log per confermare che `AverageFuelPerLap` e le proiezioni restino allineate e stabili sin dal via.
 **NON toccare:** `Hardware/` (riservato ad Andreas).
 **Attenzione a:** La baseline del passo in `RaceAnalyzer` ora rifiuta outlap e giri lenti (> +20% del passo atteso YAML/fisico); il carburante del giro 1 di formazione viene letto in `LastLapFuelUsed` ma non contamina `AverageFuelPerLap`.
-
----
-
-## [2026-09-06 16:45] antigravity → chiunque entri dopo (Claude in particolare)
-
-**Task:** Affinamento Seeding al via: silenzio metriche in griglia pre-gara e freeze FuelToAdd a 0.0 nel Giro 1
-**Piano:** `.ai/plans/2026-09-06-seeding-metriche-fuel-design.md`
-**Commit:** `5a6d33c`
-
-### Fatto
-- `User.PluginSdkDemoEdit/RaceAnalyzer.cs:685` — Aggiunta condizione `state.SessionStateStatus < 4 || (state.IsTimeLimited && state.SessionTimeLeftSec < 0.0)` al guard iniziale di `UpdateRaceState`: prima del semaforo verde o prima che il countdown a tempo sia attivo, tutte le proiezioni (`RaceLapsRemaining`, `RaceTotalLaps`, `ProjectedPosAtCheckered`, ecc.) sono azzerate, `IsLapsPredictionValid = false` e lo stabilizer del tempo viene resettato a `-1.0`.
-- `User.PluginSdkDemoEdit/RaceAnalyzer.cs:2237` — Esteso `IsLapsPredictionValid` con parametri opzionali `int sessionStateStatus = 4, double sessionTimeLeftSec = 0.0` per garantire che in sessione di gara lo stato sia `>= 4` (verde) e il conto alla rovescia sia `>= 0.0`.
-- `User.PluginSdkDemoEdit/FuelManager.cs:270, 285` — Introdotto tracciamento `_lastSessionStateStatus` e sincronizzazione del via: in griglia e ricognizione (`SessionStateStatus < 4`) gli accumulatori di bandiera gialla e pit lane restano puliti; alla transizione al verde (`SessionStateStatus >= 4`) il consumo di Lap 1 si ancora a `state.RaceStartingFuel` (escludendo consumi da fermo o del giro di formazione).
-- `User.PluginSdkDemoEdit/FuelManager.cs:405` — `Calculations.IsPredictionValid`: richiede `state.SessionStateStatus >= 4` in gara. Nel Giro 1 (`CurrentLap <= 1`) `IsPredictionValid` resta `false` e `FuelToAdd` rimane congelato a `0.0` (invece di mostrare stime imprecise). Al completamento del Giro 1 (ingresso in Giro 2), `AverageFuelPerLap` riceve il primo consumo reale pulito, `IsPredictionValid` passa a `true` e `FuelToAdd` si popola.
-- `User.PluginSdkDemoEdit/FuelManager.cs:565` — `ResetSession()`: azzera esplicitamente anche `_lastSessionStateStatus`.
-- `User.PluginSdkDemoEdit/DataPluginDemo.cs:1088, 1106` — Aggiunto `FuelManager.ResetSession()` in caso di cambio stato/tipo sessione e salti temporali nei replay.
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/PredictedPaceUnitTests.cs` — Aggiunti 2 unit test (`Test_IsLapsPredictionValid_FalsePreGreenFlag_WhenSessionStateStatusLessThan4`, `Test_IsLapsPredictionValid_FalseWhenTimeLimitedCountdownNegative`).
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/FuelOutlierFilterUnitTests.cs` — Aggiunti 2 unit test (`Test_FuelManager_Lap1_FreezeFuelToAdd`, `Test_FuelManager_Grid_ParadeLap_IgnoredAndGreenFlagLatched`).
-- Suite test: passata da 314 a **318 test PASS** (0 falliti).
-
-### Come verificare
-```bash
-"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
-"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: exit `0`, **318 PASS**.
-
-### Stato
-- ✅ Compila senza errori (solo 1 warning preesistente non correlato in ReplayBacktestIntegrationTest)
-- ✅ 318 test passano (100%)
-
-### Per chi entra
-**Prossimo passo:** Verifica dal vivo / su replay dei log di gara (o proseguimento su Y-52 Passo 3 per `DriverPitTrkPct`).
-**NON toccare:** `Hardware/` (riservato ad Andreas).
-**Attenzione a:** In griglia prima del via `SimRIG.Session.IsLapsPredictionValid` e `SimRIG.Strategy.IsPredictionValid` sono entrambi `false`, `FuelToAdd` e i giri previsti sono `0.0`. Al semaforo verde le metriche si attivano con i seed YAML/best lap; al termine del giro 1 il fuel si popola con il consumo telemetrico reale.
 
 ---
 

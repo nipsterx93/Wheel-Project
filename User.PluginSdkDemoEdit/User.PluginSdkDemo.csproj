@@ -41,6 +41,10 @@
       <HintPath>$(SIMHUB_INSTALL_PATH)GameReaderCommon.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="iRacingSDK">
+      <HintPath>$(SIMHUB_INSTALL_PATH)iRacingSDK.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="GongSolutions.WPF.DragDrop">
       <HintPath>$(SIMHUB_INSTALL_PATH)GongSolutions.WPF.DragDrop.dll</HintPath>
     </Reference>
@@ -121,6 +125,7 @@
       <DependentUpon>DemoWindow.xaml</DependentUpon>
     </Compile>
     <Compile Include="FuelManager.cs" />
+    <Compile Include="IracingTelemetryBridge.cs" />
     <Compile Include="LogManager.cs" />
     <Compile Include="MacroManager.cs" />
     <Compile Include="OpponentTracker.cs" />

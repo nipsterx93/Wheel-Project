@@ -345,6 +345,25 @@ namespace SimRIG
         }
 
         /// <summary>
+        /// Neutralizza il salto spurio di ~1.0 giro che accade per un singolo tick al passaggio
+        /// sul traguardo, quando una vettura ha gia' incrementato il contatore dei giri e l'altra
+        /// non ancora, o quando TrackPositionPercent si azzera prima dell'aggiornamento del giro.
+        /// Preserva inalterati tutti i gap reali (anche se > 0.5 giri) senza invertire il segno.
+        /// </summary>
+        public static double NormalizeLapDifference(double diff, double myPos, double oppPos)
+        {
+            if (myPos < 0.15 && oppPos > 0.85 && diff < -0.70 && diff > -1.30)
+            {
+                return diff + 1.0;
+            }
+            if (myPos > 0.85 && oppPos < 0.15 && diff > 0.70 && diff < 1.30)
+            {
+                return diff - 1.0;
+            }
+            return diff;
+        }
+
+        /// <summary>
         /// Se una vettura a questo distacco fisico sta bloccando l'overcut (Y-2).
         /// Solo chi è davanti conta: chi mi segue non mi rallenta.
         /// </summary>
@@ -460,7 +479,10 @@ namespace SimRIG
 
                     CurrentTarget.Name = targetOpp.Name;
 
-                    CurrentTarget.ClassPosition = targetOpp.Position;
+                    int initialClassPos = (tracker.TrackedOpponents.TryGetValue(targetOpp.Name, out var trkInit) && trkInit.NativeClassPosition > 0)
+                        ? trkInit.NativeClassPosition
+                        : (targetOpp.PositionInClass > 0 ? targetOpp.PositionInClass : targetOpp.Position);
+                    CurrentTarget.ClassPosition = initialClassPos;
 
                     // Reset completo, non invalidazione temporanea: il valore torna a 0.0 (spec §10).
                     _relativePace.Reset();
@@ -480,7 +502,10 @@ namespace SimRIG
 
 
 
-                CurrentTarget.ClassPosition = targetOpp.Position;
+                int currentClassPos = (tracker.TrackedOpponents.TryGetValue(targetOpp.Name, out var trkCurr) && trkCurr.NativeClassPosition > 0)
+                    ? trkCurr.NativeClassPosition
+                    : (targetOpp.PositionInClass > 0 ? targetOpp.PositionInClass : targetOpp.Position);
+                CurrentTarget.ClassPosition = currentClassPos;
 
 
 
@@ -500,10 +525,15 @@ namespace SimRIG
 
 
 
-                // Y-13: ripiegato entro mezzo giro. Legittimo qui perche' il bersaglio e' scelto
-                // come minimo |posDiff| **assoluto** (piu' sotto), quindi in esercizio normale sta
-                // gia' entro mezzo giro: la piega cambia il risultato solo sull'artefatto.
-                double posDiff = WrapLapDifference((myLap + myPos) - (targetLatchedLap + oppPos));
+                double refLapTime = RaceAnalyzer.ResolvePlayerPace(
+                    raceResult.NormalizedRaceStartPace,
+                    state.BestLapTimeSec,
+                    state.Metadata?.PlayerEstimatedPaceSec,
+                    state.Metadata?.EstimatedPaceFor(null, state.CarClassId),
+                    state.TrackLengthMeters);
+
+                // Neutralizza disallineamenti di 1 tick al traguardo preservando distacchi > 0.5 giri
+                double posDiff = NormalizeLapDifference((myLap + myPos) - (targetLatchedLap + oppPos), myPos, oppPos);
                 double currentSessionClock = state.SessionTimeLeftSec;
                 double currentFluidGap = 0.0;
                 bool gapCalculated = false;
@@ -512,7 +542,14 @@ namespace SimRIG
                 {
                     var oppData = tracker.TrackedOpponents[targetOpp.Name];
                     
-                    if (posDiff < 0) // Target davanti (Player dietro)
+                    if (oppData.IsOnPitRoad)
+                    {
+                        // Se il target e' in pit lane, i microsettori di velocita' sono incomparabili.
+                        // Usiamo la progressione continua senza sfarfallamenti.
+                        currentFluidGap = Math.Abs(posDiff * refLapTime);
+                        gapCalculated = true;
+                    }
+                    else if (posDiff < 0) // Target davanti (Player dietro)
                     {
                         double myPosScaled = myPos * OpponentTracker.TimestampBucketCount;
                         int s1 = OpponentTracker.TimestampBucketOf(myPos);
@@ -543,13 +580,6 @@ namespace SimRIG
                         }
                     }
                 }
-
-                double refLapTime = RaceAnalyzer.ResolvePlayerPace(
-                    raceResult.NormalizedRaceStartPace,
-                    state.BestLapTimeSec,
-                    state.Metadata?.PlayerEstimatedPaceSec,
-                    state.Metadata?.EstimatedPaceFor(null, state.CarClassId),
-                    state.TrackLengthMeters);
 
                 if (!gapCalculated)
                 {
@@ -739,7 +769,8 @@ namespace SimRIG
                     double targetFuelDeficit = raceResult.RaceLapsRemaining - targetFuelLaps;
 
                     // Regola d'Oro: Il target DEVE pittare solo se il deficit supera la soglia di 0.8 giri
-                    bool targetNeedsPit = targetFuelDeficit > 0.8;
+                    // E se ha gia' effettuato la sosta con carburante sufficiente, NeedsPitStop e' false.
+                    bool targetNeedsPit = oppData != null ? oppData.NeedsPitStop : (targetFuelDeficit > 0.8);
 
                     double targetFuelToAdd = (raceResult.RaceLapsRemaining * fuelPerLap) + (0.3 * fuelPerLap) - oppData.EstimatedFuel;
                     if (targetFuelToAdd < 0.0) targetFuelToAdd = 0.0;
@@ -1125,12 +1156,24 @@ namespace SimRIG
                         {
                             double logOppPos = logTargetOpp.TrackPositionPercent ?? 0.0;
                             int logLatchedLap = logOppData.HighestLapSeen;
-                            double logPosDiff = WrapLapDifference((myLap + myPos) - (logLatchedLap + logOppPos));
+                            double logPosDiff = NormalizeLapDifference((myLap + myPos) - (logLatchedLap + logOppPos), myPos, logOppPos);
                             double logSessionClock = state.SessionTimeLeftSec;
                             double logTargetFluidGap = 0.0;
                             bool gapFound = false;
 
-                            if (logPosDiff < 0)
+                            double refLap = RaceAnalyzer.ResolvePlayerPace(
+                                raceResult.NormalizedRaceStartPace,
+                                state.BestLapTimeSec,
+                                state.Metadata?.PlayerEstimatedPaceSec,
+                                state.Metadata?.EstimatedPaceFor(null, state.CarClassId),
+                                state.TrackLengthMeters);
+
+                            if (logOppData.IsOnPitRoad)
+                            {
+                                logTargetFluidGap = Math.Abs(logPosDiff * refLap);
+                                gapFound = true;
+                            }
+                            else if (logPosDiff < 0)
                             {
                                 double myPosScaled = myPos * OpponentTracker.TimestampBucketCount;
                                 int s1 = OpponentTracker.TimestampBucketOf(myPos);
@@ -1161,12 +1204,6 @@ namespace SimRIG
 
                             if (!gapFound)
                             {
-                                double refLap = RaceAnalyzer.ResolvePlayerPace(
-                                    raceResult.NormalizedRaceStartPace,
-                                    state.BestLapTimeSec,
-                                    state.Metadata?.PlayerEstimatedPaceSec,
-                                    state.Metadata?.EstimatedPaceFor(null, state.CarClassId),
-                                    state.TrackLengthMeters);
                                 logTargetFluidGap = Math.Abs(logPosDiff * refLap);
                             }
 
@@ -1174,7 +1211,7 @@ namespace SimRIG
 
                             double logTargetFuelLaps = fuelPerLap > 0 ? (logOppData.EstimatedFuel / fuelPerLap) : 99.0;
                             double logTargetFuelDeficit = raceResult.RaceLapsRemaining - logTargetFuelLaps;
-                            bool logTargetNeedsPit = logTargetFuelDeficit > 0.8;
+                            bool logTargetNeedsPit = logOppData != null ? logOppData.NeedsPitStop : (logTargetFuelDeficit > 0.8);
 
                             double logTargetFuelToAdd = (raceResult.RaceLapsRemaining * fuelPerLap) + (0.3 * fuelPerLap) - logOppData.EstimatedFuel;
                             if (logTargetFuelToAdd < 0.0) logTargetFuelToAdd = 0.0;
@@ -1467,7 +1504,7 @@ namespace SimRIG
 
             CurrentTarget.Name = "PLAYER";
 
-            CurrentTarget.ClassPosition = state.Position;
+            CurrentTarget.ClassPosition = (state.PositionInClass > 0) ? state.PositionInClass : state.Position;
 
             CurrentTarget.GapSeconds = 0.0;
 
