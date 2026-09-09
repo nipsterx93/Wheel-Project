@@ -79,8 +79,15 @@ Correzioni Post Test Pirpi/
 DeepSearch/
 Solo per analisi logiche/
 
+# --- Librerie Arduino / Hardware ---
+# Ignora le cartelle librerie esterne/terze parti di Arduino (non servono su GitHub)
+Hardware/**/libraries/
+libraries/
+
 # --- Eccezioni: questi li vogliamo versionati ---
 !.ai/
 !.ai/**
 !CLAUDE.md
+!**/PaddleClutch.h
+
 
