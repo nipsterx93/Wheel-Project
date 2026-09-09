@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      antigravity
-since:      2026-09-09T15:05:00
-task:       fix replay pit detection, fuel drop, gap flicker and class position
-scope:      User.PluginSdkDemoEdit/
-expires:    2026-09-09T17:05:00
+owner:      NONE
+since:      2026-09-09T15:15:00
+task:       NONE
+scope:      NONE
+expires:    NONE
 ```
 
 **Regole del lock**

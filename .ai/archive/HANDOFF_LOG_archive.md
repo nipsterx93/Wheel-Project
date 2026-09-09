@@ -9,6 +9,40 @@
 
 ---
 
+## [2026-09-06 18:55] antigravity → chiunque entri dopo (Claude in particolare)
+
+**Task:** Risoluzione mancato seeding passo leader da YAML e contaminazione media consumo al via (esclusione assoluta Giro 1)
+**Piano:** —
+**Commit:** `95c56df`
+
+### Fatto
+- `User.PluginSdkDemoEdit/SessionDataReader.cs:98, 116, 228, 235` — Aggiunta lettura di `CarClassID` sia da oggetto raw (`GetLongProp(d, "CarClassID")`) che da PluginManager, registrando `ClassEstimatedPaceSec[carClassId.ToString()] = classEstLap.Value`. Prima la chiave era solo `CarClassShortName` (es. "GTP"), mentre SimHub popola `Opponent.CarClass` con l'ID numerico di classe (es. "4029").
+- `User.PluginSdkDemoEdit/SessionYamlParser.cs:57, 80, 191` — Aggiunta gestione del campo `CarClassID:` nel parser YAML. Il passo di classe viene memorizzato sia sotto il nome breve ("GTP") sia sotto l'identificativo numerico ("4029").
+- `User.PluginSdkDemoEdit/SessionMetadata.cs:132, 145, 160` — Introdotto metodo di normalizzazione `NormalizeDriverName(string name)` che rimuove eventuali suffissi numerici aggiunti da SimHub per deduplicare piloti o istanze (ad es. "Kalyann Mey4" -> "Kalyann Mey"). Integrato in `EstimatedPaceFor` e nel nuovo metodo `MaxFuelPctFor` per garantire che passo e BoP vengano risolti correttamente anche con suffissi di SimHub.
+- `User.PluginSdkDemoEdit/OpponentTracker.cs:662, 809` — Utilizzato `state.Metadata.MaxFuelPctFor` per player e avversari, risolvendo correttamente il BoP anche in presenza di suffissi numerici nel nome pilota.
+- `User.PluginSdkDemoEdit/FuelManager.cs:326` — Semplificata la condizione del giro di partenza in: `bool isRaceStartLap = state.IsRaceSession && _lastEvaluatedLap <= 1;`. In qualunque sessione di gara, il Giro 1 (sia partenza da fermo che lanciata) viene tassativamente escluso da `_recentLaps` e da `AverageFuelPerLap` (registrato solo in `LastLapFuelUsed`). Questo impedisce a consumi anomali del via (come i 2.97 L del replay) di inquinare la finestra mobile dei 5 giri.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/SessionMetadataUnitTests.cs:74, 323` — Aggiunto test `Test_EstimatedPaceAndBop_DriverNormalizationAndNumericClassId` che valida l'indicizzazione per CarClassID numerico e la normalizzazione dei nomi duplicati.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/FuelOutlierFilterUnitTests.cs:365` — Aggiornato `Test_FuelManager_Lap1_FreezeFuelToAdd` per verificare che al giro 1 di gara il consumo non entri nella media e che la media pulita inizi al primo giro lanciato (giro 2).
+- Suite test: passata da 320 a **321 test PASS** (100% verdi, 0 falliti).
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build 0 errori, 321 PASS, exit code 0.
+
+### Stato
+- ✅ Compila
+- ✅ Test passano (321 PASS su 321)
+
+### Per chi entra
+**Prossimo passo:** Verifica su replay reale con Andreas a Road Atlanta.
+**NON toccare:** `Hardware/` (territorio di Andreas).
+**Attenzione a:** In gara (`IsRaceSession`), il primo giro lanciato valido che entra in media è il completamento del Giro 2.
+
+---
+
 ## [2026-09-06 17:35] antigravity → chiunque entri dopo (Claude in particolare)
 
 **Task:** Risoluzione contaminazione consumo medio al via e protezione baseline passo da outlap/formazione

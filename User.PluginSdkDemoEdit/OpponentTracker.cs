@@ -177,10 +177,12 @@ namespace SimRIG
         public double? HighSpeedStartSec { get; set; } = null;
         public bool IsSpatiallyInsideStrict { get; set; } = false;
         public double SpatialStrictEntryTimeSec { get; set; } = 0.0;
+        public int SpatialStrictEntryLap { get; set; } = 0;
         public bool StrictPitValidInTransit { get; set; } = false;
         public double MaxSpeedInPitThisTransit { get; set; } = 0.0;
 
         public int PitCount { get; set; } = 0;
+        public int ClassPosition { get; set; } = 0;
 
         public bool HasCountedPitThisTransit { get; set; } = false;
 
@@ -244,6 +246,11 @@ namespace SimRIG
 
 
         public IReadOnlyDictionary<string, OpponentTelemetryData> TrackedOpponents => _telemetry;
+
+        public void AddTrackedOpponent(string name, OpponentTelemetryData data)
+        {
+            _telemetry[name] = data;
+        }
 
         /// <summary>
         /// Il tempo misurato fra l'ancoraggio e adesso e' un giro vero?
@@ -588,6 +595,31 @@ namespace SimRIG
 
             if (!state.IsGameRunning || state.Opponents == null || state.Opponents.Count == 0) return;
             PlayerData.CarClass = state.CarClassId;
+
+            // Aggiornamento posizioni di classe dinamiche (robusto per multiclasse)
+            var classGroups = state.Opponents
+                .Where(o => !string.IsNullOrEmpty(o.CarClass))
+                .GroupBy(o => o.CarClass, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var grp in classGroups)
+            {
+                var sorted = grp.OrderBy(o => o.PositionInClass > 0 ? o.PositionInClass : (o.Position > 0 ? o.Position : 999))
+                                .ThenByDescending(o => (o.CurrentLap ?? 1) + (o.TrackPositionPercent ?? 0.0))
+                                .ToList();
+
+                for (int rank = 0; rank < sorted.Count; rank++)
+                {
+                    var opp = sorted[rank];
+                    if (opp.IsPlayer)
+                    {
+                        state.PositionInClass = rank + 1;
+                    }
+                    if (TrackedOpponents.TryGetValue(opp.Name, out var tData))
+                    {
+                        tData.ClassPosition = (tData.NativeClassPosition > 0) ? tData.NativeClassPosition : (rank + 1);
+                    }
+                }
+            }
 
             // Wet Fallback Check:
             if (!state.IsTrackWet && state.GlobalBaselineTemp > 0.0 && state.TrackTemperature > 0.0)
@@ -1304,6 +1336,7 @@ namespace SimRIG
                     {
                         tData.IsSpatiallyInsideStrict = true;
                         tData.SpatialStrictEntryTimeSec = currentSessionClock;
+                        tData.SpatialStrictEntryLap = rawCurrentLap;
                         tData.EntryTimeSec = currentSessionClock; // Start strict stopwatch immediately
                         tData.StrictPitValidInTransit = false;    // Reset validation flag
                         tData.MaxSpeedInPitThisTransit = 0.0;     // Reset speed limit tracker
@@ -1317,13 +1350,10 @@ namespace SimRIG
                 bool isInsideGeofence = false;
                 string triggerReason = "";
 
-                if (isNativeAvailable)
+                if (isNativeAvailable && tData.IsOnPitRoad)
                 {
-                    if (tData.IsOnPitRoad)
-                    {
-                        isInsideGeofence = true;
-                        triggerReason = "iRacing Native (CarIdxOnPitRoad)";
-                    }
+                    isInsideGeofence = true;
+                    triggerReason = "iRacing Native (CarIdxOnPitRoad)";
                 }
                 else if (state.IsSessionActive && isSpatiallyInsideGeofence && !isRaceNotStartedYet && tData.HasExitedPitZoneAtLeastOnce)
                 {
@@ -1750,10 +1780,45 @@ namespace SimRIG
                                 ? (ClassBestPitZoneRacingTime + 4.0)
                                 : (ClassBestExtendedPitZoneTime > 0.0 ? (ClassBestExtendedPitZoneTime + 5.0) : 15.0);
 
-                            if (totalSpatialTransitTime > spatialAdaptiveThreshold)
+                            bool lapDiffValid = (rawCurrentLap >= tData.SpatialStrictEntryLap) && (rawCurrentLap <= tData.SpatialStrictEntryLap + 1);
+
+                            if (totalSpatialTransitTime > spatialAdaptiveThreshold && lapDiffValid)
                             {
                                 log.Log(LogModule.OPPONENTS, LogType.EVENT, "Opponent Spatial Transit Retroactively Validated",
                                     $"{tData.Name} | TotalTransitTime: {totalSpatialTransitTime:F1}s > Threshold: {spatialAdaptiveThreshold:F1}s");
+
+                                if (!tData.HasCountedPitThisTransit)
+                                {
+                                    tData.PitCount++;
+                                    tData.HasCountedPitThisTransit = true;
+                                    tData.LastStopLap = rawCurrentLap;
+                                    log.Log(LogModule.OPPONENTS, LogType.EVENT, "Opponent Stopped", $"{tData.Name} (Pit #{tData.PitCount}) | Lap: {tData.LastStopLap}");
+                                }
+
+                                tData.LastPitLap = rawCurrentLap;
+
+                                if (tData.CarClass == state.CarClassId)
+                                {
+                                    double beforeFuel = tData.EstimatedFuel;
+                                    tData.EstimatedFuel = Math.Max(0.0, tData.EstimatedFuel - inlapFuelDeduction);
+                                    int currentOppLap = tData.HighestLapSeen > 0 ? tData.HighestLapSeen : (opp.CurrentLap ?? 0);
+                                    double lapsRemaining = Math.Max(0.0, (raceLapsRemaining > 0 ? raceLapsRemaining : (state.TotalLaps - currentOppLap)));
+                                    double fuelResiduo = Math.Max(0.0, tData.EstimatedFuel);
+                                    double safetyLitres = classFuelBurn > 0 ? classFuelBurn * 0.5 : 2.0;
+                                    double fuelNeeded = (lapsRemaining * classFuelBurn) + safetyLitres;
+                                    double smartFuelToAdd = Math.Min(classMaxTank - fuelResiduo, Math.Max(0.0, fuelNeeded - fuelResiduo));
+                                    tData.LastPitFuelAdded = smartFuelToAdd;
+                                    tData.LastRefuelLap = currentOppLap;
+                                    tData.FuelAfterLastPit = Math.Min(classMaxTank, fuelResiduo + smartFuelToAdd);
+                                    tData.EstimatedFuel = tData.FuelAfterLastPit;
+                                    tData.EstimatedFuelTank = tData.FuelAfterLastPit;
+                                    if (tData.EstimatedFuel >= lapsRemaining * classFuelBurn)
+                                    {
+                                        tData.NeedsPitStop = false;
+                                    }
+                                    log.Log(LogModule.OPPONENTS, LogType.EVENT, "Opponent Smart Refuel Projection (Retroactive)",
+                                        $"{tData.Name} | LapsRem: {lapsRemaining:F1} | Burn: {classFuelBurn:F2} | Residuo: {fuelResiduo:F1}L | Needed: {fuelNeeded:F1}L | FuelToAdd: {smartFuelToAdd:F1}L | PostPit: {tData.FuelAfterLastPit:F1}L | NeedsPit: {tData.NeedsPitStop}");
+                                }
                             }
                             else
                             {

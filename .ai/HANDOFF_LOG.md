@@ -47,6 +47,46 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-09 15:15] antigravity → chiunque entri dopo
+
+**Task:** Fix replay pit detection fallback, Opponents fuel drop to 0L, gap flicker and multiclass target class position
+**Piano:** —
+**Commit:** `questo`
+
+### Fatto
+- `User.PluginSdkDemoEdit/OpponentTracker.cs:185, 595-625, 1345, 1775-1825`:
+  - **Replay Pit Detection Fallback:** Risolto bug critico in cui la presenza di `sample.Telemetry` (oggetti bridge non nulli) impostava `isNativeAvailable = true` ma `CarIdxOnPitRoad` conteneva tutti `false` (nei replay SimHub/iRacing non trasmette telemetria nativa avversari). Cambiata condizione a `isNativeAvailable && tData.IsOnPitRoad`: se nativo è assente o false, l'avversario ricade correttamente su geofence spaziale, persistenza di velocità e durata.
+  - **Fix Fuel Drop to 0.00L & Pit Count Mancante:** In `Opponent Spatial Transit Retroactively Validated`, aggiunta l'esecuzione completa di pit stop (`PitCount++`, `LastStopLap`, `LastPitLap`, e `SmartRefuelProjection`) protetta da verifica `rawCurrentLap <= SpatialStrictEntryLap + 1` contro salti di replay. `LastRefuelLap` viene aggiornato e `EstimatedFuel` rifornito al fabbisogno per arrivare a fine gara (`NeedsPitStop = false`).
+  - **Dynamic Class Position Ranking:** Aggiunto calcolo periodico del ranking di classe raggruppando `state.Opponents` per `CarClass` e ordinando per progresso di gara continuo. Popola `OpponentTelemetryData.ClassPosition` e `state.PositionInClass` sia in sessione live che replay.
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:484, 507, 560-610, 1220-1245, 1415-1465, 1755`:
+  - **Class Position Targeting (P1..P24):** Modalità "P1".."P24" ora seleziona prioritariamente per posizione di classe nella classe del Player (`CarClass == state.CarClassId`), selezionando il leader o contendente GT3 invece di un prototipo GTP assoluto.
+  - **Class Position Fallback:** Risolto bug per cui `CurrentTarget.ClassPosition` leggeva solo `NativeClassPosition` (0 nei replay) ricadendo sulla posizione assoluta. Ora prioritizza `trk.ClassPosition > 0`.
+  - **Stabilizzazione Microsettori e Gap Flicker:** Quando il target è in pit (`oppData.IsOnPitRoad || oppData.IsInsideGeofence || targetOpp.IsCarInPit`) o quando i timestamp dei microsettori divergono di oltre il 60% da `posDiff * refLapTime` (microsettori vecchi di 2-3 giri), il calcolo ripiega istantaneamente sulla progressione continua `Math.Abs(posDiff * refLapTime)`, eliminando i salti a +116s/+194s/+272s durante le soste di Aake Korte.
+  - **ResetSession:** Aggiunto reset di `_prevPosDiff = double.NaN` e `_lastTargetForPosDiff = ""`.
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs:443, 584, 1799, 2012`:
+  - Registrate e pubblicate le proprietà `SimRIG.Target.ClassPosition` e `SimRIG.Player.ClassPosition`.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs`:
+  - Aggiunti 2 test unitari: `Test_SelectTarget_P1_P2_InMulticlass` e `Test_ReplayFallback_RetroactiveTransitValidatesStop`.
+  - Conteggio test suite: **340 test PASS** (100% verdi, 0 falliti).
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build 0 errori, 340 PASS, exit code 0.
+
+### Stato
+- ✅ Compila senza errori
+- ✅ 340 test passano (100%)
+
+### Per chi entra
+**Prossimo passo:** Test su replay Road Atlanta `20260909_134044` per verificare in log/HUD che Aake Korte mantenga il conteggio pit, il carburante stimato aggiornato post-sosta, e che i gap verso i target rimangano stabili senza inversioni o sfarfallii.
+**NON toccare:** `Hardware/` (territorio di Andreas).
+**Attenzione a:** Nei replay di iRacing riprodotti su SimHub, la telemetria nativa di `sample.Telemetry` per gli avversari (`CarIdxOnPitRoad`, `CarIdxTrackSurface`) non è popolata: la cascata geofence + euristica spaziale è il canale primario per i replay.
+
+---
+
 ## [2026-09-09 13:30] antigravity → chiunque entri dopo
 
 **Task:** Firmware INPUT V2.8.2 — aggiunta stato TEST su Rotary POS 7
@@ -407,40 +447,6 @@ Atteso: build 0 errori, 322 PASS, exit code 0.
 **Prossimo passo:** Verifica live con replay a Road Atlanta con Andreas.
 **NON toccare:** `Hardware/` (territorio di Andreas).
 **Attenzione a:** In iRacing durante il formation lap il giro raw può essere 1 o 2 a seconda del tracciato. Il conteggio giri di gara `RaceLapsCompleted` parte tassativamente da 0 sul primo attraversamento linea under green e scala a 1 al completamento del primo giro di gara.
-
----
-
-## [2026-09-06 18:55] antigravity → chiunque entri dopo (Claude in particolare)
-
-**Task:** Risoluzione mancato seeding passo leader da YAML e contaminazione media consumo al via (esclusione assoluta Giro 1)
-**Piano:** —
-**Commit:** `<sha>`
-
-### Fatto
-- `User.PluginSdkDemoEdit/SessionDataReader.cs:98, 116, 228, 235` — Aggiunta lettura di `CarClassID` sia da oggetto raw (`GetLongProp(d, "CarClassID")`) che da PluginManager, registrando `ClassEstimatedPaceSec[carClassId.ToString()] = classEstLap.Value`. Prima la chiave era solo `CarClassShortName` (es. "GTP"), mentre SimHub popola `Opponent.CarClass` con l'ID numerico di classe (es. "4029").
-- `User.PluginSdkDemoEdit/SessionYamlParser.cs:57, 80, 191` — Aggiunta gestione del campo `CarClassID:` nel parser YAML. Il passo di classe viene memorizzato sia sotto il nome breve ("GTP") sia sotto l'identificativo numerico ("4029").
-- `User.PluginSdkDemoEdit/SessionMetadata.cs:132, 145, 160` — Introdotto metodo di normalizzazione `NormalizeDriverName(string name)` che rimuove eventuali suffissi numerici aggiunti da SimHub per deduplicare piloti o istanze (ad es. "Kalyann Mey4" -> "Kalyann Mey"). Integrato in `EstimatedPaceFor` e nel nuovo metodo `MaxFuelPctFor` per garantire che passo e BoP vengano risolti correttamente anche con suffissi di SimHub.
-- `User.PluginSdkDemoEdit/OpponentTracker.cs:662, 809` — Utilizzato `state.Metadata.MaxFuelPctFor` per player e avversari, risolvendo correttamente il BoP anche in presenza di suffissi numerici nel nome pilota.
-- `User.PluginSdkDemoEdit/FuelManager.cs:326` — Semplificata la condizione del giro di partenza in: `bool isRaceStartLap = state.IsRaceSession && _lastEvaluatedLap <= 1;`. In qualunque sessione di gara, il Giro 1 (sia partenza da fermo che lanciata) viene tassativamente escluso da `_recentLaps` e da `AverageFuelPerLap` (registrato solo in `LastLapFuelUsed`). Questo impedisce a consumi anomali del via (come i 2.97 L del replay) di inquinare la finestra mobile dei 5 giri.
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/SessionMetadataUnitTests.cs:74, 323` — Aggiunto test `Test_EstimatedPaceAndBop_DriverNormalizationAndNumericClassId` che valida l'indicizzazione per CarClassID numerico e la normalizzazione dei nomi duplicati.
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/FuelOutlierFilterUnitTests.cs:365` — Aggiornato `Test_FuelManager_Lap1_FreezeFuelToAdd` per verificare che al giro 1 di gara il consumo non entri nella media e che la media pulita inizi al primo giro lanciato (giro 2).
-- Suite test: passata da 320 a **321 test PASS** (100% verdi, 0 falliti).
-
-### Come verificare
-```bash
-"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
-"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: build 0 errori, 321 PASS, exit code 0.
-
-### Stato
-- ✅ Compila
-- ✅ Test passano (321 PASS su 321)
-
-### Per chi entra
-**Prossimo passo:** Verifica su replay reale con Andreas a Road Atlanta.
-**NON toccare:** `Hardware/` (territorio di Andreas).
-**Attenzione a:** In gara (`IsRaceSession`), il primo giro lanciato valido che entra in media è il completamento del Giro 2.
 
 ---
 

@@ -440,6 +440,7 @@ namespace SimRIG
             pm.AddProperty("SimRIG.Target.Mode", t, "AHEAD");
             pm.AddProperty("SimRIG.Target.Name", t, "--");
             pm.AddProperty("SimRIG.Target.Position", t, 0);
+            pm.AddProperty("SimRIG.Target.ClassPosition", t, 0);
             pm.AddProperty("SimRIG.Target.GapSeconds", t, 0.0);
             pm.AddProperty("SimRIG.Target.GapString", t, "");
             pm.AddProperty("SimRIG.Target.RelativePace", t, 0.0);
@@ -579,6 +580,7 @@ namespace SimRIG
             pm.AddProperty("SimRIG.Player.BestLapNumber", t, 0);
             pm.AddProperty("SimRIG.Player.Diagnosis", t, "ANALYZING");
             pm.AddProperty("SimRIG.Player.SelectedTyreCompound", t, "DRY");
+            pm.AddProperty("SimRIG.Player.ClassPosition", t, 0);
 
             pm.AddProperty("SimRIG.Pit.StationaryTimeLoss", t, 0.0);
             pm.AddProperty("SimRIG.Pit.TransitTime", t, 0.0);
@@ -1794,6 +1796,7 @@ namespace SimRIG
             PluginManager.SetPropertyValue("SimRIG.Target.Mode", t, tgt.ModeLabel);
             PluginManager.SetPropertyValue("SimRIG.Target.Name", t, tgt.Name);
             PluginManager.SetPropertyValue("SimRIG.Target.Position", t, tgt.ClassPosition);
+            PluginManager.SetPropertyValue("SimRIG.Target.ClassPosition", t, tgt.ClassPosition);
             PluginManager.SetPropertyValue("SimRIG.Target.GapSeconds", t, Math.Round(tgt.GapSeconds, 1));
             PluginManager.SetPropertyValue("SimRIG.Target.GapString", t, tgt.GapString);
             PluginManager.SetPropertyValue("SimRIG.Target.RelativePace", t, Math.Round(tgt.RelativePace, 3));
@@ -2006,6 +2009,7 @@ namespace SimRIG
             PluginManager.SetPropertyValue("SimRIG.Player.BestLapNumber", t, OpponentTracker.PlayerData.BestMicrosectorSpeedLapCount);
             PluginManager.SetPropertyValue("SimRIG.Player.Diagnosis", t, OpponentTracker.PlayerData.Diagnosis);
             PluginManager.SetPropertyValue("SimRIG.Player.SelectedTyreCompound", t, TyreManager.SelectedWetCompound ? "WET" : "DRY");
+            PluginManager.SetPropertyValue("SimRIG.Player.ClassPosition", t, CurrentState.PositionInClass > 0 ? CurrentState.PositionInClass : CurrentState.Position);
 
             PluginManager.SetPropertyValue("SimRIG.Pit.StationaryTimeLoss", t, Math.Round(PitRadar.LastStationaryTime, 1));
             PluginManager.SetPropertyValue("SimRIG.Pit.TransitTime", t, Math.Round(PitRadar.PitTransitTime, 2));

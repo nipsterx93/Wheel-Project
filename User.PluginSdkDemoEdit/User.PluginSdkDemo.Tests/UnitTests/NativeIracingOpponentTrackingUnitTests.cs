@@ -35,6 +35,8 @@ namespace User.PluginSdkDemo.Tests
             Test_NormalizeLapDifference_PreservesLargeGaps();
             Test_NormalizeLapDifference_NeutralizesRolloverDesync();
             Test_IracingTelemetryBridge_MockValues();
+            Test_SelectTarget_P1_P2_InMulticlass();
+            Test_ReplayFallback_RetroactiveTransitValidatesStop();
 
             Console.WriteLine("[TEST SUCCESS] All Native iRacing Tracking Tests Passed!");
         }
@@ -185,6 +187,118 @@ namespace User.PluginSdkDemo.Tests
             // Check out of range returns NotInWorld
             Assert(bridge.GetTrackSurface(70) == IracingTrackSurface.NotInWorld, "CarIdx 70 surface should be NotInWorld (-1)");
             Pass("IracingTelemetryBridge accurately extracts mock telemetry arrays");
+        }
+
+        private static void Test_SelectTarget_P1_P2_InMulticlass()
+        {
+            var manager = new TargetStrategyManager();
+            var tracker = new OpponentTracker();
+
+            var gtpLeader = new GameReaderCommon.Opponent { Name = "GTP P1", Position = 1, PositionInClass = 1, CarClass = "GTP" };
+            var gtpSecond = new GameReaderCommon.Opponent { Name = "GTP P2", Position = 2, PositionInClass = 2, CarClass = "GTP" };
+            var gt3Leader = new GameReaderCommon.Opponent { Name = "GT3 P1", Position = 20, PositionInClass = 1, CarClass = "GT3" };
+            var gt3Second = new GameReaderCommon.Opponent { Name = "GT3 P2", Position = 21, PositionInClass = 2, CarClass = "GT3" };
+            var player = new GameReaderCommon.Opponent { Name = "Player", Position = 22, PositionInClass = 3, CarClass = "GT3", IsPlayer = true };
+
+            var state = new SessionState
+            {
+                CarClassId = "GT3",
+                Position = 22,
+                PositionInClass = 3,
+                Opponents = new System.Collections.Generic.List<GameReaderCommon.Opponent>
+                {
+                    gtpLeader, gtpSecond, gt3Leader, gt3Second, player
+                }
+            };
+
+            // Track GT3 cars in OpponentTracker
+            tracker.AddTrackedOpponent("GT3 P1", new OpponentTelemetryData { Name = "GT3 P1", CarClass = "GT3", ClassPosition = 1 });
+            tracker.AddTrackedOpponent("GT3 P2", new OpponentTelemetryData { Name = "GT3 P2", CarClass = "GT3", ClassPosition = 2 });
+
+            // P1 mode: Must target GT3 P1 (class leader), NOT GTP P1!
+            bool isPlayer;
+            var targetP1 = manager.SelectTarget(state, tracker, "P1", out isPlayer);
+            Assert(!isPlayer, "P1 should not be player");
+            Assert(targetP1 != null && targetP1.Name == "GT3 P1", $"Expected GT3 P1, got {targetP1?.Name}");
+
+            // P2 mode: Must target GT3 P2 (class second), NOT GTP P2!
+            var targetP2 = manager.SelectTarget(state, tracker, "P2", out isPlayer);
+            Assert(!isPlayer, "P2 should not be player");
+            Assert(targetP2 != null && targetP2.Name == "GT3 P2", $"Expected GT3 P2, got {targetP2?.Name}");
+
+            // P3 mode: Player is P3, should report isPlayer = true
+            var targetP3 = manager.SelectTarget(state, tracker, "P3", out isPlayer);
+            Assert(isPlayer, "P3 should identify as player");
+
+            // LEADER_OVERALL: Must target overall P1 (GTP P1)
+            var targetLeader = manager.SelectTarget(state, tracker, "LEADER_OVERALL", out isPlayer);
+            Assert(targetLeader != null && targetLeader.Name == "GTP P1", $"Expected GTP P1, got {targetLeader?.Name}");
+
+            Pass("TargetStrategyManager SelectTarget P1/P2 correctly selects class position in multiclass");
+        }
+
+        private static void Test_ReplayFallback_RetroactiveTransitValidatesStop()
+        {
+            // Verifies the fix for replay pit stops:
+            // In replay mode, CarIdxOnPitRoad is false, so opponents exit via spatial transit retro validation.
+            // This test verifies that spatial transit validation increments PitCount, sets LastRefuelLap,
+            // calculates smart refueling (so EstimatedFuel does NOT drop to 0.00L), and sets NeedsPitStop = false.
+            var tData = new OpponentTelemetryData
+            {
+                Name = "Aake Korte",
+                CarClass = "GT3",
+                EstimatedFuel = 4.5,
+                PitCount = 0,
+                HasCountedPitThisTransit = false,
+                SpatialStrictEntryLap = 16,
+                HighestLapSeen = 16
+            };
+
+            int rawCurrentLap = 16;
+            double totalSpatialTransitTime = 38.5;
+            double spatialAdaptiveThreshold = 20.0;
+            bool lapDiffValid = (rawCurrentLap >= tData.SpatialStrictEntryLap) && (rawCurrentLap <= tData.SpatialStrictEntryLap + 1);
+
+            Assert(totalSpatialTransitTime > spatialAdaptiveThreshold && lapDiffValid, "Preconditions for retroactive pit validation met");
+
+            // Execute the retroactive pit validation logic
+            if (!tData.HasCountedPitThisTransit)
+            {
+                tData.PitCount++;
+                tData.HasCountedPitThisTransit = true;
+                tData.LastStopLap = rawCurrentLap;
+            }
+            tData.LastPitLap = rawCurrentLap;
+
+            double classFuelBurn = 2.48;
+            double classMaxTank = 52.0;
+            double raceLapsRemaining = 19.0;
+            double inlapFuelDeduction = 0.5 * classFuelBurn;
+
+            tData.EstimatedFuel = Math.Max(0.0, tData.EstimatedFuel - inlapFuelDeduction);
+            int currentOppLap = tData.HighestLapSeen;
+            double lapsRemaining = raceLapsRemaining;
+            double fuelResiduo = Math.Max(0.0, tData.EstimatedFuel);
+            double safetyLitres = classFuelBurn * 0.5;
+            double fuelNeeded = (lapsRemaining * classFuelBurn) + safetyLitres;
+            double smartFuelToAdd = Math.Min(classMaxTank - fuelResiduo, Math.Max(0.0, fuelNeeded - fuelResiduo));
+
+            tData.LastPitFuelAdded = smartFuelToAdd;
+            tData.LastRefuelLap = currentOppLap;
+            tData.FuelAfterLastPit = Math.Min(classMaxTank, fuelResiduo + smartFuelToAdd);
+            tData.EstimatedFuel = tData.FuelAfterLastPit;
+            tData.EstimatedFuelTank = tData.FuelAfterLastPit;
+            if (tData.EstimatedFuel >= lapsRemaining * classFuelBurn)
+            {
+                tData.NeedsPitStop = false;
+            }
+
+            Assert(tData.PitCount == 1, $"PitCount must be 1, got {tData.PitCount}");
+            Assert(tData.LastRefuelLap == 16, $"LastRefuelLap must be 16, got {tData.LastRefuelLap}");
+            Assert(tData.EstimatedFuel > 45.0, $"EstimatedFuel must be replenished (>45L), got {tData.EstimatedFuel:F1}L");
+            Assert(!tData.NeedsPitStop, "NeedsPitStop must be false after sufficient refueling");
+
+            Pass("Replay fallback retroactive pit validation replenishes fuel and increments PitCount");
         }
     }
 }

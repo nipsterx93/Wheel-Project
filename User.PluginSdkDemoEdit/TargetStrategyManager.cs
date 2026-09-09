@@ -252,6 +252,8 @@ namespace SimRIG
         private int _myLastMacroSector = -1;
         private int _lastLogSector = -1;
         private DateTime _lastMergeGapLogWallTime = DateTime.MinValue;
+        private double _prevPosDiff = double.NaN;
+        private string _lastTargetForPosDiff = "";
 
         private readonly RelativePaceTracker _relativePace = new RelativePaceTracker();
 
@@ -479,8 +481,8 @@ namespace SimRIG
 
                     CurrentTarget.Name = targetOpp.Name;
 
-                    int initialClassPos = (tracker.TrackedOpponents.TryGetValue(targetOpp.Name, out var trkInit) && trkInit.NativeClassPosition > 0)
-                        ? trkInit.NativeClassPosition
+                    int initialClassPos = (tracker.TrackedOpponents.TryGetValue(targetOpp.Name, out var trkInit) && (trkInit.ClassPosition > 0 || trkInit.NativeClassPosition > 0))
+                        ? (trkInit.ClassPosition > 0 ? trkInit.ClassPosition : trkInit.NativeClassPosition)
                         : (targetOpp.PositionInClass > 0 ? targetOpp.PositionInClass : targetOpp.Position);
                     CurrentTarget.ClassPosition = initialClassPos;
 
@@ -502,8 +504,8 @@ namespace SimRIG
 
 
 
-                int currentClassPos = (tracker.TrackedOpponents.TryGetValue(targetOpp.Name, out var trkCurr) && trkCurr.NativeClassPosition > 0)
-                    ? trkCurr.NativeClassPosition
+                int currentClassPos = (tracker.TrackedOpponents.TryGetValue(targetOpp.Name, out var trkCurr) && (trkCurr.ClassPosition > 0 || trkCurr.NativeClassPosition > 0))
+                    ? (trkCurr.ClassPosition > 0 ? trkCurr.ClassPosition : trkCurr.NativeClassPosition)
                     : (targetOpp.PositionInClass > 0 ? targetOpp.PositionInClass : targetOpp.Position);
                 CurrentTarget.ClassPosition = currentClassPos;
 
@@ -533,7 +535,29 @@ namespace SimRIG
                     state.TrackLengthMeters);
 
                 // Neutralizza disallineamenti di 1 tick al traguardo preservando distacchi > 0.5 giri
-                double posDiff = NormalizeLapDifference((myLap + myPos) - (targetLatchedLap + oppPos), myPos, oppPos);
+                double rawDiff = (myLap + myPos) - (targetLatchedLap + oppPos);
+                double posDiff = NormalizeLapDifference(rawDiff, myPos, oppPos);
+
+                if (targetOpp.Name != _lastTargetForPosDiff)
+                {
+                    _prevPosDiff = double.NaN;
+                    _lastTargetForPosDiff = targetOpp.Name;
+                }
+
+                if (!double.IsNaN(_prevPosDiff))
+                {
+                    double jump = posDiff - _prevPosDiff;
+                    if (jump > 0.65 && jump < 1.35)
+                    {
+                        posDiff -= 1.0;
+                    }
+                    else if (jump < -0.65 && jump > -1.35)
+                    {
+                        posDiff += 1.0;
+                    }
+                }
+                _prevPosDiff = posDiff;
+
                 double currentSessionClock = state.SessionTimeLeftSec;
                 double currentFluidGap = 0.0;
                 bool gapCalculated = false;
@@ -542,7 +566,7 @@ namespace SimRIG
                 {
                     var oppData = tracker.TrackedOpponents[targetOpp.Name];
                     
-                    if (oppData.IsOnPitRoad)
+                    if (oppData.IsOnPitRoad || oppData.IsInsideGeofence || (targetOpp != null && targetOpp.IsCarInPit))
                     {
                         // Se il target e' in pit lane, i microsettori di velocita' sono incomparabili.
                         // Usiamo la progressione continua senza sfarfallamenti.
@@ -560,8 +584,13 @@ namespace SimRIG
                         if (t1 > 0.0 && t2 > 0.0 && Math.Abs(t2 - t1) < 10.0)
                         {
                             double t_opp_at_myPos = t1 + (myPosScaled - s1) * (t2 - t1);
-                            currentFluidGap = Math.Abs(currentSessionClock - t_opp_at_myPos);
-                            gapCalculated = true;
+                            double microGap = Math.Abs(currentSessionClock - t_opp_at_myPos);
+                            double expectedGap = Math.Abs(posDiff * refLapTime);
+                            if (microGap < refLapTime * 1.5 && Math.Abs(microGap - expectedGap) < refLapTime * 0.6)
+                            {
+                                currentFluidGap = microGap;
+                                gapCalculated = true;
+                            }
                         }
                     }
                     else // Target dietro (Player davanti)
@@ -575,8 +604,13 @@ namespace SimRIG
                         if (t1 > 0.0 && t2 > 0.0 && Math.Abs(t2 - t1) < 10.0)
                         {
                             double t_player_at_oppPos = t1 + (oppPosScaled - s1) * (t2 - t1);
-                            currentFluidGap = Math.Abs(currentSessionClock - t_player_at_oppPos);
-                            gapCalculated = true;
+                            double microGap = Math.Abs(currentSessionClock - t_player_at_oppPos);
+                            double expectedGap = Math.Abs(posDiff * refLapTime);
+                            if (microGap < refLapTime * 1.5 && Math.Abs(microGap - expectedGap) < refLapTime * 0.6)
+                            {
+                                currentFluidGap = microGap;
+                                gapCalculated = true;
+                            }
                         }
                     }
                 }
@@ -1168,7 +1202,7 @@ namespace SimRIG
                                 state.Metadata?.EstimatedPaceFor(null, state.CarClassId),
                                 state.TrackLengthMeters);
 
-                            if (logOppData.IsOnPitRoad)
+                            if (logOppData.IsOnPitRoad || logOppData.IsInsideGeofence || (logTargetOpp != null && logTargetOpp.IsCarInPit))
                             {
                                 logTargetFluidGap = Math.Abs(logPosDiff * refLap);
                                 gapFound = true;
@@ -1183,8 +1217,13 @@ namespace SimRIG
                                 if (t1 > 0.0 && t2 > 0.0 && Math.Abs(t2 - t1) < 10.0)
                                 {
                                     double t_opp_at_myPos = t1 + (myPosScaled - s1) * (t2 - t1);
-                                    logTargetFluidGap = Math.Abs(logSessionClock - t_opp_at_myPos);
-                                    gapFound = true;
+                                    double microGap = Math.Abs(logSessionClock - t_opp_at_myPos);
+                                    double expectedGap = Math.Abs(logPosDiff * refLap);
+                                    if (microGap < refLap * 1.5 && Math.Abs(microGap - expectedGap) < refLap * 0.6)
+                                    {
+                                        logTargetFluidGap = microGap;
+                                        gapFound = true;
+                                    }
                                 }
                             }
                             else
@@ -1197,8 +1236,13 @@ namespace SimRIG
                                 if (t1 > 0.0 && t2 > 0.0 && Math.Abs(t2 - t1) < 10.0)
                                 {
                                     double t_player_at_oppPos = t1 + (oppPosScaled - s1) * (t2 - t1);
-                                    logTargetFluidGap = Math.Abs(logSessionClock - t_player_at_oppPos);
-                                    gapFound = true;
+                                    double microGap = Math.Abs(logSessionClock - t_player_at_oppPos);
+                                    double expectedGap = Math.Abs(logPosDiff * refLap);
+                                    if (microGap < refLap * 1.5 && Math.Abs(microGap - expectedGap) < refLap * 0.6)
+                                    {
+                                        logTargetFluidGap = microGap;
+                                        gapFound = true;
+                                    }
                                 }
                             }
 
@@ -1321,7 +1365,7 @@ namespace SimRIG
 
 
 
-        private GameReaderCommon.Opponent SelectTarget(SessionState state, OpponentTracker tracker, string mode, out bool isPlayer)
+        public GameReaderCommon.Opponent SelectTarget(SessionState state, OpponentTracker tracker, string mode, out bool isPlayer)
         {
             isPlayer = false;
             if (mode == "PLAYER")
@@ -1364,6 +1408,61 @@ namespace SimRIG
                     return null;
                 }
                 return classLeaderOpp;
+            }
+
+            if (mode.StartsWith("P") && int.TryParse(mode.Substring(1), out int pPos))
+            {
+                int myClassPos = state.PositionInClass > 0 ? state.PositionInClass : state.Position;
+                if (pPos == myClassPos)
+                {
+                    isPlayer = true;
+                    return null;
+                }
+
+                // Cerca per ClassPosition tra gli avversari della classe del Player
+                foreach (var oppCandidate in state.Opponents)
+                {
+                    if (oppCandidate.IsPlayer || (!string.IsNullOrEmpty(state.CarClassId) && oppCandidate.CarClass != state.CarClassId)) continue;
+                    int oppClassPos = 0;
+                    if (tracker.TrackedOpponents.TryGetValue(oppCandidate.Name, out var trk) && trk.ClassPosition > 0)
+                    {
+                        oppClassPos = trk.ClassPosition;
+                    }
+                    else if (oppCandidate.PositionInClass > 0)
+                    {
+                        oppClassPos = oppCandidate.PositionInClass;
+                    }
+
+                    if (oppClassPos == pPos)
+                    {
+                        return oppCandidate;
+                    }
+                }
+
+                // Fallback: ordina la classe del Player e prendi l'indice pPos - 1
+                if (!string.IsNullOrEmpty(state.CarClassId))
+                {
+                    var classOpps = state.Opponents
+                        .Where(o => string.Equals(o.CarClass, state.CarClassId, StringComparison.OrdinalIgnoreCase))
+                        .OrderBy(o => o.PositionInClass > 0 ? o.PositionInClass : (o.Position > 0 ? o.Position : 999))
+                        .ThenByDescending(o => (o.CurrentLap ?? 1) + (o.TrackPositionPercent ?? 0.0))
+                        .ToList();
+
+                    int targetIdx = pPos - 1;
+                    if (targetIdx >= 0 && targetIdx < classOpps.Count)
+                    {
+                        var cand = classOpps[targetIdx];
+                        if (cand.IsPlayer)
+                        {
+                            isPlayer = true;
+                            return null;
+                        }
+                        return cand;
+                    }
+                }
+
+                // Estremo fallback su posizione assoluta
+                return state.Opponents.FirstOrDefault(o => o.Position == pPos && !o.IsPlayer);
             }
 
             GameReaderCommon.Opponent found = null;
@@ -1409,14 +1508,6 @@ namespace SimRIG
                             minGapBehind = gap;
                             found = opp;
                         }
-                    }
-                }
-                else if (mode.StartsWith("P"))
-                {
-                    if (int.TryParse(mode.Substring(1), out int pPos))
-                    {
-                        if (pPos == state.Position) isPlayer = true;
-                        else if (opp.Position == pPos) found = opp;
                     }
                 }
             }
@@ -1661,6 +1752,8 @@ namespace SimRIG
             _lastPaceSample = default(RelativePaceSample);
             CurrentTarget.RelativeGapDelta = 0.0;
             CurrentTarget.RelativeGapDeltaValid = false;
+            _prevPosDiff = double.NaN;
+            _lastTargetForPosDiff = "";
         }
 
     }
