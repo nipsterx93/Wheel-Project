@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      antigravity
-since:      2026-09-10T15:05:00+02:00
-task:       InPitStall detection fallback for stationary opponent in pit road
-scope:      User.PluginSdkDemoEdit/OpponentTracker.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/
-expires:    2026-09-10T17:00:00+02:00
+owner:      NONE
+since:      null
+task:       null
+scope:      null
+expires:    null
 ```
 
 **Regole del lock**
@@ -66,10 +66,10 @@ poteva più correggere). Il rimedio comune è in ADR-005.
 > L'indice dei punti chiusi resta più in basso in questo file: serve a sapere **che** un punto esiste
 > ed è chiuso, senza caricarne il testo. Quando ti serve il *perché*, apri l'archivio a quell'ID.
 
-**Come è stato verificato tutto:** build 0 errori, **343 test PASS** (erano 111 al setup, 186 al
+**Come è stato verificato tutto:** build 0 errori, **345 test PASS** (erano 111 al setup, 186 al
 24 agosto, 295 dopo Y-52 passo 1, 311 dopo Y-52 passo 2, 314 dopo sblocco dump `SessionDataReader`,
 321 dopo allineamento CarClassID/suffissi, 322 dopo sincronizzazione start line crossing latch,
-324 dopo stima consumo robusta con mediana mobile e validazione su Road Atlanta e Misano, 332 dopo cronometro reale PitZone SectorTracker, 340 dopo fix pit detection replay e class position ranking, 342 dopo esposizione proprietà Player/Target TrackSurface, 343 dopo esposizione Player/Target TrackPositionPercent; ⚠️ vedi Y-54: il backtest sul replay
+324 dopo stima consumo robusta con mediana mobile e validazione su Road Atlanta e Misano, 332 dopo cronometro reale PitZone SectorTracker, 340 dopo fix pit detection replay e class position ranking, 342 dopo esposizione proprietà Player/Target TrackSurface, 343 dopo esposizione Player/Target TrackPositionPercent, 345 dopo fallback InPitStall per avversario fermo su pit road; ⚠️ vedi Y-54: il backtest sul replay
 reale si salta in silenzio se il file non c'è, quindi il numero da solo non dice quanta copertura
 sia davvero girata), e per ogni
 correzione la **regressione neutralizzata** — si disattiva il fix e si controlla che il test diventi

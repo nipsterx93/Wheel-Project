@@ -9,6 +9,44 @@
 
 ---
 
+## [2026-09-08 13:20] antigravity → chiunque entri dopo (Claude in particolare)
+
+**Task:** Unificazione formule di Pit Loss e tempo da fermo (CarPitData) tra RaceAnalyzer, TargetStrategyManager e DataPluginDemo
+**Piano:** `.ai/plans/2026-09-03-inventario-passo-e-sosta.md`
+**Commit:** `14e9a08` (codice e test), questo (handoff e rilascio lock)
+
+### Fatto
+- `User.PluginSdkDemoEdit/CarPitData.cs:127-197`:
+  - Implementato `CalculateStationaryTime`: calcola il tempo da fermo distinguendo tra sosta simultanea (GT3/LMP2/GTP: `Max(fuel, tyres)`) e sequenziale (PCUP/OpenWheel: `fuel + tyres`) con buffer martinetti (+2.0s se sosta > 0).
+  - Implementato `CalculateExtendedRacingTime` (con overload geometrico e per velocità): prioritizza la misura cronometrata reale della classe da `OpponentTracker.ClassBestExtendedPitZoneTime`, con fallback sulla frazione di tracciato box per passo sul giro.
+  - Implementato `CalculateTotalPitLoss`: unifica il calcolo della perdita netta ai box con guard di sicurezza `extended >= timeInZone` per evitare azzeramenti anomali o sottrazioni errate con telemetria incompleta.
+- `User.PluginSdkDemoEdit/RaceAnalyzer.cs:1125-1150`:
+  - Sostituita la formula manuale semplificata che ignorava `IsSequential` e il buffer jack con `CarPitData.CalculateStationaryTime`, `CarPitData.CalculateExtendedRacingTime` e `CarPitData.CalculateTotalPitLoss`.
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:695-715, 735-745, 1160-1170`:
+  - Sostituiti i blocchi di calcolo inline duplicati per `playerTotalPitLoss`, `targetTotalPitLoss` e nel monitor merge gap con le chiamate centralizzate a `CarPitData`.
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs:1990-2005`:
+  - Sostituito il calcolo inline di `totalStationaryTimeVal` e `totalPitLossVal` con le chiamate unificate a `CarPitData`.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/PitLossUnitTests.cs`:
+  - Aggiunti 3 unit test dedicati: `Test_CalculateStationaryTime_Centralized`, `Test_CalculateExtendedRacingTime_Centralized`, `Test_CalculateTotalPitLoss_Centralized`.
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Criterio di successo: **327 PASS (100%)**.
+
+### Stato
+- ✅ Compila (0 errori, 1 warning CS0219 noto)
+- ✅ 327 PASS (100%)
+
+### Per chi entra
+**Prossimo passo:** Verifica del merge gap post-sosta (`ProjectedMergeGap` / `TargetStrategyManager.cs`) su replay reali e continuazione della Fase B della roadmap (`2026-08-24-roadmap.md`).
+**NON toccare:** `CarPitData.cs` e la logica di calcolo centrale senza test di non-regressione.
+**Attenzione a:** L'unificazione di PitLoss non altera le proiezioni di fine gara né il consumo carburante su Road Atlanta (35 giri / 31 L) e Misano (26 giri / 16 L), poiché la variazione su `playerL_left` è inferiore a 0.05 giri (sotto la soglia di sensibilità del round up).
+
+---
+
 ## [2026-09-08 12:45] antigravity → chiunque entri dopo (Claude in particolare)
 
 **Task:** Validazione sul campo stima consumo con mediana e latch traguardo via su Road Atlanta e Misano

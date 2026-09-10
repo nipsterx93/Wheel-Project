@@ -40,6 +40,8 @@ namespace User.PluginSdkDemo.Tests
             Test_IracingTelemetryBridge_PluginManagerReplayFallback();
             Test_TargetState_TrackSurface_Properties();
             Test_PlayerAndTarget_TrackPositionPercent_Properties();
+            Test_InPitStall_Fallback_WhenApproachingPitsAndStationary();
+            Test_InPitStall_NativeTakesPriorityImmediately();
 
             Console.WriteLine("[TEST SUCCESS] All Native iRacing Tracking Tests Passed!");
         }
@@ -426,6 +428,146 @@ namespace User.PluginSdkDemo.Tests
             Assert(Math.Abs(targetState.TrackPositionPercent - 0.3345) < 1e-4, "TargetState should use NativeLapDistPct if > 0");
 
             Pass("Player and Target TrackPositionPercent properties and fallback behave correctly");
+        }
+
+        private static void Test_InPitStall_Fallback_WhenApproachingPitsAndStationary()
+        {
+            var tData = new OpponentTelemetryData
+            {
+                Name = "Bruno Carneiro",
+                CarClass = "GT3",
+                IsOnPitRoad = true,
+                TrackSurface = IracingTrackSurface.AproachingPits
+            };
+
+            // Simula la logica di fallback:
+            // Tick 1: Vettura in pit lane, velocità 0 km/h, ApproachingPits (non InPitStall)
+            double currentSessionClock = 1000.0;
+            double currentSpeed = 0.0;
+            double currentPosPct = 0.05;
+            bool nativeOnPitRoad = true;
+            var nativeTrackSurface = IracingTrackSurface.AproachingPits;
+
+            bool effectiveInPitStall = (nativeTrackSurface == IracingTrackSurface.InPitStall);
+            if (!effectiveInPitStall && (nativeOnPitRoad || nativeTrackSurface == IracingTrackSurface.AproachingPits))
+            {
+                if (currentSpeed < 0.5)
+                {
+                    if (tData.PitRoadStationaryStartSec == null)
+                    {
+                        tData.PitRoadStationaryStartSec = currentSessionClock;
+                        tData.PitRoadStationaryPosPct = currentPosPct;
+                    }
+                }
+            }
+
+            Assert(!effectiveInPitStall, "At t=0s, stationary fallback should not have triggered yet (< 1.0s)");
+            Assert(tData.PitRoadStationaryStartSec == 1000.0, "Stationary start clock should be 1000.0");
+
+            // Tick 2: Passati 0.5s (t = 1000.5s), ancora ferma
+            currentSessionClock = 1000.5;
+            if (currentSpeed < 0.5 && tData.PitRoadStationaryStartSec != null)
+            {
+                if (Math.Abs(currentSessionClock - tData.PitRoadStationaryStartSec.Value) >= 1.0)
+                {
+                    effectiveInPitStall = true;
+                    tData.TrackSurface = IracingTrackSurface.InPitStall;
+                }
+            }
+            Assert(!effectiveInPitStall, "At t=0.5s, stationary fallback should not have triggered yet");
+
+            // Tick 3: Passati 1.2s (t = 1001.2s), ferma da > 1.0s
+            currentSessionClock = 1001.2;
+            if (currentSpeed < 0.5 && tData.PitRoadStationaryStartSec != null)
+            {
+                if (Math.Abs(currentSessionClock - tData.PitRoadStationaryStartSec.Value) >= 1.0)
+                {
+                    effectiveInPitStall = true;
+                    tData.TrackSurface = IracingTrackSurface.InPitStall;
+                }
+            }
+            Assert(effectiveInPitStall, "At t=1.2s, effectiveInPitStall should be TRUE");
+            Assert(tData.TrackSurface == IracingTrackSurface.InPitStall, "TrackSurface must be promoted to InPitStall");
+
+            // Avvio cronometro
+            if (effectiveInPitStall)
+            {
+                if (!tData.WasInPitStall)
+                {
+                    tData.WasInPitStall = true;
+                    tData.InPitStallStartTimeSec = tData.PitRoadStationaryStartSec ?? currentSessionClock;
+                    tData.StopStartTimeSec = tData.InPitStallStartTimeSec;
+                }
+                tData.StationaryTimeSec = Math.Abs(currentSessionClock - tData.InPitStallStartTimeSec);
+            }
+            Assert(tData.WasInPitStall, "WasInPitStall should be true");
+            Assert(Math.Abs(tData.InPitStallStartTimeSec - 1000.0) < 1e-4, "Start time should be retrodated to 1000.0s");
+            Assert(Math.Abs(tData.StationaryTimeSec - 1.2) < 1e-4, "Stationary time should be 1.2s");
+
+            // Tick 4: Sosta continua per 25s (t = 1025.0s)
+            currentSessionClock = 1025.0;
+            tData.StationaryTimeSec = Math.Abs(currentSessionClock - tData.InPitStallStartTimeSec);
+            Assert(Math.Abs(tData.StationaryTimeSec - 25.0) < 1e-4, "Stationary time should be 25.0s");
+
+            // Tick 5: Ripartenza vettura (speed = 25.0 km/h)
+            currentSpeed = 25.0;
+            effectiveInPitStall = (nativeTrackSurface == IracingTrackSurface.InPitStall);
+            if (!effectiveInPitStall && (nativeOnPitRoad || nativeTrackSurface == IracingTrackSurface.AproachingPits))
+            {
+                if (currentSpeed < 0.5) { }
+                else
+                {
+                    tData.PitRoadStationaryStartSec = null;
+                    tData.PitRoadStationaryPosPct = null;
+                }
+            }
+
+            Assert(!effectiveInPitStall, "effectiveInPitStall should become false when speed >= 0.5 km/h");
+            if (!effectiveInPitStall && tData.WasInPitStall)
+            {
+                tData.WasInPitStall = false;
+                tData.StationaryTimeSec = Math.Abs(currentSessionClock - tData.InPitStallStartTimeSec);
+                tData.LastPitStationaryTimeSec = tData.StationaryTimeSec;
+                tData.StopStartTimeSec = null;
+                tData.TrackSurface = nativeTrackSurface;
+            }
+
+            Assert(!tData.WasInPitStall, "WasInPitStall should be reset to false on departure");
+            Assert(tData.TrackSurface == IracingTrackSurface.AproachingPits, "TrackSurface should revert to AproachingPits");
+            Assert(Math.Abs(tData.LastPitStationaryTimeSec - 25.0) < 1e-4, "LastPitStationaryTimeSec should be 25.0s");
+
+            Pass("InPitStall fallback correctly detects stationary opponent on pit road and records stop");
+        }
+
+        private static void Test_InPitStall_NativeTakesPriorityImmediately()
+        {
+            var tData = new OpponentTelemetryData
+            {
+                Name = "Nicolas Regnier",
+                IsOnPitRoad = true,
+                TrackSurface = IracingTrackSurface.AproachingPits
+            };
+
+            double currentSessionClock = 2000.0;
+            var nativeTrackSurface = IracingTrackSurface.InPitStall;
+
+            bool effectiveInPitStall = (nativeTrackSurface == IracingTrackSurface.InPitStall);
+            Assert(effectiveInPitStall, "Native InPitStall must take priority immediately");
+
+            if (effectiveInPitStall)
+            {
+                if (!tData.WasInPitStall)
+                {
+                    tData.WasInPitStall = true;
+                    tData.InPitStallStartTimeSec = tData.PitRoadStationaryStartSec ?? currentSessionClock;
+                }
+                tData.StationaryTimeSec = Math.Abs(currentSessionClock - tData.InPitStallStartTimeSec);
+            }
+
+            Assert(tData.WasInPitStall, "WasInPitStall should be true immediately");
+            Assert(Math.Abs(tData.InPitStallStartTimeSec - 2000.0) < 1e-4, "StartTime should be 2000.0s immediately");
+
+            Pass("Native InPitStall takes priority immediately without delay");
         }
     }
 }

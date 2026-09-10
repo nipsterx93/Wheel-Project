@@ -194,6 +194,8 @@ namespace SimRIG
         public float NativeLapDistPct { get; set; } = 0f;
         public double InPitStallStartTimeSec { get; set; } = 0.0;
         public bool WasInPitStall { get; set; } = false;
+        public double? PitRoadStationaryStartSec { get; set; } = null;
+        public double? PitRoadStationaryPosPct { get; set; } = null;
         public bool NeedsPitStop { get; set; } = true;
 
         public bool LastPitTiresChanged { get; set; } = true;
@@ -598,6 +600,10 @@ namespace SimRIG
             PlayerData.CarClass = state.CarClassId;
             PlayerData.CarIdx = state.PlayerCarIdx;
             PlayerData.TrackSurface = IracingBridge.GetTrackSurface(state.PlayerCarIdx);
+            if (PlayerData.TrackSurface != IracingTrackSurface.InPitStall && state.IsInPitBox)
+            {
+                PlayerData.TrackSurface = IracingTrackSurface.InPitStall;
+            }
             PlayerData.IsOnPitRoad = IracingBridge.IsOnPitRoad(state.PlayerCarIdx);
             float nativePlayerDist = IracingBridge.GetLapDistPct(state.PlayerCarIdx);
             PlayerData.NativeLapDistPct = nativePlayerDist;
@@ -1305,14 +1311,57 @@ namespace SimRIG
                         tData.LastStopLap = rawCurrentLap;
                     }
 
+                    // Controllo stato InPitStall nativo o fallback per fermata in pit lane
+                    bool effectiveInPitStall = (nativeTrackSurface == IracingTrackSurface.InPitStall);
+
+                    if (!effectiveInPitStall && (nativeOnPitRoad || nativeTrackSurface == IracingTrackSurface.AproachingPits))
+                    {
+                        // Fallback: se in pit lane e la vettura è ferma (< 0.5 km/h) con posizione invariata per almeno 1.0s, è in stallo
+                        double currentSpeed = tData.LastValidSpeedKmh;
+                        double currentPosPct = nativeLapDistPct > 0 ? (double)nativeLapDistPct : currentPos;
+
+                        if (currentSpeed < 0.5)
+                        {
+                            if (tData.PitRoadStationaryStartSec == null)
+                            {
+                                tData.PitRoadStationaryStartSec = currentSessionClock;
+                                tData.PitRoadStationaryPosPct = currentPosPct;
+                            }
+                            else
+                            {
+                                if (tData.PitRoadStationaryPosPct.HasValue && Math.Abs(currentPosPct - tData.PitRoadStationaryPosPct.Value) > 0.0005)
+                                {
+                                    // La vettura si è mossa: reset timer
+                                    tData.PitRoadStationaryStartSec = currentSessionClock;
+                                    tData.PitRoadStationaryPosPct = currentPosPct;
+                                }
+                                else if (Math.Abs(currentSessionClock - tData.PitRoadStationaryStartSec.Value) >= 1.0)
+                                {
+                                    effectiveInPitStall = true;
+                                    tData.TrackSurface = IracingTrackSurface.InPitStall;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            tData.PitRoadStationaryStartSec = null;
+                            tData.PitRoadStationaryPosPct = null;
+                        }
+                    }
+                    else if (!effectiveInPitStall)
+                    {
+                        tData.PitRoadStationaryStartSec = null;
+                        tData.PitRoadStationaryPosPct = null;
+                    }
+
                     // Cronometro InPitStall
-                    if (nativeTrackSurface == IracingTrackSurface.InPitStall)
+                    if (effectiveInPitStall)
                     {
                         if (!tData.WasInPitStall)
                         {
                             tData.WasInPitStall = true;
-                            tData.InPitStallStartTimeSec = currentSessionClock;
-                            tData.StopStartTimeSec = currentSessionClock;
+                            tData.InPitStallStartTimeSec = tData.PitRoadStationaryStartSec ?? currentSessionClock;
+                            tData.StopStartTimeSec = tData.InPitStallStartTimeSec;
                             log?.Log(LogModule.OPPONENTS, LogType.EVENT, "Opponent In Pit Stall Started", $"{tData.Name} | Clock: {currentSessionClock:F2}s");
                         }
                         tData.StationaryTimeSec = Math.Abs(currentSessionClock - tData.InPitStallStartTimeSec);
@@ -1323,6 +1372,8 @@ namespace SimRIG
                         tData.StationaryTimeSec = Math.Abs(currentSessionClock - tData.InPitStallStartTimeSec);
                         tData.LastPitStationaryTimeSec = tData.StationaryTimeSec;
                         tData.StopStartTimeSec = null;
+                        tData.PitRoadStationaryStartSec = null;
+                        tData.PitRoadStationaryPosPct = null;
                         log?.Log(LogModule.OPPONENTS, LogType.EVENT, "Opponent In Pit Stall Finished", $"{tData.Name} | StationaryTime: {tData.StationaryTimeSec:F2}s");
                     }
                 }
@@ -1666,7 +1717,7 @@ namespace SimRIG
                         double observedExtendedTransit = tData.ExtendedPitZone.LastTransitTime > 0.0
                             ? tData.ExtendedPitZone.LastTransitTime
                             : totalTransitTime;
-                        double statDuration = tData.StationaryTimeSec;
+                        double statDuration = tData.StationaryTimeSec > 0.0 ? tData.StationaryTimeSec : tData.LastPitStationaryTimeSec;
                         double rawExtendedTime = Math.Max(0.0, observedExtendedTransit - statDuration);
                         double refuelDuration = tData.LastPitFuelAdded / fillRate;
                         double empiricalDeadTime = Math.Max(0.0, statDuration - refuelDuration);
