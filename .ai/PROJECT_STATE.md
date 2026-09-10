@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      null
-task:       null
-scope:      null
-expires:    null
+owner:      antigravity
+since:      2026-09-10T11:30:00
+task:       Expose Player and Target TrackPositionPercent properties
+scope:      User.PluginSdkDemoEdit/DataPluginDemo.cs, User.PluginSdkDemoEdit/OpponentTracker.cs, User.PluginSdkDemoEdit/TargetStrategyManager.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/
+expires:    2026-09-10T13:30:00
 ```
 
 **Regole del lock**
