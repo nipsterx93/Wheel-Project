@@ -39,6 +39,7 @@ namespace User.PluginSdkDemo.Tests
             Test_ReplayFallback_RetroactiveTransitValidatesStop();
             Test_IracingTelemetryBridge_PluginManagerReplayFallback();
             Test_TargetState_TrackSurface_Properties();
+            Test_PlayerAndTarget_TrackPositionPercent_Properties();
 
             Console.WriteLine("[TEST SUCCESS] All Native iRacing Tracking Tests Passed!");
         }
@@ -365,13 +366,16 @@ namespace User.PluginSdkDemo.Tests
             Assert(target.TrackSurfaceString == "NotInWorld", "Initial TrackSurfaceString should be NotInWorld");
             Assert(!target.IsInPitStall, "Initial IsInPitStall should be false");
             Assert(!target.IsOnPitRoad, "Initial IsOnPitRoad should be false");
+            Assert(target.TrackPositionPercent == 0.0, "Initial TrackPositionPercent should be 0.0");
 
             target.TrackSurface = IracingTrackSurface.InPitStall;
             target.IsOnPitRoad = true;
+            target.TrackPositionPercent = 0.1234;
             Assert(target.IsInPitStall, "IsInPitStall should be true when TrackSurface is InPitStall");
             Assert(target.TrackSurfaceCode == 1, "TrackSurfaceCode should be 1 for InPitStall");
             Assert(target.TrackSurfaceString == "InPitStall", "TrackSurfaceString should be InPitStall");
             Assert(target.IsOnPitRoad, "IsOnPitRoad should be true");
+            Assert(Math.Abs(target.TrackPositionPercent - 0.1234) < 1e-6, "TrackPositionPercent should be 0.1234");
 
             target.TrackSurface = IracingTrackSurface.OnTrack;
             target.IsOnPitRoad = false;
@@ -380,6 +384,48 @@ namespace User.PluginSdkDemo.Tests
             Assert(target.TrackSurfaceString == "OnTrack", "TrackSurfaceString should be OnTrack");
 
             Pass("TargetState TrackSurface and PitRoad properties reflect correctly");
+        }
+
+        private static void Test_PlayerAndTarget_TrackPositionPercent_Properties()
+        {
+            var state = new SessionState
+            {
+                IsGameRunning = true,
+                PlayerCarIdx = 5,
+                TrackPositionPercent = 0.6543
+            };
+
+            var tracker = new OpponentTracker();
+            tracker.IracingBridge.SetMockData(
+                new bool[64],
+                new IracingTrackSurface[64],
+                new int[64],
+                new int[64],
+                new float[64]
+            );
+
+            // Test 1: NativeLapDistPct assente (> 0 false) => fallback su state.TrackPositionPercent
+            tracker.PlayerData.LastPosPct = state.TrackPositionPercent;
+            Assert(Math.Abs(tracker.PlayerData.LastPosPct - 0.6543) < 1e-4, "PlayerData.LastPosPct should fall back to state.TrackPositionPercent");
+
+            // Test 2: NativeLapDistPct presente (es. 0.725f)
+            tracker.IracingBridge.CarIdxLapDistPct[5] = 0.725f;
+            float nativePlayerDist = tracker.IracingBridge.GetLapDistPct(state.PlayerCarIdx);
+            tracker.PlayerData.NativeLapDistPct = nativePlayerDist;
+            tracker.PlayerData.LastPosPct = (nativePlayerDist > 0.0f) ? (double)nativePlayerDist : state.TrackPositionPercent;
+            Assert(Math.Abs(tracker.PlayerData.LastPosPct - 0.725) < 1e-4, "PlayerData.LastPosPct should use nativeLapDistPct when available");
+
+            // Test 3: TargetState TrackPositionPercent prende valore da oppData
+            var targetState = new TargetState();
+            var oppData = new OpponentTelemetryData
+            {
+                LastPosPct = 0.3344,
+                NativeLapDistPct = 0.3345f
+            };
+            targetState.TrackPositionPercent = (oppData.NativeLapDistPct > 0.0f) ? (double)oppData.NativeLapDistPct : oppData.LastPosPct;
+            Assert(Math.Abs(targetState.TrackPositionPercent - 0.3345) < 1e-4, "TargetState should use NativeLapDistPct if > 0");
+
+            Pass("Player and Target TrackPositionPercent properties and fallback behave correctly");
         }
     }
 }

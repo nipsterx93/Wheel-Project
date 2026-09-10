@@ -599,6 +599,9 @@ namespace SimRIG
             PlayerData.CarIdx = state.PlayerCarIdx;
             PlayerData.TrackSurface = IracingBridge.GetTrackSurface(state.PlayerCarIdx);
             PlayerData.IsOnPitRoad = IracingBridge.IsOnPitRoad(state.PlayerCarIdx);
+            float nativePlayerDist = IracingBridge.GetLapDistPct(state.PlayerCarIdx);
+            PlayerData.NativeLapDistPct = nativePlayerDist;
+            PlayerData.LastPosPct = (nativePlayerDist > 0.0f) ? (double)nativePlayerDist : state.TrackPositionPercent;
             state.PlayerTrackSurface = PlayerData.TrackSurface;
             state.PlayerIsOnPitRoad = PlayerData.IsOnPitRoad;
 

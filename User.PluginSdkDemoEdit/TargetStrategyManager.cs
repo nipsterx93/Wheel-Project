@@ -79,6 +79,7 @@ namespace SimRIG
         public string TrackSurfaceString => IracingTelemetryBridge.GetTrackSurfaceString(TrackSurface);
         public bool IsInPitStall => TrackSurface == IracingTrackSurface.InPitStall;
         public bool IsOnPitRoad { get; set; } = false;
+        public double TrackPositionPercent { get; set; } = 0.0;
 
 
 
@@ -493,6 +494,9 @@ namespace SimRIG
                     CurrentTarget.ClassPosition = initialClassPos;
                     CurrentTarget.TrackSurface = trkInit != null ? trkInit.TrackSurface : IracingTrackSurface.NotInWorld;
                     CurrentTarget.IsOnPitRoad = trkInit != null && trkInit.IsOnPitRoad;
+                    CurrentTarget.TrackPositionPercent = (trkInit != null && trkInit.NativeLapDistPct > 0.0f)
+                        ? (double)trkInit.NativeLapDistPct
+                        : (targetOpp.TrackPositionPercent ?? (trkInit != null ? trkInit.LastPosPct : 0.0));
 
                     // Reset completo, non invalidazione temporanea: il valore torna a 0.0 (spec §10).
                     _relativePace.Reset();
@@ -736,6 +740,9 @@ namespace SimRIG
                     CurrentTarget.PitCount = oppData.PitCount;
                     CurrentTarget.TrackSurface = oppData.TrackSurface;
                     CurrentTarget.IsOnPitRoad = oppData.IsOnPitRoad;
+                    CurrentTarget.TrackPositionPercent = (oppData.NativeLapDistPct > 0.0f)
+                        ? (double)oppData.NativeLapDistPct
+                        : (targetOpp.TrackPositionPercent ?? oppData.LastPosPct);
 
                     CurrentTarget.CurrentTank = oppData.EstimatedFuel;
                     CurrentTarget.EstimatedFuelTank = oppData.EstimatedFuelTank;
@@ -1729,6 +1736,9 @@ namespace SimRIG
             CurrentTarget.EstimatedPitWindowTargetLap = 0.0;
 
             CurrentTarget.PitCount = 0;
+            CurrentTarget.TrackSurface = IracingTrackSurface.NotInWorld;
+            CurrentTarget.IsOnPitRoad = false;
+            CurrentTarget.TrackPositionPercent = 0.0;
 
             CurrentTarget.PitLaneZoneRacingTime = 0.0;
 

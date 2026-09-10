@@ -445,6 +445,7 @@ namespace SimRIG
             pm.AddProperty("SimRIG.Target.TrackSurfaceCode", t, -1);
             pm.AddProperty("SimRIG.Target.IsInPitStall", t, false);
             pm.AddProperty("SimRIG.Target.IsOnPitRoad", t, false);
+            pm.AddProperty("SimRIG.Target.TrackPositionPercent", t, 0.0);
             pm.AddProperty("SimRIG.Target.GapSeconds", t, 0.0);
             pm.AddProperty("SimRIG.Target.GapString", t, "");
             pm.AddProperty("SimRIG.Target.RelativePace", t, 0.0);
@@ -589,6 +590,7 @@ namespace SimRIG
             pm.AddProperty("SimRIG.Player.TrackSurfaceCode", t, -1);
             pm.AddProperty("SimRIG.Player.IsInPitStall", t, false);
             pm.AddProperty("SimRIG.Player.IsOnPitRoad", t, false);
+            pm.AddProperty("SimRIG.Player.TrackPositionPercent", t, 0.0);
 
             pm.AddProperty("SimRIG.Pit.StationaryTimeLoss", t, 0.0);
             pm.AddProperty("SimRIG.Pit.TransitTime", t, 0.0);
@@ -1809,6 +1811,7 @@ namespace SimRIG
             PluginManager.SetPropertyValue("SimRIG.Target.TrackSurfaceCode", t, tgt.TrackSurfaceCode);
             PluginManager.SetPropertyValue("SimRIG.Target.IsInPitStall", t, tgt.IsInPitStall);
             PluginManager.SetPropertyValue("SimRIG.Target.IsOnPitRoad", t, tgt.IsOnPitRoad);
+            PluginManager.SetPropertyValue("SimRIG.Target.TrackPositionPercent", t, Math.Round(tgt.TrackPositionPercent, 4));
             PluginManager.SetPropertyValue("SimRIG.Target.GapSeconds", t, Math.Round(tgt.GapSeconds, 1));
             PluginManager.SetPropertyValue("SimRIG.Target.GapString", t, tgt.GapString);
             PluginManager.SetPropertyValue("SimRIG.Target.RelativePace", t, Math.Round(tgt.RelativePace, 3));
@@ -2026,6 +2029,7 @@ namespace SimRIG
             PluginManager.SetPropertyValue("SimRIG.Player.TrackSurfaceCode", t, (int)OpponentTracker.PlayerData.TrackSurface);
             PluginManager.SetPropertyValue("SimRIG.Player.IsInPitStall", t, OpponentTracker.PlayerData.TrackSurface == IracingTrackSurface.InPitStall);
             PluginManager.SetPropertyValue("SimRIG.Player.IsOnPitRoad", t, OpponentTracker.PlayerData.IsOnPitRoad);
+            PluginManager.SetPropertyValue("SimRIG.Player.TrackPositionPercent", t, Math.Round(OpponentTracker.PlayerData.LastPosPct > 0.0 ? OpponentTracker.PlayerData.LastPosPct : CurrentState.TrackPositionPercent, 4));
 
             PluginManager.SetPropertyValue("SimRIG.Pit.StationaryTimeLoss", t, Math.Round(PitRadar.LastStationaryTime, 1));
             PluginManager.SetPropertyValue("SimRIG.Pit.TransitTime", t, Math.Round(PitRadar.PitTransitTime, 2));
