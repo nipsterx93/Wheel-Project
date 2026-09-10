@@ -261,6 +261,10 @@ namespace SimRIG
         private DateTime _lastMergeGapLogWallTime = DateTime.MinValue;
         private double _prevPosDiff = double.NaN;
         private string _lastTargetForPosDiff = "";
+        private IracingTrackSurface _lastLoggedTargetSurface = IracingTrackSurface.NotInWorld;
+        private bool _lastLoggedTargetPitRoad = false;
+        private IracingTrackSurface _lastLoggedPlayerSurface = IracingTrackSurface.NotInWorld;
+        private bool _lastLoggedPlayerPitRoad = false;
 
         private readonly RelativePaceTracker _relativePace = new RelativePaceTracker();
 
@@ -743,6 +747,35 @@ namespace SimRIG
                     CurrentTarget.TrackPositionPercent = (oppData.NativeLapDistPct > 0.0f)
                         ? (double)oppData.NativeLapDistPct
                         : (targetOpp.TrackPositionPercent ?? oppData.LastPosPct);
+
+                    if (state.PlayerTrackSurface != _lastLoggedPlayerSurface || state.PlayerIsOnPitRoad != _lastLoggedPlayerPitRoad)
+                    {
+                        _lastLoggedPlayerSurface = state.PlayerTrackSurface;
+                        _lastLoggedPlayerPitRoad = state.PlayerIsOnPitRoad;
+                        int pPos = state.PositionInClass > 0 ? state.PositionInClass : state.Position;
+                        double pPosPct = (tracker.PlayerData.LastPosPct > 0.0 ? tracker.PlayerData.LastPosPct : state.TrackPositionPercent) * 100.0;
+                        string pSurf = IracingTelemetryBridge.GetTrackSurfaceString(state.PlayerTrackSurface);
+                        bool pPitStall = state.PlayerTrackSurface == IracingTrackSurface.InPitStall;
+                        int pCode = (int)state.PlayerTrackSurface;
+                        log?.Log(LogModule.STRATEGY, LogType.EVENT, "Player Track State Changed",
+                            $"Player: P{pPos} | PosPct: {pPosPct:F2}% | Surface: {pSurf} | InPitRoad: {state.PlayerIsOnPitRoad} | InPitStall : {pPitStall} | SurfaceCode : {pCode}");
+                    }
+
+                    if (CurrentTarget.TrackSurface != _lastLoggedTargetSurface || CurrentTarget.IsOnPitRoad != _lastLoggedTargetPitRoad)
+                    {
+                        _lastLoggedTargetSurface = CurrentTarget.TrackSurface;
+                        _lastLoggedTargetPitRoad = CurrentTarget.IsOnPitRoad;
+                        if (CurrentTarget.Name != "NO TARGET")
+                        {
+                            int tPos = CurrentTarget.ClassPosition;
+                            double tPosPct = CurrentTarget.TrackPositionPercent * 100.0;
+                            string tSurf = CurrentTarget.TrackSurfaceString;
+                            bool tPitStall = CurrentTarget.IsInPitStall;
+                            int tCode = CurrentTarget.TrackSurfaceCode;
+                            log?.Log(LogModule.STRATEGY, LogType.EVENT, "Target Track State Changed",
+                                $"Target: P{tPos} | PosPct: {tPosPct:F2}% | Surface: {tSurf} | InPitRoad: {CurrentTarget.IsOnPitRoad} | InPitStall : {tPitStall} | SurfaceCode : {tCode}");
+                        }
+                    }
 
                     CurrentTarget.CurrentTank = oppData.EstimatedFuel;
                     CurrentTarget.EstimatedFuelTank = oppData.EstimatedFuelTank;
@@ -1304,17 +1337,29 @@ namespace SimRIG
 
                             int playerPitCount = raceResult.PlayerPitCount;
                             int targetPitCount = (logTargetOpp.PitCount.HasValue) ? logTargetOpp.PitCount.Value : 0;
-                            int playerPos = state.Position;
-                            int targetPos = logTargetOpp.Position;
+                            int playerPos = state.PositionInClass > 0 ? state.PositionInClass : state.Position;
+                            int targetPos = CurrentTarget.ClassPosition > 0 ? CurrentTarget.ClassPosition : logTargetOpp.Position;
                             double playerFuelLaps = fuel.TankLapsRemaining;
+
+                            double playerPosPct = (tracker.PlayerData.LastPosPct > 0.0 ? tracker.PlayerData.LastPosPct : state.TrackPositionPercent) * 100.0;
+                            string playerSurface = IracingTelemetryBridge.GetTrackSurfaceString(tracker.PlayerData.TrackSurface);
+                            bool playerInPitRoad = tracker.PlayerData.IsOnPitRoad;
+                            bool playerInPitStall = tracker.PlayerData.TrackSurface == IracingTrackSurface.InPitStall;
+                            int playerSurfaceCode = (int)tracker.PlayerData.TrackSurface;
+
+                            double targetPosPct = CurrentTarget.TrackPositionPercent * 100.0;
+                            string targetSurface = CurrentTarget.TrackSurfaceString;
+                            bool targetInPitRoad = CurrentTarget.IsOnPitRoad;
+                            bool targetInPitStall = CurrentTarget.IsInPitStall;
+                            int targetSurfaceCode = CurrentTarget.TrackSurfaceCode;
 
                             string logMsg =
                                 $"========================================================================================\n" +
                                 $"[MERGE_GAP_MONITOR] SessionTimeLeft: {state.SessionTimeLeftSec:F1}s | Lap: {state.CurrentLap} | Target: {logTargetOpp.Name}\n" +
                                 $"----------------------------------------------------------------------------------------\n" +
                                 $"DRIVERS:\n" +
-                                $"  Player: Pos: P{playerPos} | Pits: {playerPitCount} | FuelLaps: {playerFuelLaps:F1} | FuelFillRate: {refuelRate:F2} L/s | PlayerNeedsPit: {logPlayerNeedsPit}\n" +
-                                $"  Target: Pos: P{targetPos} | Pits: {targetPitCount} | FuelLaps: {logTargetFuelLaps:F1} | RemLaps: {raceResult.RaceLapsRemaining:F1} | TargetNeedsPit: {logTargetNeedsPit}\n" +
+                                $"  Player: P{playerPos} | PosPct: {playerPosPct:F2}% | Surface: {playerSurface} | InPitRoad: {playerInPitRoad} | InPitStall : {playerInPitStall} | SurfaceCode : {playerSurfaceCode} | Pits: {playerPitCount} | FuelLaps: {playerFuelLaps:F1} | FuelFillRate: {refuelRate:F2} L/s | PlayerNeedsPit: {logPlayerNeedsPit}\n" +
+                                $"  Target: P{targetPos} | PosPct: {targetPosPct:F2}% | Surface: {targetSurface} | InPitRoad: {targetInPitRoad} | InPitStall : {targetInPitStall} | SurfaceCode : {targetSurfaceCode} | Pits: {targetPitCount} | FuelLaps: {logTargetFuelLaps:F1} | RemLaps: {raceResult.RaceLapsRemaining:F1} | TargetNeedsPit: {logTargetNeedsPit}\n" +
                                 $"PIT LOSS TIMINGS:\n" +
                                 $"  Player (+{logEffectivePlayerPitLoss:F2}s): Staz: {playerStationaryTime:F2}s (incl. 2s) | Transit: {radar.PitTransitTime:F2}s | AccDec: {accDecTime:F2}s | ExtZone: {extendedRacingTime:F2}s\n" +
                                 $"  Target (+{logEffectiveTargetPitLoss:F2}s) : Staz: {logTargetStationaryTime:F2}s | Transit: {radar.PitTransitTime:F2}s | AccDec: {accDecTime:F2}s | ExtZone: {extendedRacingTime:F2}s\n" +
@@ -1330,6 +1375,12 @@ namespace SimRIG
                     {
                         log.Log(LogModule.STRATEGY, LogType.FLOW, "Undercut Math",
                             $"AccDec:{accDecTime:F1} | P_PitLoss:{playerTotalPitLoss:F1} | ReactLaps:{CurrentTarget.ReactionDeltaLaps} | P_AfterPitPace:{playerPaceFresh:F2} | T_RawPace:{targetRawPace:F2} | MergeGap:{projectedPhysicalMergeGap:F2}");
+
+                        double pPosPct = (tracker.PlayerData.LastPosPct > 0.0 ? tracker.PlayerData.LastPosPct : state.TrackPositionPercent) * 100.0;
+                        int pPos = state.PositionInClass > 0 ? state.PositionInClass : state.Position;
+                        int tPos = CurrentTarget.ClassPosition > 0 ? CurrentTarget.ClassPosition : (targetOpp != null ? targetOpp.Position : 0);
+                        log.Log(LogModule.STRATEGY, LogType.FLOW, "Track States",
+                            $"Player: P{pPos} | PosPct: {pPosPct:F2}% | Surface: {IracingTelemetryBridge.GetTrackSurfaceString(tracker.PlayerData.TrackSurface)} | InPitRoad: {tracker.PlayerData.IsOnPitRoad} | InPitStall : {tracker.PlayerData.TrackSurface == IracingTrackSurface.InPitStall} | SurfaceCode : {(int)tracker.PlayerData.TrackSurface} --- Target: P{tPos} | PosPct: {CurrentTarget.TrackPositionPercent * 100.0:F2}% | Surface: {CurrentTarget.TrackSurfaceString} | InPitRoad: {CurrentTarget.IsOnPitRoad} | InPitStall : {CurrentTarget.IsInPitStall} | SurfaceCode : {CurrentTarget.TrackSurfaceCode}");
                     }
 
 
@@ -1774,6 +1825,10 @@ namespace SimRIG
             CurrentTarget.RelativeGapDeltaValid = false;
             _prevPosDiff = double.NaN;
             _lastTargetForPosDiff = "";
+            _lastLoggedTargetSurface = IracingTrackSurface.NotInWorld;
+            _lastLoggedTargetPitRoad = false;
+            _lastLoggedPlayerSurface = IracingTrackSurface.NotInWorld;
+            _lastLoggedPlayerPitRoad = false;
         }
 
     }
