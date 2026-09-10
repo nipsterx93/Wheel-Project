@@ -47,6 +47,39 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-10 12:10] antigravity → chiunque entri dopo
+
+**Task:** Formattazione diagnostica e log completi di superficie e pit per Player e Target
+**Piano:** —
+**Commit:** `f432865`
+
+### Fatto
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs`:
+  - Introdotti campi di tracking stato: `_lastLoggedPlayerSurface`, `_lastLoggedPlayerPitRoad`, `_lastLoggedTargetSurface`, `_lastLoggedTargetPitRoad` con reset in `ResetSession()`.
+  - Aggiunto log di evento immediato (`LogModule.STRATEGY`, `LogType.EVENT`) ad ogni transizione di `TrackSurface` o `IsOnPitRoad` per Player e Target nel formato esatto:
+    `Player: P1 | PosPct: 45.21% | Surface: OnTrack | InPitRoad: False | InPitStall : True | SurfaceCode : 3`
+    `Target: P2 | PosPct: 43.80% | Surface: InPitStall | InPitRoad: True | InPitStall : True | SurfaceCode : 1`
+  - Aggiornata la sezione `DRIVERS` del monitor periodico `[MERGE_GAP_MONITOR]` (file `..._MergeGap.log`) integrando la stessa riga completa per entrambi i piloti.
+  - Aggiornato il log di transizione microsettori (`sectorChanged`) con la stringa di stato unificata.
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: 0 errori di compilazione, DLL copiata in SimHub, **343 PASS (100%)**.
+
+### Stato
+- ✅ Compila (0 errori, 1 warning CS0219 noto)
+- ✅ 343 PASS (100%)
+
+### Per chi entra
+**Prossimo passo:** Collegamento delle nuove proprietà e telemetrie native (`TrackPositionPercent`, `IsInPitStall`, `TrackSurface`, `IsOnPitRoad`) alle logiche strategiche (Merge Gap fine-grained, stationary time, geofencing pit entry/exit).
+**NON toccare:** Le formule di stationary time e pit loss senza test dedicati.
+**Attenzione a:** Build con SimHub aperto fallisce con MSB3073 (DLL lockata da SimHub).
+
+---
+
 ## [2026-09-10 11:35] antigravity → chiunque entri dopo
 
 **Task:** Esposizione proprietà SimHub TrackPositionPercent per Player e Target
@@ -416,46 +449,6 @@ Criterio di successo: **327 PASS (100%)**.
 **Prossimo passo:** Verifica del merge gap post-sosta (`ProjectedMergeGap` / `TargetStrategyManager.cs`) su replay reali e continuazione della Fase B della roadmap (`2026-08-24-roadmap.md`).
 **NON toccare:** `CarPitData.cs` e la logica di calcolo centrale senza test di non-regressione.
 **Attenzione a:** L'unificazione di PitLoss non altera le proiezioni di fine gara né il consumo carburante su Road Atlanta (35 giri / 31 L) e Misano (26 giri / 16 L), poiché la variazione su `playerL_left` è inferiore a 0.05 giri (sotto la soglia di sensibilità del round up).
-
----
-
-## [2026-09-08 12:45] antigravity → chiunque entri dopo (Claude in particolare)
-
-**Task:** Validazione sul campo stima consumo con mediana e latch traguardo via su Road Atlanta e Misano
-**Piano:** —
-**Commit:** questo
-
-### Fatto
-- **Road Atlanta (Replay `20260908_112922`)**:
-  - Gara da 35 giri totali stabilizzati.
-  - Latch iniziale a verde sul traguardo: `48.19 L`.
-  - Giro 12 segna `2.14 L` di consumo anomalo per scia / lift.
-  - Al Giro 13, con la mediana a 5 campioni (`[2.14, 2.22, 2.26, 2.27, 2.28]`), la stima mobile ha selezionato `2.26 L` (contro `2.236 L` della vecchia media aritmetica), assorbendo l'outlier al 100%.
-  - Durante tutto l'In-Lap (Giro 14), `FuelToAdd` è rimasto stabilmente ancorato a **`31.00 L`** (in precedenza raccomandava solo `30.00 L`).
-  - Nel replay sono stati riforniti realmente 31 L: tagliato il traguardo finale con **`0.20 L`** di riserva residua. Con 30 L la vettura sarebbe rimasta a secco prima dell'ultima curva.
-- **Misano (Replay `20260908_120759`)**:
-  - Gara da 26 giri totali.
-  - Latch sul traguardo di verde con `50.15 L`.
-  - Consumo medio su Stint 1 stabile tra `2.50 L` e `2.54 L/giro`.
-  - Durante l'In-Lap (Giro 19), per tutti i 33 secondi di avvicinamento ai box `FuelToAdd` ha segnato costantemente **`16.00 L`** (33 campioni su 33).
-  - Riforniti realmente 16.0 L nel replay: tagliato il traguardo al Giro 26 con **`0.19 L`** residui.
-  - Zero errori o warning di sistema nei log.
-
-### Come verificare
-```bash
-"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/User.PluginSdkDemo.Tests.csproj" -p:Configuration=Debug -v:minimal -nologo
-"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Criterio di successo: **324 PASS (100%)**.
-
-### Stato
-- ✅ Compila (0 errori, 1 warning CS0219 noto)
-- ✅ 324 PASS
-
-### Per chi entra
-**Prossimo passo:** Analisi delle proiezioni del tempo alla bandiera (`ComputeFlagMoment` / Y-38 / Y-40) e impatto del ritardo della sosta (`PitLoss`) sul conteggio giri prima che il leader si fermi (come osservato a Misano con il passaggio da 27 a 26 giri dopo la sosta del leader).
-**NON toccare:** `FuelManager.cs` nelle sezioni di detection del pit, stima con mediana e latch traguardo via.
-**Attenzione a:** In `ComputeFlagMoment`, le soste future degli avversari non vengono sottratte (per evitare di stimare soste errate a 40 vetture); di conseguenza, gare a tempo con sosta obbligatoria tendono a sovrastimare di 1 giro il totale finché il leader non sconta la perdita fisica ai box.
 
 ---
 
