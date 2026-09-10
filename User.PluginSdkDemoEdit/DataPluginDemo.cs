@@ -1136,6 +1136,7 @@ namespace SimRIG
                         OpponentTracker.ResetSession();
                         RaceAnalyzer.ResetSession();
                         FuelManager.ResetSession();
+                        TargetStrategyManager.ResetSession(preserveLatchedTarget: true);
                     }
                 }
 
@@ -1156,6 +1157,7 @@ namespace SimRIG
                     OpponentTracker.ResetSession();
                     RaceAnalyzer.ResetSession();
                     FuelManager.ResetSession();
+                    TargetStrategyManager.ResetSession();
                     TelemetryReader.UpdateState(data, CurrentState, _alertThreshold);
                 }
 

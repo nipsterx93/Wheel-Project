@@ -9,6 +9,50 @@
 
 ---
 
+## [2026-09-08 14:35] antigravity → chiunque entri dopo (Claude in particolare)
+
+**Task:** Merge Gap simmetrico a 4 stati, rimozione hardcoded target Egor dal monitor, e azioni SimHub per selezione e lock target da tastiera/replay
+**Piano:** —
+**Commit:** `45cfb4c` (codice e test), questo (handoff e rilascio lock)
+
+### Fatto
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:211-224, 1095-1105, 1180-1205`:
+  - Implementato metodo centralizzato `CalculateProjectedMergeGap(double signedGap, bool playerNeedsPit, double playerPitLoss, bool targetNeedsPit, double targetPitLoss)` che applica la formula simmetrica: `signedGap + (playerNeedsPit ? playerPitLoss : 0.0) - (targetNeedsPit ? targetPitLoss : 0.0)`.
+  - Risolta l'anomalia dello stato post-sosta: quando entrambe le vetture hanno completato la sosta o possono finire senza fermarsi (`!playerNeedsPit && !targetNeedsPit`), il `ProjectedMergeGap` coincide esattamente con `SignedGapSeconds` senza aggiungere il falso ritardo fantasma (+25~32s).
+  - Rimossa la stringa hardcoded `"Egor"` / `"Ogorodnicov"` in `MERGE_GAP_MONITOR`: ora il monitor prioritizza `LatchedTargetName` se presente (lock attivo), altrimenti traccia dinamicamente `targetOpp` (il bersaglio attivo).
+  - Nel log del monitor aggiornati i campi `PIT LOSS TIMINGS` e `RESULT` per mostrare `+0.00s` e `PlayerNeedsPit: False` quando non c'è sosta residua.
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs:260-295`:
+  - Aggiunta azione SimHub `Target_ToggleLock`: permette di agganciare/sganciare il lock sul target corrente (`LatchedTargetName`) via tastiera o pulsante SimHub durante i replay, senza richiedere il volante fisico.
+  - Aggiunte azioni SimHub `Target_NextTarget` e `Target_PrevTarget` per scorrere i bersagli anche da tastiera o interfaccia SimHub.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/MergeGapUnitTests.cs`:
+  - Aggiornati i test per coprire tutti e 4 gli stati della sosta con `TargetStrategyManager.CalculateProjectedMergeGap`:
+    - Stato 1: Player deve pittare, Target no (+11.48s).
+    - Stato 2: Entrambi hanno pittato (nessuna sosta fantasma, SignedGap = MergeGap = +11.70s).
+    - Stato 3: Entrambi devono pittare (differenziale perdite = -9.32s).
+    - Stato 4: Target deve pittare, Player no (-25.00s).
+- **Analisi Replay Road Atlanta (`Logs/Road Atlanta/SimRIG_StrategySnapshot_20260908_112922.csv`)**:
+  - Sara Tolotti (Player, BMW M4 GT3 EVO) ha concluso la gara in **P19** direttamente dietro a **Aake Korte** (Ferrari 296 GT3, **P18**) con un distacco finale di circa 3.2s.
+  - Aake Korte è stato l'avversario diretto di riferimento sia nel primo stint (Giri 13-14, gap ~3.6s) sia per tutto il secondo stint (Giri 22-35, gap ~3.5s).
+  - Per il test sul replay di Road Atlanta, agganciare il lock su **Aake Korte** per monitorare sia la fase pre-pit che la stabilità del Merge Gap nel secondo stint (Giri 22-35) che ora rimarrà fedele a ~3.2s invece del balzo anomalo a +29s.
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Criterio di successo: **328 PASS (100%)**.
+
+### Stato
+- ✅ Compila (0 errori, 1 warning CS0219 noto)
+- ✅ 328 PASS (100%)
+
+### Per chi entra
+**Prossimo passo:** Esecuzione del replay di Road Atlanta per confermare la stabilità di `ProjectedMergeGap` con lock su Aake Korte (Giri 22-35: deve rimanere ancorato a ~3.2s senza salti a +29s), poi avanzamento nella roadmap (`.ai/plans/2026-08-24-roadmap.md`).
+**NON toccare:** `CarPitData.cs` e la formula unificata di `CalculateProjectedMergeGap`.
+**Attenzione a:** L'azione SimHub `Target_ToggleLock` opera su `TargetStrategyManager.LatchedTargetName`. Per usarla in SimHub, mappare un tasto o pulsante sull'azione `User.PluginSdkDemo.Target_ToggleLock`.
+
+---
+
 ## [2026-09-08 13:20] antigravity → chiunque entri dopo (Claude in particolare)
 
 **Task:** Unificazione formule di Pit Loss e tempo da fermo (CarPitData) tra RaceAnalyzer, TargetStrategyManager e DataPluginDemo

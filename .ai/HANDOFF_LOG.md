@@ -47,6 +47,51 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-10 16:05] antigravity → chiunque entri dopo
+
+**Task:** Prioritizzazione telemetria nativa CarIdxLapDistPct su SimHub opponent position e salvaguardia target lock su replay jump
+**Piano:** —
+**Commit:** `[antigravity] feat: prioritize native CarIdxLapDistPct over SimHub opponent position and safeguard target latch`
+
+### Fatto
+- `User.PluginSdkDemoEdit/OpponentTracker.cs`:
+  - Implementato `GetOpponentTrackPosition(opp, state)` (r. 574-618): priorità tassativa al canale nativo a 60 Hz `CarIdxLapDistPct[carIdx]` via `IracingBridge`. Solo se non disponibile (<= 0), fallback subordinato su `opp.TrackPositionPercent`, e infine continuità su `tData.LastPosPct`.
+  - In `activeOpponents` (r. 921): ammessi anche gli avversari con `GetOpponentTrackPosition(o, state) > 0.0` anche se SimHub ha `TrackPositionPercent` nullo o asincrono.
+  - In `sortedOpponents` (r. 965): ordinamento basato su `GetOpponentTrackPosition`.
+  - In r. 1037: `currentPos = GetOpponentTrackPosition(opp, state)` calcolato prima dell'inizializzazione di `_telemetry`, eliminando il bug per cui un valore SimHub nullo o a 0 saltava l'avversario prima ancora di poter leggere la telemetria nativa.
+  - In r. 1243: aggiornato calcolo distacco vettura davanti (`gapToFront`) con la posizione nativa di `ahead`.
+  - In r. 715: aggiornato ordinamento di classe per considerare la posizione nativa degli avversari e del player.
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs`:
+  - In `Update` (r. 429, 530, 781): aggiornati `myPos`, `oppPos` e `CurrentTarget.TrackPositionPercent` per utilizzare la posizione nativa.
+  - In r. 446-480: salvaguardato `LatchedTargetName` contro micro-drop di frame o salti nel replay. Se l'avversario manca temporaneamente in `state.Opponents`, viene sintetizzato da `TrackedOpponents` o dai metadati della sessione, preservando il lock impostato dall'utente senza azzerarlo.
+  - In r. 960-975 e 1024: ricalcolati i gap fisici e proiettati di overcut/undercut (`oppPosVal`) con la posizione nativa prioritaria.
+  - In `SelectTarget` (r. 1474-1590): tutte le modalità (`LEADER_CLASS`, `P1..Pn`, `AHEAD`, `BEHIND`) usano `tracker.GetOpponentTrackPosition(opp, state)`.
+  - In `ResetSession(bool preserveLatchedTarget = false)` (r. 1856): aggiunto parametro per preservare `LatchedTargetName` durante i salti nel replay.
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs:1140, 1159`:
+  - Aggiunta sincronizzazione `TargetStrategyManager.ResetSession(preserveLatchedTarget: true)` su rilevamento di salto temporale nel replay (`Replay Time Jump Detected`).
+  - Aggiunto `TargetStrategyManager.ResetSession()` su transizione reale di sessione.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs`:
+  - Aggiunti 2 unit test: `Test_OpponentPosition_NativeLapDistPct_TakesPriorityOverSimHubTrackPositionPercent` e `Test_LatchedTarget_PreservedOnTemporaryDropOrReplayJump`.
+  - Suite eseguita con successo: **347 PASS (100%)**.
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: 347 PASS (100%).
+
+### Stato
+- ✅ Compila (0 errori, 1 warning CS0219 noto)
+- ✅ 347 PASS (100%)
+
+### Per chi entra
+**Prossimo passo:** Rivedere i log del replay su Road Atlanta per confermare la fluidità della posizione di Bruno Carneiro e la persistenza del target lock durante i salti nel replay. Procedere poi con i restanti punti dell'analisi (Punto 2 sbalzi CurrentTank, Punto 7 GapStr vs MergeGap, Punto 3 ExtendedZoneRacingTime, ecc.).
+**NON toccare:** La priorità di `IracingBridge.GetLapDistPct` rispetto a `opp.TrackPositionPercent`.
+**Attenzione a:** `ResetSession(preserveLatchedTarget: true)` su replay jump resetta solo i buffer temporali/delta di calcolo, conservando il target bloccato dall'utente.
+
+---
+
 ## [2026-09-10 15:10] antigravity → chiunque entri dopo
 
 **Task:** Fallback rilevamento InPitStall per avversario fermo su pit road (Punto 1 dell'analisi Road Atlanta)
@@ -402,50 +447,6 @@ Atteso: build pulita (0 errori) e test runner console a **332 PASS (100%)**.
 **Prossimo passo:** Esecuzione del replay Road Atlanta (`20260908_144534` o nuova corsa) per verificare che Aake Korte venga correttamente riconosciuto ai box (PitCount = 1, calcolo fuel tank accurato, nessun transito scartato) e che `SimRIG.Session.ClassBestPitZoneRacingTime` e `Target.PitLaneZoneRacingTime` mostrino il tempo cronometrato reale anziché la stima geometrica.
 **NON toccare:** La struttura del `SectorTracker` per la gestione outlap/inlap/normal.
 **Attenzione a:** Il conteggio test corrente è **332 PASS**. Se si aggiornano altri file di documentazione, mantenere allineato il numero reale.
-
----
-
-## [2026-09-08 14:35] antigravity → chiunque entri dopo (Claude in particolare)
-
-**Task:** Merge Gap simmetrico a 4 stati, rimozione hardcoded target Egor dal monitor, e azioni SimHub per selezione e lock target da tastiera/replay
-**Piano:** —
-**Commit:** `45cfb4c` (codice e test), questo (handoff e rilascio lock)
-
-### Fatto
-- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:211-224, 1095-1105, 1180-1205`:
-  - Implementato metodo centralizzato `CalculateProjectedMergeGap(double signedGap, bool playerNeedsPit, double playerPitLoss, bool targetNeedsPit, double targetPitLoss)` che applica la formula simmetrica: `signedGap + (playerNeedsPit ? playerPitLoss : 0.0) - (targetNeedsPit ? targetPitLoss : 0.0)`.
-  - Risolta l'anomalia dello stato post-sosta: quando entrambe le vetture hanno completato la sosta o possono finire senza fermarsi (`!playerNeedsPit && !targetNeedsPit`), il `ProjectedMergeGap` coincide esattamente con `SignedGapSeconds` senza aggiungere il falso ritardo fantasma (+25~32s).
-  - Rimossa la stringa hardcoded `"Egor"` / `"Ogorodnicov"` in `MERGE_GAP_MONITOR`: ora il monitor prioritizza `LatchedTargetName` se presente (lock attivo), altrimenti traccia dinamicamente `targetOpp` (il bersaglio attivo).
-  - Nel log del monitor aggiornati i campi `PIT LOSS TIMINGS` e `RESULT` per mostrare `+0.00s` e `PlayerNeedsPit: False` quando non c'è sosta residua.
-- `User.PluginSdkDemoEdit/DataPluginDemo.cs:260-295`:
-  - Aggiunta azione SimHub `Target_ToggleLock`: permette di agganciare/sganciare il lock sul target corrente (`LatchedTargetName`) via tastiera o pulsante SimHub durante i replay, senza richiedere il volante fisico.
-  - Aggiunte azioni SimHub `Target_NextTarget` e `Target_PrevTarget` per scorrere i bersagli anche da tastiera o interfaccia SimHub.
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/MergeGapUnitTests.cs`:
-  - Aggiornati i test per coprire tutti e 4 gli stati della sosta con `TargetStrategyManager.CalculateProjectedMergeGap`:
-    - Stato 1: Player deve pittare, Target no (+11.48s).
-    - Stato 2: Entrambi hanno pittato (nessuna sosta fantasma, SignedGap = MergeGap = +11.70s).
-    - Stato 3: Entrambi devono pittare (differenziale perdite = -9.32s).
-    - Stato 4: Target deve pittare, Player no (-25.00s).
-- **Analisi Replay Road Atlanta (`Logs/Road Atlanta/SimRIG_StrategySnapshot_20260908_112922.csv`)**:
-  - Sara Tolotti (Player, BMW M4 GT3 EVO) ha concluso la gara in **P19** direttamente dietro a **Aake Korte** (Ferrari 296 GT3, **P18**) con un distacco finale di circa 3.2s.
-  - Aake Korte è stato l'avversario diretto di riferimento sia nel primo stint (Giri 13-14, gap ~3.6s) sia per tutto il secondo stint (Giri 22-35, gap ~3.5s).
-  - Per il test sul replay di Road Atlanta, agganciare il lock su **Aake Korte** per monitorare sia la fase pre-pit che la stabilità del Merge Gap nel secondo stint (Giri 22-35) che ora rimarrà fedele a ~3.2s invece del balzo anomalo a +29s.
-
-### Come verificare
-```bash
-"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
-"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Criterio di successo: **328 PASS (100%)**.
-
-### Stato
-- ✅ Compila (0 errori, 1 warning CS0219 noto)
-- ✅ 328 PASS (100%)
-
-### Per chi entra
-**Prossimo passo:** Esecuzione del replay di Road Atlanta per confermare la stabilità di `ProjectedMergeGap` con lock su Aake Korte (Giri 22-35: deve rimanere ancorato a ~3.2s senza salti a +29s), poi avanzamento nella roadmap (`.ai/plans/2026-08-24-roadmap.md`).
-**NON toccare:** `CarPitData.cs` e la formula unificata di `CalculateProjectedMergeGap`.
-**Attenzione a:** L'azione SimHub `Target_ToggleLock` opera su `TargetStrategyManager.LatchedTargetName`. Per usarla in SimHub, mappare un tasto o pulsante sull'azione `User.PluginSdkDemo.Target_ToggleLock`.
 
 ---
 

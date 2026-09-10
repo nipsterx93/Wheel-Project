@@ -42,6 +42,8 @@ namespace User.PluginSdkDemo.Tests
             Test_PlayerAndTarget_TrackPositionPercent_Properties();
             Test_InPitStall_Fallback_WhenApproachingPitsAndStationary();
             Test_InPitStall_NativeTakesPriorityImmediately();
+            Test_OpponentPosition_NativeLapDistPct_TakesPriorityOverSimHubTrackPositionPercent();
+            Test_LatchedTarget_PreservedOnTemporaryDropOrReplayJump();
 
             Console.WriteLine("[TEST SUCCESS] All Native iRacing Tracking Tests Passed!");
         }
@@ -568,6 +570,76 @@ namespace User.PluginSdkDemo.Tests
             Assert(Math.Abs(tData.InPitStallStartTimeSec - 2000.0) < 1e-4, "StartTime should be 2000.0s immediately");
 
             Pass("Native InPitStall takes priority immediately without delay");
+        }
+
+        private static void Test_OpponentPosition_NativeLapDistPct_TakesPriorityOverSimHubTrackPositionPercent()
+        {
+            var tracker = new OpponentTracker();
+            var state = new SessionState();
+            state.Metadata.SourceName = "iRacingSDK";
+            state.Metadata.CarIdxByUserName["Bruno Carneiro"] = 5;
+
+            var opp = new GameReaderCommon.Opponent
+            {
+                Name = "Bruno Carneiro",
+                TrackPositionPercent = 0.45 // Stale or desynced SimHub position
+            };
+
+            // Set mock native telemetry with 60 Hz CarIdxLapDistPct
+            var lapDists = new float[64];
+            lapDists[5] = 0.725f; // Native position
+            tracker.IracingBridge.SetMockData(
+                onPitRoad: new bool[64],
+                trackSurface: new IracingTrackSurface[64],
+                pitStopCount: new int[64],
+                classPosition: new int[64],
+                lapDistPct: lapDists
+            );
+
+            // 1. When native telemetry is available, it MUST take priority over opp.TrackPositionPercent
+            double pos = tracker.GetOpponentTrackPosition(opp, state);
+            Assert(Math.Abs(pos - 0.725) < 1e-4, $"GetOpponentTrackPosition must return native 0.725, got {pos}");
+
+            // 2. When native telemetry is NOT available (or 0f), fallback to SimHub TrackPositionPercent
+            lapDists[5] = 0f;
+            double fallbackPos = tracker.GetOpponentTrackPosition(opp, state);
+            Assert(Math.Abs(fallbackPos - 0.45) < 1e-4, $"Fallback must return SimHub 0.45, got {fallbackPos}");
+
+            // 3. When both native and SimHub are unavailable, fallback to last tracked position
+            opp.TrackPositionPercent = null;
+            tracker.AddTrackedOpponent("Bruno Carneiro", new OpponentTelemetryData { Name = "Bruno Carneiro", LastPosPct = 0.60 });
+            double continuityPos = tracker.GetOpponentTrackPosition(opp, state);
+            Assert(Math.Abs(continuityPos - 0.60) < 1e-4, $"Continuity fallback must return LastPosPct 0.60, got {continuityPos}");
+
+            Pass("Opponent position prioritizes native CarIdxLapDistPct over SimHub TrackPositionPercent");
+        }
+
+        private static void Test_LatchedTarget_PreservedOnTemporaryDropOrReplayJump()
+        {
+            var manager = new TargetStrategyManager();
+            var tracker = new OpponentTracker();
+            var state = new SessionState();
+            state.Opponents = new System.Collections.Generic.List<GameReaderCommon.Opponent>();
+
+            manager.LatchedTargetName = "Bruno Carneiro";
+            tracker.AddTrackedOpponent("Bruno Carneiro", new OpponentTelemetryData
+            {
+                Name = "Bruno Carneiro",
+                CarClass = "GT3",
+                ClassPosition = 2,
+                NativeLapDistPct = 0.55f,
+                LastPosPct = 0.55
+            });
+
+            // Replay Jump preserves latched target when preserveLatchedTarget is true
+            manager.ResetSession(preserveLatchedTarget: true);
+            Assert(manager.LatchedTargetName == "Bruno Carneiro", "ResetSession(preserveLatchedTarget: true) must retain LatchedTargetName");
+
+            // Full session reset clears latched target
+            manager.ResetSession(preserveLatchedTarget: false);
+            Assert(manager.LatchedTargetName == null, "ResetSession(preserveLatchedTarget: false) must clear LatchedTargetName");
+
+            Pass("Latched target is preserved during temporary drops and replay jumps");
         }
     }
 }

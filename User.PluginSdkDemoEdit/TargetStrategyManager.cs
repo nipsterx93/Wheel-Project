@@ -426,7 +426,7 @@ namespace SimRIG
 
 
 
-            double myPos = state.TrackPositionPercent;
+            double myPos = (tracker != null && tracker.PlayerData.LastPosPct > 0.0) ? tracker.PlayerData.LastPosPct : state.TrackPositionPercent;
 
             int myLap = state.CurrentLap;
 
@@ -448,8 +448,40 @@ namespace SimRIG
                 targetOpp = state.Opponents.FirstOrDefault(o => o.Name.Equals(LatchedTargetName, StringComparison.OrdinalIgnoreCase));
                 if (targetOpp == null)
                 {
-                    LatchedTargetName = null;
-                    targetOpp = SelectTarget(state, tracker, targetModeString, out targetIsPlayer);
+                    if (tracker != null && tracker.TrackedOpponents.TryGetValue(LatchedTargetName, out var trkLatched))
+                    {
+                        // Micro-drop di SimHub o salto nel replay: manteniamo il target e ricostruiamo i dati essenziali
+                        targetOpp = new GameReaderCommon.Opponent
+                        {
+                            Name = LatchedTargetName,
+                            CarClass = trkLatched.CarClass,
+                            PositionInClass = trkLatched.ClassPosition > 0 ? trkLatched.ClassPosition : trkLatched.NativeClassPosition,
+                            Position = trkLatched.ClassPosition > 0 ? trkLatched.ClassPosition : trkLatched.NativeClassPosition,
+                            CurrentLap = trkLatched.HighestLapSeen,
+                            TrackPositionPercent = (trkLatched.NativeLapDistPct > 0.0f) ? (double)trkLatched.NativeLapDistPct : trkLatched.LastPosPct,
+                            IsPlayer = false
+                        };
+                    }
+                    else if (state.Metadata != null && state.Metadata.GetCarIdxFor(LatchedTargetName) >= 0)
+                    {
+                        int cIdx = state.Metadata.GetCarIdxFor(LatchedTargetName);
+                        float nDist = (tracker != null && tracker.IracingBridge != null) ? tracker.IracingBridge.GetLapDistPct(cIdx) : 0f;
+                        targetOpp = new GameReaderCommon.Opponent
+                        {
+                            Name = LatchedTargetName,
+                            CarClass = state.CarClassId,
+                            PositionInClass = (tracker != null && tracker.IracingBridge != null) ? tracker.IracingBridge.GetClassPosition(cIdx) : 0,
+                            Position = 0,
+                            CurrentLap = state.CurrentLap,
+                            TrackPositionPercent = nDist > 0f ? (double)nDist : 0.0,
+                            IsPlayer = false
+                        };
+                    }
+                    else
+                    {
+                        LatchedTargetName = null;
+                        targetOpp = SelectTarget(state, tracker, targetModeString, out targetIsPlayer);
+                    }
                 }
                 else if (targetOpp.IsPlayer)
                 {
@@ -498,8 +530,8 @@ namespace SimRIG
                     CurrentTarget.ClassPosition = initialClassPos;
                     CurrentTarget.TrackSurface = trkInit != null ? trkInit.TrackSurface : IracingTrackSurface.NotInWorld;
                     CurrentTarget.IsOnPitRoad = trkInit != null && trkInit.IsOnPitRoad;
-                    CurrentTarget.TrackPositionPercent = (trkInit != null && trkInit.NativeLapDistPct > 0.0f)
-                        ? (double)trkInit.NativeLapDistPct
+                    CurrentTarget.TrackPositionPercent = (tracker != null)
+                        ? tracker.GetOpponentTrackPosition(targetOpp, state)
                         : (targetOpp.TrackPositionPercent ?? (trkInit != null ? trkInit.LastPosPct : 0.0));
 
                     // Reset completo, non invalidazione temporanea: il valore torna a 0.0 (spec §10).
@@ -527,7 +559,9 @@ namespace SimRIG
 
 
 
-                double oppPos = targetOpp.TrackPositionPercent ?? 0.0;
+                double oppPos = (tracker != null)
+                    ? tracker.GetOpponentTrackPosition(targetOpp, state)
+                    : (targetOpp.TrackPositionPercent ?? 0.0);
 
                 int targetLatchedLap = targetOpp.CurrentLap ?? state.CurrentLap;
 
@@ -744,8 +778,8 @@ namespace SimRIG
                     CurrentTarget.PitCount = oppData.PitCount;
                     CurrentTarget.TrackSurface = oppData.TrackSurface;
                     CurrentTarget.IsOnPitRoad = oppData.IsOnPitRoad;
-                    CurrentTarget.TrackPositionPercent = (oppData.NativeLapDistPct > 0.0f)
-                        ? (double)oppData.NativeLapDistPct
+                    CurrentTarget.TrackPositionPercent = (tracker != null)
+                        ? tracker.GetOpponentTrackPosition(targetOpp, state)
                         : (targetOpp.TrackPositionPercent ?? oppData.LastPosPct);
 
                     if (state.PlayerTrackSurface != _lastLoggedPlayerSurface || state.PlayerIsOnPitRoad != _lastLoggedPlayerPitRoad)
@@ -925,7 +959,9 @@ namespace SimRIG
 
                     foreach (var opp in state.Opponents)
                     {
-                        if (opp.IsPlayer || !opp.TrackPositionPercent.HasValue) continue;
+                        if (opp.IsPlayer) continue;
+                        double oppPosVal = (tracker != null) ? tracker.GetOpponentTrackPosition(opp, state) : (opp.TrackPositionPercent ?? 0.0);
+                        if (oppPosVal <= 0.0) continue;
 
                         // Escludiamo vetture già nei box (IsInsideGeofence == true)
                         if (tracker.TrackedOpponents.TryGetValue(opp.Name, out var oData))
@@ -939,7 +975,7 @@ namespace SimRIG
                         {
                             oppLap = trackedOpp.HighestLapSeen;
                         }
-                        double posDiffLaps = (myLap + myPos) - (oppLap + opp.TrackPositionPercent.Value);
+                        double posDiffLaps = (myLap + myPos) - (oppLap + oppPosVal);
                         double timeGap = posDiffLaps * refLapTime; // positivo se l'avversario è dietro, negativo se davanti
 
                         // --- Y-2: chi ho davanti in pista in questo momento ---
@@ -985,7 +1021,7 @@ namespace SimRIG
                             // Sanity check spaziale: coordinata dell'avversario vicina a ExtendedPitExitPct
                             double exitPct = radar.GetExtendedPitExitPct();
                             double tolerancePct = 0.05;
-                            double deltaPct = opp.TrackPositionPercent.Value - exitPct;
+                            double deltaPct = oppPosVal - exitPct;
                             if (deltaPct < -0.5) deltaPct += 1.0;
                             else if (deltaPct > 0.5) deltaPct -= 1.0;
 
@@ -1238,7 +1274,7 @@ namespace SimRIG
 
                         if (logTargetOpp != null && tracker.TrackedOpponents.TryGetValue(logTargetOpp.Name, out var logOppData))
                         {
-                            double logOppPos = logTargetOpp.TrackPositionPercent ?? 0.0;
+                            double logOppPos = (tracker != null) ? tracker.GetOpponentTrackPosition(logTargetOpp, state) : (logTargetOpp.TrackPositionPercent ?? 0.0);
                             int logLatchedLap = logOppData.HighestLapSeen;
                             double logPosDiff = NormalizeLapDifference((myLap + myPos) - (logLatchedLap + logOppPos), myPos, logOppPos);
                             double logSessionClock = state.SessionTimeLeftSec;
@@ -1436,6 +1472,7 @@ namespace SimRIG
         public GameReaderCommon.Opponent SelectTarget(SessionState state, OpponentTracker tracker, string mode, out bool isPlayer)
         {
             isPlayer = false;
+            double myPos = (tracker != null && tracker.PlayerData.LastPosPct > 0.0) ? tracker.PlayerData.LastPosPct : state.TrackPositionPercent;
             if (mode == "PLAYER")
             {
                 isPlayer = true;
@@ -1454,7 +1491,7 @@ namespace SimRIG
 
             if (mode == "LEADER_CLASS")
             {
-                double playerProgress = state.CurrentLap + state.TrackPositionPercent;
+                double playerProgress = state.CurrentLap + myPos;
                 GameReaderCommon.Opponent classLeaderOpp = null;
                 double maxClassOppProgress = -1.0;
                 foreach (var opp in state.Opponents)
@@ -1463,7 +1500,8 @@ namespace SimRIG
                     int oppLap = opp.CurrentLap ?? 0;
                     if (tracker.TrackedOpponents.ContainsKey(opp.Name))
                         oppLap = tracker.TrackedOpponents[opp.Name].HighestLapSeen;
-                    double progress = oppLap + (opp.TrackPositionPercent ?? 0.0);
+                    double oppPosVal = (tracker != null) ? tracker.GetOpponentTrackPosition(opp, state) : (opp.TrackPositionPercent ?? 0.0);
+                    double progress = oppLap + oppPosVal;
                     if (progress > maxClassOppProgress)
                     {
                         maxClassOppProgress = progress;
@@ -1513,7 +1551,7 @@ namespace SimRIG
                     var classOpps = state.Opponents
                         .Where(o => string.Equals(o.CarClass, state.CarClassId, StringComparison.OrdinalIgnoreCase))
                         .OrderBy(o => o.PositionInClass > 0 ? o.PositionInClass : (o.Position > 0 ? o.Position : 999))
-                        .ThenByDescending(o => (o.CurrentLap ?? 1) + (o.TrackPositionPercent ?? 0.0))
+                        .ThenByDescending(o => (o.CurrentLap ?? 1) + ((tracker != null) ? tracker.GetOpponentTrackPosition(o, state) : (o.TrackPositionPercent ?? 0.0)))
                         .ToList();
 
                     int targetIdx = pPos - 1;
@@ -1537,7 +1575,6 @@ namespace SimRIG
             double minGapAhead = 999.0;
             double minGapBehind = 999.0;
 
-            double myPos = state.TrackPositionPercent;
             int myLap = state.CurrentLap;
 
             foreach (var opp in state.Opponents)
@@ -1548,7 +1585,8 @@ namespace SimRIG
                 if (tracker.TrackedOpponents.ContainsKey(opp.Name)) 
                     oppLap = tracker.TrackedOpponents[opp.Name].HighestLapSeen;
 
-                double posDiff = (myLap + myPos) - (oppLap + (opp.TrackPositionPercent ?? 0));
+                double oppPosVal = (tracker != null) ? tracker.GetOpponentTrackPosition(opp, state) : (opp.TrackPositionPercent ?? 0.0);
+                double posDiff = (myLap + myPos) - (oppLap + oppPosVal);
 
                 if (mode == "AHEAD_CLASS" || mode == "AHEAD_OVERALL" || mode == "AHEAD")
                 {
@@ -1814,10 +1852,13 @@ namespace SimRIG
 
 
 
-        public void ResetSession()
+        public void ResetSession(bool preserveLatchedTarget = false)
         {
-            LatchedTargetName = null;
-            SetNoTarget();
+            if (!preserveLatchedTarget)
+            {
+                LatchedTargetName = null;
+                SetNoTarget();
+            }
             _relativePace.Reset();
             _hysteresis.Reset();
             _lastPaceSample = default(RelativePaceSample);

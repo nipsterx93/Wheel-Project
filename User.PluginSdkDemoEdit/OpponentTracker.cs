@@ -571,6 +571,52 @@ namespace SimRIG
 
         public IracingTelemetryBridge IracingBridge { get; } = new IracingTelemetryBridge();
 
+        /// <summary>
+        /// Restituisce la posizione percentuale lungo il tracciato [0.0, 1.0] per un avversario.
+        /// Priorità tassativa:
+        /// 1. Telemetria nativa CarIdxLapDistPct a 60 Hz via IracingBridge
+        /// 2. opp.TrackPositionPercent di SimHub (fallback)
+        /// 3. Ultima posizione valida memorizzata in TrackedOpponents (continuità)
+        /// </summary>
+        public double GetOpponentTrackPosition(GameReaderCommon.Opponent opp, SessionState state)
+        {
+            if (opp == null) return 0.0;
+
+            int carIdx = -1;
+            if (state?.Metadata != null && !string.IsNullOrEmpty(opp.Name))
+            {
+                carIdx = state.Metadata.GetCarIdxFor(opp.Name);
+            }
+            if (carIdx < 0 && !string.IsNullOrEmpty(opp.Id) && int.TryParse(opp.Id, out int parsedId))
+            {
+                carIdx = parsedId;
+            }
+
+            // 1. Tassativamente prioritario: telemetria nativa CarIdxLapDistPct a 60 Hz via IracingBridge
+            if (IracingBridge != null && IracingBridge.IsAvailable && carIdx >= 0)
+            {
+                float nativeDist = IracingBridge.GetLapDistPct(carIdx);
+                if (nativeDist > 0.0f && nativeDist <= 1.0f)
+                {
+                    return (double)nativeDist;
+                }
+            }
+
+            // 2. Fallback subordinato: posizione SimHub
+            if (opp.TrackPositionPercent.HasValue && opp.TrackPositionPercent.Value > 0.0)
+            {
+                return opp.TrackPositionPercent.Value;
+            }
+
+            // 3. Fallback di continuità: ultimo valore valido tracciato
+            if (!string.IsNullOrEmpty(opp.Name) && TrackedOpponents.TryGetValue(opp.Name, out var tData) && tData.LastPosPct > 0.0)
+            {
+                return tData.LastPosPct;
+            }
+
+            return 0.0;
+        }
+
         public OpponentTracker() { }
 
 
@@ -619,7 +665,7 @@ namespace SimRIG
             foreach (var grp in classGroups)
             {
                 var sorted = grp.OrderBy(o => o.PositionInClass > 0 ? o.PositionInClass : (o.Position > 0 ? o.Position : 999))
-                                .ThenByDescending(o => (o.CurrentLap ?? 1) + (o.TrackPositionPercent ?? 0.0))
+                                .ThenByDescending(o => (o.CurrentLap ?? 1) + (o.IsPlayer ? PlayerData.LastPosPct : GetOpponentTrackPosition(o, state)))
                                 .ToList();
 
                 for (int rank = 0; rank < sorted.Count; rank++)
@@ -825,7 +871,7 @@ namespace SimRIG
                 _playerLastCompletedLaps = data.NewData.CompletedLaps;
             }
 
-            var activeOpponents = state.Opponents.Where(o => o.TrackPositionPercent.HasValue).ToList();
+            var activeOpponents = state.Opponents.Where(o => o.TrackPositionPercent.HasValue || GetOpponentTrackPosition(o, state) > 0.0).ToList();
             if (activeOpponents.Count == 0) return;
 
             double classBestStrictPitTime = playerBestStrictPitZoneTime > 0.0 ? playerBestStrictPitZoneTime : 999.0;
@@ -869,7 +915,7 @@ namespace SimRIG
 
 
 
-            var sortedOpponents = activeOpponents.OrderByDescending(o => o.TrackPositionPercent.Value).ToList();
+            var sortedOpponents = activeOpponents.OrderByDescending(o => GetOpponentTrackPosition(o, state)).ToList();
 
             foreach (var opp in activeOpponents)
             {
@@ -942,13 +988,15 @@ namespace SimRIG
                     opponentStartingFuel = Math.Round(opponentMaxTank * (raceStartingFuel / playerMaxTankBoP), 2);
                 }
 
+                double currentPos = GetOpponentTrackPosition(opp, state);
+
                 if (!_telemetry.ContainsKey(opp.Name))
                 {
                     _telemetry[opp.Name] = new OpponentTelemetryData
                     {
                         Name = opp.Name,
                         CarClass = opp.CarClass,
-                        LastPosPct = opp.TrackPositionPercent ?? 0,
+                        LastPosPct = currentPos,
                         LastTimeSec = currentSessionClock,
                         FuelAfterLastPit = opponentStartingFuel,
                         EstimatedFuel = opponentStartingFuel,
@@ -1005,8 +1053,7 @@ namespace SimRIG
 
                 tData.LapCount = Math.Max(0, rawCurrentLap - 1);
 
-                double currentPos = opp.TrackPositionPercent ?? 0;
-                if (currentPos == 0.0)
+                if (currentPos <= 0.0)
                 {
                     continue;
                 }
@@ -1147,17 +1194,12 @@ namespace SimRIG
                 {
 
                     var ahead = sortedOpponents[idx - 1];
-
-                    if (ahead.TrackPositionPercent.HasValue)
-
+                    double aheadPos = GetOpponentTrackPosition(ahead, state);
+                    if (aheadPos > 0.0)
                     {
-
-                        double posDiff = ahead.TrackPositionPercent.Value - currentPos;
-
+                        double posDiff = aheadPos - currentPos;
                         if (posDiff < 0) posDiff += 1.0;
-
                         gapToFront = (posDiff * trackLen) / (Math.Max(tData.LastValidSpeedKmh, 20.0) / 3.6);
-
                     }
 
                 }
