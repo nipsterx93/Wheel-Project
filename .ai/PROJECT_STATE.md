@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      null
-task:       null
-scope:      null
-expires:    null
+owner:      antigravity
+since:      2026-09-10T15:05:00+02:00
+task:       InPitStall detection fallback for stationary opponent in pit road
+scope:      User.PluginSdkDemoEdit/OpponentTracker.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/
+expires:    2026-09-10T17:00:00+02:00
 ```
 
 **Regole del lock**
