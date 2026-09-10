@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      null
-task:       null
-scope:      null
-expires:    null
+owner:      antigravity
+since:      2026-09-10T12:07:00
+task:       Add Player and Target track state diagnostics to strategy logs
+scope:      User.PluginSdkDemoEdit/TargetStrategyManager.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/
+expires:    2026-09-10T14:07:00
 ```
 
 **Regole del lock**
