@@ -49,6 +49,49 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+---
+
+## [2026-09-11 15:35] antigravity -> chiunque entri dopo
+
+**Task:** Risoluzione FuelFillRate errato (20L hardcoded Splash&Dash) e distorsione ClassBestExtendedPitZoneTime (outlier 10.4s)
+**Piano:** —
+**Commit:** `31f6b3c` (codice e test), questo (handoff e rilascio lock)
+
+### Fatto
+- `User.PluginSdkDemoEdit/PitRadar.cs:1551-1572`:
+  - **Calibrazione FuelFillRate dinamica**: eliminato `20.0 / num3` hardcoded. Il tasso di rifornimento ora usa i litri effettivi imbarcati `litresAdded = state.CurrentFuelLevel - _fuelLevelAtStopStart`, misurati dal cronometro interno tra il primo e l'ultimo incremento di benzina (`_lastFuelIncreaseTime - _fuelStartTime`).
+  - Sanity check su `measuredRate`: accettato solo se compreso nell'intervallo fisico [0.5, 10.0] L/s prima di salvare come `Confirmed`.
+  - Log dettagliato: `litres={effectiveLitres:F1} | seconds={fuelingSeconds:F2}s`.
+- `E:/SimHub/SimRIG_Data.json`:
+  - Ripristinato `IMSA23.FuelFillRate` a 2.60 L/s (era stato corrotto a 1.6129 L/s da Sara Tolotti al giro 15).
+- `User.PluginSdkDemoEdit/OpponentTracker.cs:876-905`:
+  - **Pavimento fisico plausibilità ExtendedPitZone**: aggiunto `minPhysicalExtendedTime = Math.Max(12.0, pitFraction * refPace * 0.70)` sul class-best transit. Previene che tagli pista o glitch di coordinata (es. 10.40s, 4.78s) riducano artificialmente `ExtendedPitZoneRacingTime` gonfiando la pit loss avversari di oltre 6.6 secondi.
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:862-870`:
+  - Calcolo `extendedRacingTime`: introdotto fallback su frazione di giro e passo (`extZoneFraction * refPaceForZone`) in assenza di passaggi pista validi.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs`:
+  - Aggiunti 2 nuovi unit test:
+    - `Test_SplashAndDash_CalculatesDynamicFuelRateFromActualLitres`: verifica che 30.9L in 12.4s producano il corretto tasso di ~2.49 L/s invece di 1.61 L/s.
+    - `Test_ExtendedPitZone_AppliesPhysicalFloorToRejectTrackCutOutliers`: verifica il rigetto di outlier (10.40s, 4.78s) preservando 16.95s.
+  - Suite test: passata a **359 PASS (100%)**.
+
+### Come verificare
+```bash
+& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build pulita (0 errori) e test runner console a **359 PASS (100%)**.
+
+### Stato
+- [x] Compila
+- [x] Test passano (359 PASS, 100%)
+
+### Per chi entra
+**Prossimo passo:** Riprodurre il replay Road Atlanta per osservare `EstimatedStationaryTime` di Bruno Carneiro scendere da ~22s a ~11.8s e `ProjectedMergeGap` prima della sosta convergere a ~ -5.2s (in perfetto accordo con i -5.25s misurati su pista all'uscita).
+**NON toccare:** `Hardware/`, file `*_LEGACY.cs`.
+**Attenzione a:** `SimRIG_Data.json` ha ora `IMSA23.FuelFillRate` calibrato a 2.60 L/s; con la nuova logica dinamica, future soste Splash&Dash calcoleranno il rate corretto basandosi sui litri realmente imbarcati.
+
+---
+
 ## [2026-09-11 14:25] antigravity -> chiunque entri dopo
 
 **Task:** Blindaggio fallback retroattivo spaziale contro falsi pit a 250 km/h e correzione TargetNeedsPit post-sosta
@@ -88,6 +131,8 @@ Atteso: build pulita (0 errori) e test runner console a **357 PASS (100%)**.
 **Prossimo passo:** Riprodurre il replay Road Atlanta per confermare che dal giro 29 in poi nessun'auto scatti a `Opponent Stopped` sul dritto e che `ProjectedMergeGap` rimanga incollato a -5.2s dopo il pit stop di Carneiro.
 **NON toccare:** `Hardware/`, file `*_LEGACY.cs`.
 **Attenzione a:** Se un'auto esce dai box e taglia il traguardo dentro la corsia box, il calcolo carburante ora preserva fedelmente `FuelAfterLastPit`.
+
+---
 
 ---
 
@@ -131,6 +176,8 @@ Atteso: build pulita (0 errori) e test runner console a **354 PASS (100%)**.
 
 ---
 
+---
+
 ## [2026-09-11 12:35] antigravity → chiunque entri dopo
 
 **Task:** Fix deduzione StationaryTime avversari in NotInWorld e protezione da falsi trigger box sul rettilineo
@@ -163,6 +210,8 @@ Atteso: build pulita (0 errori) e test runner console a **353 PASS (100%)**.
 **Prossimo passo:** Test su replay reale in SimHub per osservare il comportamento su pista; chiarito con l'utente il motivo del FuelToAdd 33L vs 31L (proiezione giri 36 vs 35 latched al lap 1 per passo lento iniziale, nessuna formula modificata).
 **NON toccare:** `Hardware/` rimane territorio di Andreas.
 **Attenzione a:** Il conteggio test corrente del plugin C# è **353 PASS**.
+
+---
 
 ---
 
@@ -216,6 +265,8 @@ Atteso: build pulita (0 errori) e test runner console a **352 PASS (100%)**.
 
 ---
 
+---
+
 ## [2026-09-10 16:05] antigravity → chiunque entri dopo
 
 **Task:** Prioritizzazione telemetria nativa CarIdxLapDistPct su SimHub opponent position e salvaguardia target lock su replay jump
@@ -263,6 +314,8 @@ Atteso: 347 PASS (100%).
 
 ---
 
+---
+
 ## [2026-09-10 15:10] antigravity → chiunque entri dopo
 
 **Task:** Fallback rilevamento InPitStall per avversario fermo su pit road (Punto 1 dell'analisi Road Atlanta)
@@ -300,6 +353,8 @@ Atteso: 345 PASS (100%).
 
 ---
 
+---
+
 ## [2026-09-10 12:10] antigravity → chiunque entri dopo
 
 **Task:** Formattazione diagnostica e log completi di superficie e pit per Player e Target
@@ -330,6 +385,8 @@ Atteso: 0 errori di compilazione, DLL copiata in SimHub, **343 PASS (100%)**.
 **Prossimo passo:** Collegamento delle nuove proprietà e telemetrie native (`TrackPositionPercent`, `IsInPitStall`, `TrackSurface`, `IsOnPitRoad`) alle logiche strategiche (Merge Gap fine-grained, stationary time, geofencing pit entry/exit).
 **NON toccare:** Le formule di stationary time e pit loss senza test dedicati.
 **Attenzione a:** Build con SimHub aperto fallisce con MSB3073 (DLL lockata da SimHub).
+
+---
 
 ---
 
@@ -372,6 +429,8 @@ Atteso: build 0 errori, 343 PASS, exit code 0.
 **Prossimo passo:** Test su cruscotto/dashboard con replay aperto per visualizzare `SimRIG.Player.TrackPositionPercent` e `SimRIG.Target.TrackPositionPercent` affiancate alle proprietà `TrackSurface`. Successivamente procedere con il collegamento delle proprietà alle logiche strategiche (Merge Gap, posizione rispetto a PitEntryPct/PitExitPct).
 **NON toccare:** `Hardware/` (territorio di Andreas).
 **Attenzione a:** Se SimHub è aperto in background, compilare con `-p:PostBuildEvent=""` per evitare errori di condivisione file (`Sharing violation` su `User.PluginSdkDemo.dll` lockata da SimHub).
+
+---
 
 ---
 
@@ -426,45 +485,5 @@ Atteso: build 0 errori, 342 PASS, exit code 0.
 **Attenzione a:** Se si modificano o leggono altre proprietà array da `GameRawData.Telemetry`, utilizzare sempre l'estrazione unboxing tramite `IracingTelemetryBridge` con fallback su `PluginManager`.
 
 ---
-
----
-
-## [2026-09-09 15:15] antigravity → chiunque entri dopo
-
-**Task:** Fix replay pit detection fallback, Opponents fuel drop to 0L, gap flicker and multiclass target class position
-**Piano:** —
-**Commit:** `questo`
-
-### Fatto
-- `User.PluginSdkDemoEdit/OpponentTracker.cs:185, 595-625, 1345, 1775-1825`:
-  - **Replay Pit Detection Fallback:** Risolto bug critico in cui la presenza di `sample.Telemetry` (oggetti bridge non nulli) impostava `isNativeAvailable = true` ma `CarIdxOnPitRoad` conteneva tutti `false` (nei replay SimHub/iRacing non trasmette telemetria nativa avversari). Cambiata condizione a `isNativeAvailable && tData.IsOnPitRoad`: se nativo è assente o false, l'avversario ricade correttamente su geofence spaziale, persistenza di velocità e durata.
-  - **Fix Fuel Drop to 0.00L & Pit Count Mancante:** In `Opponent Spatial Transit Retroactively Validated`, aggiunta l'esecuzione completa di pit stop (`PitCount++`, `LastStopLap`, `LastPitLap`, e `SmartRefuelProjection`) protetta da verifica `rawCurrentLap <= SpatialStrictEntryLap + 1` contro salti di replay. `LastRefuelLap` viene aggiornato e `EstimatedFuel` rifornito al fabbisogno per arrivare a fine gara (`NeedsPitStop = false`).
-  - **Dynamic Class Position Ranking:** Aggiunto calcolo periodico del ranking di classe raggruppando `state.Opponents` per `CarClass` e ordinando per progresso di gara continuo. Popola `OpponentTelemetryData.ClassPosition` e `state.PositionInClass` sia in sessione live che replay.
-- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:484, 507, 560-610, 1220-1245, 1415-1465, 1755`:
-  - **Class Position Targeting (P1..P24):** Modalità "P1".."P24" ora seleziona prioritariamente per posizione di classe nella classe del Player (`CarClass == state.CarClassId`), selezionando il leader o contendente GT3 invece di un prototipo GTP assoluto.
-  - **Class Position Fallback:** Risolto bug per cui `CurrentTarget.ClassPosition` leggeva solo `NativeClassPosition` (0 nei replay) ricadendo sulla posizione assoluta. Ora prioritizza `trk.ClassPosition > 0`.
-  - **Stabilizzazione Microsettori e Gap Flicker:** Quando il target è in pit (`oppData.IsOnPitRoad || oppData.IsInsideGeofence || targetOpp.IsCarInPit`) o quando i timestamp dei microsettori divergono di oltre il 60% da `posDiff * refLapTime` (microsettori vecchi di 2-3 giri), il calcolo ripiega istantaneamente sulla progressione continua `Math.Abs(posDiff * refLapTime)`, eliminando i salti a +116s/+194s/+272s durante le soste di Aake Korte.
-  - **ResetSession:** Aggiunto reset di `_prevPosDiff = double.NaN` e `_lastTargetForPosDiff = ""`.
-- `User.PluginSdkDemoEdit/DataPluginDemo.cs:443, 584, 1799, 2012`:
-  - Registrate e pubblicate le proprietà `SimRIG.Target.ClassPosition` e `SimRIG.Player.ClassPosition`.
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs`:
-  - Aggiunti 2 test unitari: `Test_SelectTarget_P1_P2_InMulticlass` e `Test_ReplayFallback_RetroactiveTransitValidatesStop`.
-  - Conteggio test suite: **340 test PASS** (100% verdi, 0 falliti).
-
-### Come verificare
-```bash
-"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
-"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: build 0 errori, 340 PASS, exit code 0.
-
-### Stato
-- ✅ Compila senza errori
-- ✅ 340 test passano (100%)
-
-### Per chi entra
-**Prossimo passo:** Test su replay Road Atlanta `20260909_134044` per verificare in log/HUD che Aake Korte mantenga il conteggio pit, il carburante stimato aggiornato post-sosta, e che i gap verso i target rimangano stabili senza inversioni o sfarfallii.
-**NON toccare:** `Hardware/` (territorio di Andreas).
-**Attenzione a:** Nei replay di iRacing riprodotti su SimHub, la telemetria nativa di `sample.Telemetry` per gli avversari (`CarIdxOnPitRoad`, `CarIdxTrackSurface`) non è popolata: la cascata geofence + euristica spaziale è il canale primario per i replay.
 
 ---
