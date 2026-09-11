@@ -886,9 +886,24 @@ namespace SimRIG
                     double targetFuelLaps = fuelPerLap > 0 ? (oppData.EstimatedFuel / fuelPerLap) : 99.0;
                     double targetFuelDeficit = raceResult.RaceLapsRemaining - targetFuelLaps;
 
-                    // Regola d'Oro: Il target DEVE pittare solo se il deficit supera la soglia di 0.8 giri
-                    // E se ha gia' effettuato la sosta con carburante sufficiente, NeedsPitStop e' false.
-                    bool targetNeedsPit = oppData != null ? oppData.NeedsPitStop : (targetFuelDeficit > 0.8);
+                    // Regola d'Oro: Il target DEVE pittare solo se il deficit supera la soglia di 0.8 giri.
+                    // Se ha gia' effettuato almeno una sosta in gara (targetPitCount >= 1), non deve assolutamente
+                    // effettuare una seconda sosta se ha carburante sufficiente per finire (targetFuelDeficit <= 0.8)!
+                    int targetPitCount = (CurrentTarget != null && CurrentTarget.PitCount > 0)
+                        ? CurrentTarget.PitCount
+                        : ((oppData != null && oppData.PitCount > 0)
+                            ? oppData.PitCount
+                            : (targetOpp.PitCount.HasValue ? targetOpp.PitCount.Value : 0));
+
+                    bool targetNeedsPit;
+                    if (targetPitCount >= 1)
+                    {
+                        targetNeedsPit = targetFuelDeficit > 0.8;
+                    }
+                    else
+                    {
+                        targetNeedsPit = oppData != null ? (oppData.NeedsPitStop || targetFuelDeficit > 0.8) : (targetFuelDeficit > 0.8);
+                    }
 
                     double targetFuelToAdd = (raceResult.RaceLapsRemaining * fuelPerLap) + (0.3 * fuelPerLap) - oppData.EstimatedFuel;
                     if (targetFuelToAdd < 0.0) targetFuelToAdd = 0.0;
@@ -1341,7 +1356,22 @@ namespace SimRIG
 
                             double logTargetFuelLaps = fuelPerLap > 0 ? (logOppData.EstimatedFuel / fuelPerLap) : 99.0;
                             double logTargetFuelDeficit = raceResult.RaceLapsRemaining - logTargetFuelLaps;
-                            bool logTargetNeedsPit = logOppData != null ? logOppData.NeedsPitStop : (logTargetFuelDeficit > 0.8);
+
+                            int logTargetPitCount = (CurrentTarget != null && CurrentTarget.PitCount > 0)
+                                ? CurrentTarget.PitCount
+                                : ((logOppData != null && logOppData.PitCount > 0)
+                                    ? logOppData.PitCount
+                                    : (logTargetOpp.PitCount.HasValue ? logTargetOpp.PitCount.Value : 0));
+
+                            bool logTargetNeedsPit;
+                            if (logTargetPitCount >= 1)
+                            {
+                                logTargetNeedsPit = logTargetFuelDeficit > 0.8;
+                            }
+                            else
+                            {
+                                logTargetNeedsPit = logOppData != null ? (logOppData.NeedsPitStop || logTargetFuelDeficit > 0.8) : (logTargetFuelDeficit > 0.8);
+                            }
 
                             double logTargetFuelToAdd = (raceResult.RaceLapsRemaining * fuelPerLap) + (0.3 * fuelPerLap) - logOppData.EstimatedFuel;
                             if (logTargetFuelToAdd < 0.0) logTargetFuelToAdd = 0.0;
@@ -1372,11 +1402,6 @@ namespace SimRIG
                             double logProjectedMergeGap = CalculateProjectedMergeGap(logTargetSignedGap, logPlayerNeedsPit, playerTotalPitLoss, logTargetNeedsPit, logTargetTotalPitLoss);
 
                             int playerPitCount = raceResult.PlayerPitCount;
-                            int targetPitCount = (CurrentTarget != null && CurrentTarget.PitCount > 0)
-                                ? CurrentTarget.PitCount
-                                : ((logOppData != null && logOppData.PitCount > 0)
-                                    ? logOppData.PitCount
-                                    : (logTargetOpp.PitCount.HasValue ? logTargetOpp.PitCount.Value : 0));
                             int playerPos = state.PositionInClass > 0 ? state.PositionInClass : state.Position;
                             int targetPos = CurrentTarget.ClassPosition > 0 ? CurrentTarget.ClassPosition : logTargetOpp.Position;
                             double playerFuelLaps = fuel.TankLapsRemaining;
@@ -1399,7 +1424,7 @@ namespace SimRIG
                                 $"----------------------------------------------------------------------------------------\n" +
                                 $"DRIVERS:\n" +
                                 $"  Player: P{playerPos} | PosPct: {playerPosPct:F2}% | Surface: {playerSurface} | InPitRoad: {playerInPitRoad} | InPitStall : {playerInPitStall} | SurfaceCode : {playerSurfaceCode} | Pits: {playerPitCount} | FuelLaps: {playerFuelLaps:F1} | FuelFillRate: {refuelRate:F2} L/s | PlayerNeedsPit: {logPlayerNeedsPit}\n" +
-                                $"  Target: P{targetPos} | PosPct: {targetPosPct:F2}% | Surface: {targetSurface} | InPitRoad: {targetInPitRoad} | InPitStall : {targetInPitStall} | SurfaceCode : {targetSurfaceCode} | Pits: {targetPitCount} | FuelLaps: {logTargetFuelLaps:F1} | RemLaps: {raceResult.RaceLapsRemaining:F1} | TargetNeedsPit: {logTargetNeedsPit}\n" +
+                                $"  Target: P{targetPos} | PosPct: {targetPosPct:F2}% | Surface: {targetSurface} | InPitRoad: {targetInPitRoad} | InPitStall : {targetInPitStall} | SurfaceCode : {targetSurfaceCode} | Pits: {logTargetPitCount} | FuelLaps: {logTargetFuelLaps:F1} | RemLaps: {raceResult.RaceLapsRemaining:F1} | TargetNeedsPit: {logTargetNeedsPit}\n" +
                                 $"PIT LOSS TIMINGS:\n" +
                                 $"  Player (+{logEffectivePlayerPitLoss:F2}s): Staz: {playerStationaryTime:F2}s (incl. 2s) | Transit: {radar.PitTransitTime:F2}s | AccDec: {accDecTime:F2}s | ExtZone: {extendedRacingTime:F2}s\n" +
                                 $"  Target (+{logEffectiveTargetPitLoss:F2}s) : Staz: {logTargetStationaryTime:F2}s | Transit: {radar.PitTransitTime:F2}s | AccDec: {accDecTime:F2}s | ExtZone: {extendedRacingTime:F2}s\n" +

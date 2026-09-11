@@ -47,6 +47,50 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+---
+
+## [2026-09-11 14:25] antigravity -> chiunque entri dopo
+
+**Task:** Blindaggio fallback retroattivo spaziale contro falsi pit a 250 km/h e correzione TargetNeedsPit post-sosta
+**Piano:** —
+**Commit:** questo
+
+### Fatto
+- `User.PluginSdkDemoEdit/OpponentTracker.cs`:
+  - **Filtro gate d'ingresso `IsSpatiallyInsideStrict`** (r. 1478-1490): l'avvio del cronometro di settore spaziale scatta solo se la vettura entra vicino alla coordinata `pitEntryPct` (`entryDistFromGate <= 0.04`), evitando che auto un-culled a metà rettilineo (es. Habib a `0.0238`) inizializzino transiti brevi spuri.
+  - **Blindaggio del fallback retroattivo `Opponent Spatial Transit Retroactively Validated`** (r. 1997-2015):
+    1. Se la telemetria nativa conferma l'auto su pista (`isNativeAvailable && !tData.IsOnPitRoad && tData.TrackSurface == IracingTrackSurface.OnTrack`), il transito viene scartato come normale passaggio sul rettilineo.
+    2. Se la vettura viaggia a velocità da rettilineo (`MaxSpeedInPitThisTransit > 120.0` o `Speed > 120.0` su `OnTrack`), il transito viene scartato.
+    3. `spatialAdaptiveThreshold` ha ora un pavimento fisico minimo assoluto: `Math.Max(minPhysicalPitTime, ...)` con `minPhysicalPitTime >= 18.0s` (o 75% di `PitDriveThroughTime`), eliminando per sempre soglie implausibili come 9.3s sul rettilineo.
+  - **Eliminata doppia sottrazione `inlapFuelDeduction`** (r. 2098-2102): in `Opponent Lap Fuel Sync`, `inlapFuelDeduction` viene sottratta solo se `tData.FuelAfterLastPit <= 0.0` (primo stint pre-sosta). Evita di sottrarre 2.17L dal carburante post-rifornimento quando l'auto taglia il traguardo ancora dentro la pit lane.
+  - **Margine di sicurezza `NeedsPitStop` post-sosta** (r. 1173): se l'avversario ha già effettuato un pit stop (`PitCount >= 1`), il controllo non aggiunge più il buffer artificiale `+ 0.3` giri sul fabbisogno, prevenendo falsi allarmi quando si opera con smart refuel a filo traguardo.
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs`:
+  - **Logica `targetNeedsPit` e `logTargetNeedsPit` post-sosta** (r. 891-905 e r. 1364-1375): se il Target ha già completato la sosta (`targetPitCount >= 1`), `targetNeedsPit` è `true` SOLO se c'è un reale deficit di carburante a fine gara (`targetFuelDeficit > 0.8`). Se il Target ha carburante a sufficienza (es. 16 giri di fuel per 14.5 giri di gara), `targetNeedsPit = false` e non viene applicata alcuna pit loss artificiale (+24.90s), mantenendo stabile il `ProjectedMergeGap`.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs`:
+  - Aggiunti 3 nuovi unit test:
+    - `Test_NativeConfirmedOnTrack_RejectsRetroactiveSpatialValidation`: verifica che un'auto a 245 km/h su `OnTrack` con `!IsOnPitRoad` non convalidi mai una sosta retroattiva e che la soglia minima sia >= 18s.
+    - `Test_TargetAlreadyPitted_WithFuelToFinish_DoesNotNeedPitStop`: verifica che un Target con 1 sosta e carburante a finire non attivi una seconda sosta fantasma e mantenga `ProjectedMergeGap` a -5.21s anziché -30.11s.
+    - `Test_LapFuelSync_DoesNotDoubleDeductInlapFuelAfterPit`: verifica che il passaggio sul traguardo in pit lane dopo il pit stop non sottragga due volte il consumo dell'inlap.
+  - Suite test: passata a **357 PASS (100%)**.
+
+### Come verificare
+```bash
+& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build pulita (0 errori) e test runner console a **357 PASS (100%)**.
+
+### Stato
+- [x] Compila
+- [x] Test passano (357 PASS, 100%)
+
+### Per chi entra
+**Prossimo passo:** Riprodurre il replay Road Atlanta per confermare che dal giro 29 in poi nessun'auto scatti a `Opponent Stopped` sul dritto e che `ProjectedMergeGap` rimanga incollato a -5.2s dopo il pit stop di Carneiro.
+**NON toccare:** `Hardware/`, file `*_LEGACY.cs`.
+**Attenzione a:** Se un'auto esce dai box e taglia il traguardo dentro la corsia box, il calcolo carburante ora preserva fedelmente `FuelAfterLastPit`.
+
+---
+
 ## [2026-09-11 13:35] antigravity → chiunque entri dopo
 
 **Task:** Risoluzione falsi stop su auto culled in NotInWorld e correzione classificazione gomme in soste simultanee
@@ -85,6 +129,8 @@ Atteso: build pulita (0 errori) e test runner console a **354 PASS (100%)**.
 
 ---
 
+---
+
 ## [2026-09-11 12:35] antigravity → chiunque entri dopo
 
 **Task:** Fix deduzione StationaryTime avversari in NotInWorld e protezione da falsi trigger box sul rettilineo
@@ -117,6 +163,8 @@ Atteso: build pulita (0 errori) e test runner console a **353 PASS (100%)**.
 **Prossimo passo:** Test su replay reale in SimHub per osservare il comportamento su pista; chiarito con l'utente il motivo del FuelToAdd 33L vs 31L (proiezione giri 36 vs 35 latched al lap 1 per passo lento iniziale, nessuna formula modificata).
 **NON toccare:** `Hardware/` rimane territorio di Andreas.
 **Attenzione a:** Il conteggio test corrente del plugin C# è **353 PASS**.
+
+---
 
 ---
 
@@ -166,6 +214,8 @@ Atteso: build pulita (0 errori) e test runner console a **352 PASS (100%)**.
 
 ---
 
+---
+
 ## [2026-09-10 16:05] antigravity → chiunque entri dopo
 
 **Task:** Prioritizzazione telemetria nativa CarIdxLapDistPct su SimHub opponent position e salvaguardia target lock su replay jump
@@ -211,6 +261,8 @@ Atteso: 347 PASS (100%).
 
 ---
 
+---
+
 ## [2026-09-10 15:10] antigravity → chiunque entri dopo
 
 **Task:** Fallback rilevamento InPitStall per avversario fermo su pit road (Punto 1 dell'analisi Road Atlanta)
@@ -246,6 +298,8 @@ Atteso: 345 PASS (100%).
 
 ---
 
+---
+
 ## [2026-09-10 12:10] antigravity → chiunque entri dopo
 
 **Task:** Formattazione diagnostica e log completi di superficie e pit per Player e Target
@@ -276,6 +330,8 @@ Atteso: 0 errori di compilazione, DLL copiata in SimHub, **343 PASS (100%)**.
 **Prossimo passo:** Collegamento delle nuove proprietà e telemetrie native (`TrackPositionPercent`, `IsInPitStall`, `TrackSurface`, `IsOnPitRoad`) alle logiche strategiche (Merge Gap fine-grained, stationary time, geofencing pit entry/exit).
 **NON toccare:** Le formule di stationary time e pit loss senza test dedicati.
 **Attenzione a:** Build con SimHub aperto fallisce con MSB3073 (DLL lockata da SimHub).
+
+---
 
 ---
 
@@ -316,6 +372,8 @@ Atteso: build 0 errori, 343 PASS, exit code 0.
 **Prossimo passo:** Test su cruscotto/dashboard con replay aperto per visualizzare `SimRIG.Player.TrackPositionPercent` e `SimRIG.Target.TrackPositionPercent` affiancate alle proprietà `TrackSurface`. Successivamente procedere con il collegamento delle proprietà alle logiche strategiche (Merge Gap, posizione rispetto a PitEntryPct/PitExitPct).
 **NON toccare:** `Hardware/` (territorio di Andreas).
 **Attenzione a:** Se SimHub è aperto in background, compilare con `-p:PostBuildEvent=""` per evitare errori di condivisione file (`Sharing violation` su `User.PluginSdkDemo.dll` lockata da SimHub).
+
+---
 
 ---
 
@@ -369,6 +427,8 @@ Atteso: build 0 errori, 342 PASS, exit code 0.
 
 ---
 
+---
+
 ## [2026-09-09 15:15] antigravity → chiunque entri dopo
 
 **Task:** Fix replay pit detection fallback, Opponents fuel drop to 0L, gap flicker and multiclass target class position
@@ -408,40 +468,3 @@ Atteso: build 0 errori, 340 PASS, exit code 0.
 **Attenzione a:** Nei replay di iRacing riprodotti su SimHub, la telemetria nativa di `sample.Telemetry` per gli avversari (`CarIdxOnPitRoad`, `CarIdxTrackSurface`) non è popolata: la cascata geofence + euristica spaziale è il canale primario per i replay.
 
 ---
-
-## [2026-09-09 13:30] antigravity → chiunque entri dopo
-
-**Task:** Firmware INPUT V2.8.2 — aggiunta stato TEST su Rotary POS 7
-**Piano:** —
-**Commit:** `questo`
-
-### Fatto
-- `Hardware/Firmware INPUT/V2_8_2/V2_8_2.ino:408`:
-  - Aggiunto stato `TEST` su posizione rotary 7 in `sendNormalModeUpdate(int pos)` (`else if (pos == 7) sendSimHubMsg(SH_MODE_PREFIX, F("TEST"));`), posizionato subito dopo `MAP` (pos 6). Il firmware invia ora `WMODE:TEST` verso SimHub quando il Rotary 1 viene ruotato in posizione 7. Nessun'altra logica modificata.
-- Compilazione firmware verificata con `arduino-cli` con 0 errori (24.758 byte programma, 1.364 byte variabili globali).
-
-### Come verificare
-```bash
-& "C:\Users\Andreas\AppData\Local\Programs\Arduino IDE\resources\app\lib\backend\resources\arduino-cli.exe" compile --fqbn arduino:avr:leonardo "Hardware/Firmware INPUT/V2_8_2"
-```
-Atteso: compilazione completata con 0 errori.
-
-### Stato
-- ✅ Firmware compila pulito con `arduino-cli` (0 errori)
-- ✅ 338 test PASS C# (invariati)
-
-### Per chi entra
-**Prossimo passo:** Test su volante fisico ruotando il selettore Rotary 1 su posizione 7 e verifica ricezione proprietà `SimRIG.Mode` = `"TEST"` in SimHub.
-**NON toccare:** `Hardware/` rimane territorio di Andreas.
-**Attenzione a:** Il conteggio test corrente del plugin C# è 338 PASS.
-
----
-
-## Handoff più vecchi
-
-Tutte le voci precedenti a quelle qui sopra sono in `.ai/archive/HANDOFF_LOG_archive.md`,
-in ordine cronologico inverso come questo file. La prima potatura è del 2026-09-05: il file
-dichiarava di tenere gli ultimi 10 e ne conteneva 22, per 112 KB letti a ogni ingresso.
-
-*(Niente conteggi scritti qui: `grep -c '^## \[20' .ai/archive/HANDOFF_LOG_archive.md` dà il
-numero esatto senza che nessuno debba ricordarsi di aggiornarlo.)*

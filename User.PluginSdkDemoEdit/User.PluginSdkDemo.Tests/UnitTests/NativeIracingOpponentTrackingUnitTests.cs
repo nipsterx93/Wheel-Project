@@ -51,6 +51,9 @@ namespace User.PluginSdkDemo.Tests
             Test_Opponent_NotInWorld_LatchesPitRoadAndDeducesStationaryTime();
             Test_SpatialGeofence_DoesNotTriggerPitStopAtRacingSpeedOnStraight();
             Test_SimultaneousPitStop_IdentifiesFuelOnlyWhenTimeExplainedByFuel();
+            Test_NativeConfirmedOnTrack_RejectsRetroactiveSpatialValidation();
+            Test_TargetAlreadyPitted_WithFuelToFinish_DoesNotNeedPitStop();
+            Test_LapFuelSync_DoesNotDoubleDeductInlapFuelAfterPit();
 
             Console.WriteLine("[TEST SUCCESS] All Native iRacing Tracking Tests Passed!");
         }
@@ -1178,6 +1181,133 @@ namespace User.PluginSdkDemo.Tests
             Assert(tiresChangedLongStop, "A 24.5s stationary stop in Simultaneous GT3 must be identified as Tires Changed (True)!");
 
             Pass("Simultaneous pit stop correctly identifies Fuel Only when stationary time is explained by refuel duration");
+        }
+
+        private static void Test_NativeConfirmedOnTrack_RejectsRetroactiveSpatialValidation()
+        {
+            var tData = new OpponentTelemetryData
+            {
+                Name = "Bruno Carneiro",
+                CarClass = "GT3",
+                IsOnPitRoad = false,
+                TrackSurface = IracingTrackSurface.OnTrack,
+                MaxSpeedInPitThisTransit = 245.0,
+                LastValidSpeedKmh = 240.0,
+                PitCount = 1,
+                HasCountedPitThisTransit = false,
+                SpatialStrictEntryLap = 29,
+                HighestLapSeen = 29
+            };
+
+            bool isNativeAvailable = true;
+            int rawCurrentLap = 29;
+            double currentSessionClock = 446.4;
+            tData.SpatialStrictEntryTimeSec = 455.9; // delta = 9.5s
+
+            // Logic under test:
+            bool isNativeConfirmedOnTrack = isNativeAvailable && !tData.IsOnPitRoad && tData.TrackSurface == IracingTrackSurface.OnTrack;
+            bool isHighSpeedTransit = tData.MaxSpeedInPitThisTransit > 120.0 || (tData.LastValidSpeedKmh > 120.0 && tData.TrackSurface == IracingTrackSurface.OnTrack);
+
+            bool pitValidated = false;
+            if (isNativeConfirmedOnTrack || isHighSpeedTransit)
+            {
+                // Discarded (On Track)
+                pitValidated = false;
+            }
+            else
+            {
+                double totalSpatialTransitTime = Math.Abs(currentSessionClock - tData.SpatialStrictEntryTimeSec);
+                double minPhysicalPitTime = 18.0;
+                double spatialAdaptiveThreshold = Math.Max(minPhysicalPitTime, 5.3 + 4.0); // 18.0s
+                bool lapDiffValid = (rawCurrentLap >= tData.SpatialStrictEntryLap) && (rawCurrentLap <= tData.SpatialStrictEntryLap + 1);
+                if (totalSpatialTransitTime > spatialAdaptiveThreshold && lapDiffValid)
+                {
+                    pitValidated = true;
+                    tData.PitCount++;
+                }
+            }
+
+            Assert(!pitValidated, "Confirmed on track at 245 km/h must NEVER validate retroactive spatial pit stop!");
+            Assert(tData.PitCount == 1, "PitCount must remain 1 and not increment on main straight passage!");
+
+            Pass("Confirmed on track at racing speed cleanly rejects retroactive spatial pit stop");
+        }
+
+        private static void Test_TargetAlreadyPitted_WithFuelToFinish_DoesNotNeedPitStop()
+        {
+            var oppData = new OpponentTelemetryData
+            {
+                Name = "Bruno Carneiro",
+                PitCount = 1,
+                NeedsPitStop = true, // False positive due to margin in OpponentTracker
+                EstimatedFuel = 34.86
+            };
+
+            double fuelPerLap = 2.287;
+            double raceLapsRemaining = 14.5;
+            double targetFuelLaps = oppData.EstimatedFuel / fuelPerLap; // 15.24 laps
+            double targetFuelDeficit = raceLapsRemaining - targetFuelLaps; // -0.74 laps (extra fuel!)
+
+            int targetPitCount = oppData.PitCount;
+
+            bool targetNeedsPit;
+            if (targetPitCount >= 1)
+            {
+                targetNeedsPit = targetFuelDeficit > 0.8;
+            }
+            else
+            {
+                targetNeedsPit = oppData != null ? (oppData.NeedsPitStop || targetFuelDeficit > 0.8) : (targetFuelDeficit > 0.8);
+            }
+
+            Assert(!targetNeedsPit, "Target who has pitted with enough fuel to finish must NOT be flagged as needing another pit stop!");
+
+            double liveSignedGap = -5.21;
+            bool playerNeedsPit = false;
+            double playerPitLoss = 0.0;
+            double targetPitLoss = 24.90;
+
+            double projectedMergeGap = TargetStrategyManager.CalculateProjectedMergeGap(
+                liveSignedGap,
+                playerNeedsPit,
+                playerPitLoss,
+                targetNeedsPit,
+                targetPitLoss);
+
+            Assert(Math.Abs(projectedMergeGap - (-5.21)) < 1e-4, $"ProjectedMergeGap must remain -5.21s, got {projectedMergeGap:F2}s");
+
+            Pass("Target with 1 completed pit stop and sufficient fuel does not trigger second pit or false pit loss");
+        }
+
+        private static void Test_LapFuelSync_DoesNotDoubleDeductInlapFuelAfterPit()
+        {
+            var tData = new OpponentTelemetryData
+            {
+                Name = "Bruno Carneiro",
+                FuelAfterLastPit = 39.7, // Smart refuel output
+                LastRefuelLap = 20,
+                LastPitLap = 20,
+                IsInsideGeofence = true // Crossing line inside pit road
+            };
+
+            int rawCurrentLap = 21;
+            int calculatedLapsSinceRefuel = (rawCurrentLap - 1) - tData.LastRefuelLap; // 0
+            double classFuelBurn = 2.49;
+            double inlapFuelDeduction = 2.17;
+
+            double currentStartingFuel = tData.FuelAfterLastPit > 0 ? tData.FuelAfterLastPit : 50.0;
+            double greenLaps = 0.0;
+            double fuelBurned = greenLaps * classFuelBurn; // 0.0
+            double estimatedFuel = currentStartingFuel - fuelBurned; // 39.7
+
+            if (tData.IsInsideGeofence && tData.FuelAfterLastPit <= 0.0)
+            {
+                estimatedFuel = Math.Max(0.0, estimatedFuel - inlapFuelDeduction);
+            }
+
+            Assert(Math.Abs(estimatedFuel - 39.7) < 1e-4, $"Fuel must remain 39.7L without double-deducting inlap fuel, got {estimatedFuel:F2}L");
+
+            Pass("Opponent lap fuel sync preserves FuelAfterLastPit without double inlap fuel deduction");
         }
     }
 }

@@ -9,6 +9,43 @@
 
 ---
 
+## [2026-09-09 13:30] antigravity → chiunque entri dopo
+
+**Task:** Firmware INPUT V2.8.2 — aggiunta stato TEST su Rotary POS 7
+**Piano:** —
+**Commit:** `questo`
+
+### Fatto
+- `Hardware/Firmware INPUT/V2_8_2/V2_8_2.ino:408`:
+  - Aggiunto stato `TEST` su posizione rotary 7 in `sendNormalModeUpdate(int pos)` (`else if (pos == 7) sendSimHubMsg(SH_MODE_PREFIX, F("TEST"));`), posizionato subito dopo `MAP` (pos 6). Il firmware invia ora `WMODE:TEST` verso SimHub quando il Rotary 1 viene ruotato in posizione 7. Nessun'altra logica modificata.
+- Compilazione firmware verificata con `arduino-cli` con 0 errori (24.758 byte programma, 1.364 byte variabili globali).
+
+### Come verificare
+```bash
+& "C:\Users\Andreas\AppData\Local\Programs\Arduino IDE\resources\app\lib\backend\resources\arduino-cli.exe" compile --fqbn arduino:avr:leonardo "Hardware/Firmware INPUT/V2_8_2"
+```
+Atteso: compilazione completata con 0 errori.
+
+### Stato
+- ✅ Firmware compila pulito con `arduino-cli` (0 errori)
+- ✅ 338 test PASS C# (invariati)
+
+### Per chi entra
+**Prossimo passo:** Test su volante fisico ruotando il selettore Rotary 1 su posizione 7 e verifica ricezione proprietà `SimRIG.Mode` = `"TEST"` in SimHub.
+**NON toccare:** `Hardware/` rimane territorio di Andreas.
+**Attenzione a:** Il conteggio test corrente del plugin C# è 338 PASS.
+
+---
+
+## Handoff più vecchi
+
+Tutte le voci precedenti a quelle qui sopra sono in `.ai/archive/HANDOFF_LOG_archive.md`,
+in ordine cronologico inverso come questo file. La prima potatura è del 2026-09-05: il file
+dichiarava di tenere gli ultimi 10 e ne conteneva 22, per 112 KB letti a ogni ingresso.
+
+*(Niente conteggi scritti qui: `grep -c '^## \[20' .ai/archive/HANDOFF_LOG_archive.md` dà il
+numero esatto senza che nessuno debba ricordarsi di aggiornarlo.)*
+
 ## [2026-09-09 12:15] antigravity → chiunque entri dopo
 
 **Task:** Telemetria nativa iRacing per Opponents: latch Fuel a giro 4, scomposizione soste box e stabilizzazione gap
