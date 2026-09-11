@@ -1372,7 +1372,11 @@ namespace SimRIG
                             double logProjectedMergeGap = CalculateProjectedMergeGap(logTargetSignedGap, logPlayerNeedsPit, playerTotalPitLoss, logTargetNeedsPit, logTargetTotalPitLoss);
 
                             int playerPitCount = raceResult.PlayerPitCount;
-                            int targetPitCount = (logTargetOpp.PitCount.HasValue) ? logTargetOpp.PitCount.Value : 0;
+                            int targetPitCount = (CurrentTarget != null && CurrentTarget.PitCount > 0)
+                                ? CurrentTarget.PitCount
+                                : ((logOppData != null && logOppData.PitCount > 0)
+                                    ? logOppData.PitCount
+                                    : (logTargetOpp.PitCount.HasValue ? logTargetOpp.PitCount.Value : 0));
                             int playerPos = state.PositionInClass > 0 ? state.PositionInClass : state.Position;
                             int targetPos = CurrentTarget.ClassPosition > 0 ? CurrentTarget.ClassPosition : logTargetOpp.Position;
                             double playerFuelLaps = fuel.TankLapsRemaining;

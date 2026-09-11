@@ -1496,10 +1496,10 @@ namespace SimRIG
                     isInsideGeofence = true;
                     triggerReason = "iRacing Native (CarIdxOnPitRoad)";
                 }
-                else if (isNativeAvailable && !tData.IsOnPitRoad && tData.TrackSurface == IracingTrackSurface.OnTrack)
+                else if (isNativeAvailable && !tData.IsOnPitRoad)
                 {
-                    // Telemetria nativa iRacing dichiara esplicitamente che l'auto è OnTrack e non in pit road:
-                    // il fallback spaziale non deve scavalcare il dato certo!
+                    // Telemetria nativa iRacing dichiara esplicitamente che l'auto non è in pit road
+                    // (sia essa OnTrack, NotInWorld culled, o OffTrack): il fallback spaziale non deve scavalcare il dato certo!
                     isInsideGeofence = false;
                 }
                 else if (state.IsSessionActive && isSpatiallyInsideGeofence && !isRaceNotStartedYet && tData.HasExitedPitZoneAtLeastOnce)
@@ -1514,7 +1514,7 @@ namespace SimRIG
                         isInsideGeofence = true;
                         triggerReason = "Telemetry (IsCarInPit)";
                     }
-                    else if (tData.LastValidSpeedKmh < 0.5)
+                    else if (tData.LastValidSpeedKmh < 0.5 && tData.TrackSurface != IracingTrackSurface.NotInWorld)
                     {
                         isInsideGeofence = true;
                         triggerReason = "Stopped (Speed < 0.5 km/h)";
@@ -1726,7 +1726,9 @@ namespace SimRIG
                         {
                             targetFuel = Math.Min(classMaxTank, (raceLapsRemaining + 0.3) * effectiveClassFuelBurn);
                         }
-                        double predictedFuelToAdd = Math.Max(0.0, targetFuel - tData.EstimatedFuel);
+                        double predictedFuelToAdd = tData.LastPitFuelAdded > 0.0
+                            ? tData.LastPitFuelAdded
+                            : Math.Max(0.0, targetFuel - tData.EstimatedFuel);
                         double tFuel = predictedFuelToAdd / fillRate;
                         double tStationary = tData.StationaryTimeSec;
                         const double RefuelOverhead = 2.0;
@@ -1783,43 +1785,76 @@ namespace SimRIG
                             }
                             else
                             {
-                                // Simultaneous
-                                double minTireTime = (0.5 * tTyres) - 1.0;
-                                refuelTime = Math.Min(activeRefuelTime, MaxReasonableRefuelTime);
+                                // Simultaneous: rifornimento e gomme avvengono in parallelo.
+                                // Il tempo totale alla piazzola è dettato dal maggiore tra il tempo di rifornimento e il cambio gomme.
+                                double expectedTotalRefuelTime = tFuel + RefuelOverhead;
+                                double minFullTiresTime = Math.Min(tTyres - 3.0, 18.0); // Almeno 18s per cambio 4 gomme in GT3
 
-                                if (tStationary >= minTireTime)
+                                if (tStationary <= expectedTotalRefuelTime + 2.5 && tStationary < minFullTiresTime)
                                 {
+                                    // La sosta è spiegata interamente dal carburante e la durata è inferiore al tempo necessario per 4 gomme: Fuel Only
+                                    opponentTiresChanged = false;
+                                    refuelTime = activeRefuelTime;
+
+                                    log.Log(LogModule.SYSTEM, LogType.EVENT, "Opponent Pit Simultaneous (No Tires)",
+                                        $"{tData.Name} | StationaryTime={tStationary:F1}s | ExpectedRefuel={expectedTotalRefuelTime:F1}s | TiresChanged=False");
+                                }
+                                else if (tStationary >= minFullTiresTime && (tStationary >= expectedTotalRefuelTime + 3.0 || tStationary >= tTyres - 2.0))
+                                {
+                                    // Tempo sufficiente per completare il cambio gomme e superiore al tempo di rifornimento
                                     opponentTiresChanged = true;
+                                    refuelTime = Math.Min(activeRefuelTime, expectedTotalRefuelTime);
 
                                     log.Log(LogModule.SYSTEM, LogType.EVENT, "Opponent Pit Simultaneous (Tires Changed)",
-                                        $"{tData.Name} | StationaryTime={tStationary:F1}s | ActiveRefuel={activeRefuelTime:F1}s | MaxReasonableRefuel={MaxReasonableRefuelTime:F1}s | TiresChanged=True");
+                                        $"{tData.Name} | StationaryTime={tStationary:F1}s | ExpectedRefuel={expectedTotalRefuelTime:F1}s | TiresChanged=True");
+                                }
+                                else if (tStationary >= minFullTiresTime)
+                                {
+                                    // Sosta lunga a sufficienza per gomme (>= 18s)
+                                    opponentTiresChanged = true;
+                                    refuelTime = Math.Min(activeRefuelTime, expectedTotalRefuelTime);
+
+                                    log.Log(LogModule.SYSTEM, LogType.EVENT, "Opponent Pit Simultaneous (Tires Changed)",
+                                        $"{tData.Name} | StationaryTime={tStationary:F1}s | ExpectedRefuel={expectedTotalRefuelTime:F1}s | TiresChanged=True");
                                 }
                                 else
                                 {
+                                    // Sosta breve (< 18s) e non chiaramente gomme: Fuel Only
                                     opponentTiresChanged = false;
+                                    refuelTime = activeRefuelTime;
 
                                     log.Log(LogModule.SYSTEM, LogType.EVENT, "Opponent Pit Simultaneous (No Tires)",
-                                        $"{tData.Name} | StationaryTime={tStationary:F1}s | ActiveRefuel={activeRefuelTime:F1}s | MaxReasonableRefuel={MaxReasonableRefuelTime:F1}s | TiresChanged=False");
+                                        $"{tData.Name} | StationaryTime={tStationary:F1}s | ExpectedRefuel={expectedTotalRefuelTime:F1}s | TiresChanged=False");
                                 }
                             }
                         }
-                        double estimatedFuelAdded = Math.Max(0.0, Math.Min(classMaxTank - tData.EstimatedFuel, refuelTime * fillRate));
-                        tData.LastPitFuelAdded = estimatedFuelAdded;
+                        double estimatedFuelAdded = Math.Max(0.0, Math.Min(classMaxTank, refuelTime * fillRate));
 
                         // Aggiorniamo il carburante a bordo e la baseline dopo la sosta se c'è stato rifornimento
-                        if (estimatedFuelAdded > 0.0)
+                        if (tData.LastPitFuelAdded > 0.0)
                         {
+                            // Smart Refueling ha già aggiornato EstimatedFuel e FuelAfterLastPit all'ingresso box
+                            if (estimatedFuelAdded > 0.0)
+                            {
+                                tData.LastPitFuelAdded = estimatedFuelAdded;
+                                tData.FuelAfterLastPit = Math.Min(classMaxTank, tData.EstimatedFuel);
+                            }
+                        }
+                        else if (estimatedFuelAdded > 0.0)
+                        {
+                            tData.LastPitFuelAdded = estimatedFuelAdded;
                             tData.LastRefuelLap = tData.LastStopLap > 0 ? tData.LastStopLap : rawCurrentLap;
                             tData.YellowLapsInStint = 0;
                             tData.FuelAfterLastPit = Math.Min(classMaxTank, tData.EstimatedFuel + estimatedFuelAdded);
                             tData.EstimatedFuel = tData.FuelAfterLastPit;
                             tData.EstimatedFuelTank = tData.FuelAfterLastPit;
-                            int exitOppLap = tData.HighestLapSeen > 0 ? tData.HighestLapSeen : (opp.CurrentLap ?? 0);
-                            double exitLapsRem = Math.Max(0.0, (raceLapsRemaining > 0 ? raceLapsRemaining : (state.TotalLaps - exitOppLap)));
-                            if (classFuelBurn > 0.0 && state.IsRaceSession)
-                            {
-                                tData.NeedsPitStop = tData.EstimatedFuel < ((exitLapsRem + 0.3) * classFuelBurn);
-                            }
+                        }
+
+                        int exitOppLap = tData.HighestLapSeen > 0 ? tData.HighestLapSeen : (opp.CurrentLap ?? 0);
+                        double exitLapsRem = Math.Max(0.0, (raceLapsRemaining > 0 ? raceLapsRemaining : (state.TotalLaps - exitOppLap)));
+                        if (classFuelBurn > 0.0 && state.IsRaceSession)
+                        {
+                            tData.NeedsPitStop = tData.EstimatedFuel < ((exitLapsRem + 0.3) * classFuelBurn);
                         }
 
                         tData.LastPitTiresChanged = opponentTiresChanged;

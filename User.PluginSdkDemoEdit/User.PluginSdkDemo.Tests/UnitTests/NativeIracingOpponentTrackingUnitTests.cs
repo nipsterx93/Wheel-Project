@@ -50,6 +50,7 @@ namespace User.PluginSdkDemo.Tests
             Test_Player_NaturalDriveThrough_SavesPitDriveThroughTime();
             Test_Opponent_NotInWorld_LatchesPitRoadAndDeducesStationaryTime();
             Test_SpatialGeofence_DoesNotTriggerPitStopAtRacingSpeedOnStraight();
+            Test_SimultaneousPitStop_IdentifiesFuelOnlyWhenTimeExplainedByFuel();
 
             Console.WriteLine("[TEST SUCCESS] All Native iRacing Tracking Tests Passed!");
         }
@@ -1029,7 +1030,7 @@ namespace User.PluginSdkDemo.Tests
                 HasExitedPitZoneAtLeastOnce = true
             };
 
-            // 1. Con telemetria nativa disponibile (isNativeAvailable = true), OnTrack esplicito e !IsOnPitRoad
+            // 1. Con telemetria nativa disponibile (isNativeAvailable = true), !IsOnPitRoad
             // Il bypass nativo impone isInsideGeofence = false, a prescindere dalla posizione spaziale
             bool isNativeAvailable = true;
             bool isSpatiallyInsideGeofence = true; // es. 0.9600 a cavallo del rettilineo di Road Atlanta
@@ -1039,7 +1040,7 @@ namespace User.PluginSdkDemo.Tests
             {
                 isInsideGeofence = true;
             }
-            else if (isNativeAvailable && !tData.IsOnPitRoad && tData.TrackSurface == IracingTrackSurface.OnTrack)
+            else if (isNativeAvailable && !tData.IsOnPitRoad)
             {
                 isInsideGeofence = false;
             }
@@ -1048,7 +1049,7 @@ namespace User.PluginSdkDemo.Tests
                 isInsideGeofence = true;
             }
 
-            Assert(!isInsideGeofence, "Native OnTrack telemetry must bypass spatial geofence and force isInsideGeofence = false.");
+            Assert(!isInsideGeofence, "Native !IsOnPitRoad telemetry must bypass spatial geofence and force isInsideGeofence = false.");
 
             // 2. Senza telemetria nativa (fallback puramente spaziale):
             // L'auto transita sul rettilineo principale a 196.8 km/h per 9.4s (il pit zone a Road Atlanta è lungo 598.9m)
@@ -1076,7 +1077,107 @@ namespace User.PluginSdkDemo.Tests
             bool fallbackInsideGeofence = criterioBTrigger || (criterioCAllowed && durationTrigger);
             Assert(!fallbackInsideGeofence, "Fallback geofence logic must not trigger pit stop at racing speed on straight.");
 
-            Pass("Spatial geofence does not falsely trigger pit stops for cars at racing speed on main straight");
+            // 3. Auto lontana dal player, culled da iRacing in NotInWorld (-1) e !IsOnPitRoad:
+            // Le coordinate non si aggiornano a 60 Hz, deltaPos = 0, velocità calcolata = 0.0 km/h.
+            // Con telemetria nativa attiva:
+            tData.TrackSurface = IracingTrackSurface.NotInWorld;
+            tData.IsOnPitRoad = false;
+            tData.LastValidSpeedKmh = 0.0;
+            isNativeAvailable = true;
+            isInsideGeofence = false;
+
+            if (isNativeAvailable && tData.IsOnPitRoad)
+            {
+                isInsideGeofence = true;
+            }
+            else if (isNativeAvailable && !tData.IsOnPitRoad)
+            {
+                isInsideGeofence = false;
+            }
+            Assert(!isInsideGeofence, "Culled NotInWorld car on track must NOT trigger geofence when native !IsOnPitRoad.");
+
+            // Nel fallback spaziale puro, Speed < 0.5 NON deve scattare se l'auto è in NotInWorld:
+            bool stoppedTrigger = tData.LastValidSpeedKmh < 0.5 && tData.TrackSurface != IracingTrackSurface.NotInWorld;
+            Assert(!stoppedTrigger, "Speed < 0.5 must NOT trigger geofence if car is culled in NotInWorld.");
+
+            Pass("Spatial geofence does not falsely trigger pit stops for cars at racing speed on main straight or culled in NotInWorld");
+        }
+
+        private static void Test_SimultaneousPitStop_IdentifiesFuelOnlyWhenTimeExplainedByFuel()
+        {
+            var radar = new PitRadar();
+            var track = new TrackRecord
+            {
+                TrackClassID = "ROADATLANTA_SIMULTANEOUS_GT3",
+                TrackID = "roadatlanta_simultaneous",
+                CarClass = "GT3",
+                PitEntryPct = 0.9575,
+                PitExitPct = 0.1051,
+                PitTransitTime = 26.37,
+                PitLaneSpeedLimit = 72.42
+            };
+            radar.SetCurrentTrackForTesting(track);
+
+            var tData = new OpponentTelemetryData
+            {
+                Name = "Bruno Carneiro",
+                CarClass = "GT3",
+                IsOnPitRoad = false,
+                TrackSurface = IracingTrackSurface.OnTrack,
+                StationaryTimeSec = 16.20,
+                LastPitFuelAdded = 36.3 // Calcolato da Smart Refuel all'ingresso box
+            };
+
+            double classMaxTank = 55.0;
+            double fillRate = 2.7;
+            double tTyres = radar.DbTireChangeTime; // 26.0s
+            double predictedFuelToAdd = tData.LastPitFuelAdded > 0.0
+                ? tData.LastPitFuelAdded
+                : 36.3;
+
+            double tFuel = predictedFuelToAdd / fillRate; // 36.3 / 2.7 = 13.44s
+            double tStationary = tData.StationaryTimeSec; // 16.20s
+            const double RefuelOverhead = 2.0;
+            double activeRefuelTime = Math.Max(0.0, tStationary - RefuelOverhead); // 14.20s
+            double expectedTotalRefuelTime = tFuel + RefuelOverhead; // 15.44s
+            double minFullTiresTime = Math.Min(tTyres - 3.0, 18.0); // 18.0s
+
+            bool opponentTiresChanged = true;
+            double refuelTime = 0.0;
+
+            if (tStationary <= expectedTotalRefuelTime + 2.5 && tStationary < minFullTiresTime)
+            {
+                // Sosta spiegata al 100% dal carburante (16.20s <= 15.44s + 2.5s e 16.20s < 18.0s)
+                opponentTiresChanged = false;
+                refuelTime = activeRefuelTime;
+            }
+            else if (tStationary >= minFullTiresTime)
+            {
+                opponentTiresChanged = true;
+                refuelTime = Math.Min(activeRefuelTime, expectedTotalRefuelTime);
+            }
+
+            Assert(!opponentTiresChanged, "At 16.20s stationary time with 36.3L fuel, pit stop must be identified as Fuel Only (TiresChanged = false)!");
+            Assert(Math.Abs(refuelTime - 14.20) < 1e-4, "Refuel time must be active refuel time (14.20s)");
+
+            double estimatedFuelAdded = Math.Max(0.0, Math.Min(classMaxTank, refuelTime * fillRate)); // 14.20 * 2.7 = 38.34L
+            Assert(estimatedFuelAdded > 35.0, $"Estimated fuel added must be ~38L, got {estimatedFuelAdded:F1}L");
+
+            // Caso opposto: sosta lunga 24.5s (cambio gomme effettuato)
+            double tStationaryTires = 24.5;
+            bool tiresChangedLongStop = false;
+            if (tStationaryTires <= expectedTotalRefuelTime + 2.5 && tStationaryTires < minFullTiresTime)
+            {
+                tiresChangedLongStop = false;
+            }
+            else if (tStationaryTires >= minFullTiresTime)
+            {
+                tiresChangedLongStop = true;
+            }
+
+            Assert(tiresChangedLongStop, "A 24.5s stationary stop in Simultaneous GT3 must be identified as Tires Changed (True)!");
+
+            Pass("Simultaneous pit stop correctly identifies Fuel Only when stationary time is explained by refuel duration");
         }
     }
 }
