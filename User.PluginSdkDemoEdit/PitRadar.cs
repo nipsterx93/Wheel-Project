@@ -522,6 +522,16 @@ namespace SimRIG
 		}
 	}
 
+	public void SetCurrentTrackForTesting(TrackRecord track)
+	{
+		_currentTrack = track;
+		if (track != null && !string.IsNullOrEmpty(track.TrackClassID))
+		{
+			_database.Tracks.RemoveAll(t => string.Equals(t.TrackClassID, track.TrackClassID, StringComparison.OrdinalIgnoreCase));
+			_database.Tracks.Add(track);
+		}
+	}
+
 	public double PitDistanceMeters
 	{
 		get
@@ -708,12 +718,12 @@ namespace SimRIG
 			if (num3 < 4.0 && num3 < num4)
 			{
 				_isSequentialLayoutDetected = true;
-				log.Log(LogModule.SYSTEM, LogType.EVENT, "Pit Layout Detected (Sequential)", $"Source: {sourceName} | Stationary={tStationary:F1}s, tFuel={tFuel:F1}s, tTyres={tTyres:F1}s | ExpectedSeq={num:F1}s, ExpectedSim={num2:F1}s");
+				log?.Log(LogModule.SYSTEM, LogType.EVENT, "Pit Layout Detected (Sequential)", $"Source: {sourceName} | Stationary={tStationary:F1}s, tFuel={tFuel:F1}s, tTyres={tTyres:F1}s | ExpectedSeq={num:F1}s, ExpectedSim={num2:F1}s");
 			}
 			else if (num4 < 4.0 && num4 < num3)
 			{
 				_isSequentialLayoutDetected = false;
-				log.Log(LogModule.SYSTEM, LogType.EVENT, "Pit Layout Detected (Simultaneous)", $"Source: {sourceName} | Stationary={tStationary:F1}s, tFuel={tFuel:F1}s, tTyres={tTyres:F1}s | ExpectedSeq={num:F1}s, ExpectedSim={num2:F1}s");
+				log?.Log(LogModule.SYSTEM, LogType.EVENT, "Pit Layout Detected (Simultaneous)", $"Source: {sourceName} | Stationary={tStationary:F1}s, tFuel={tFuel:F1}s, tTyres={tTyres:F1}s | ExpectedSeq={num:F1}s, ExpectedSim={num2:F1}s");
 			}
 		}
 	}
@@ -1013,9 +1023,40 @@ namespace SimRIG
 		}
 	}
 
+	public double GetTheoreticalTransitTimeSec(double trackLengthMeters)
+	{
+		if (_currentTrack == null || trackLengthMeters <= 0.0) return 0.0;
+
+		double pitDist = _currentTrack.PitDistanceMeters;
+		if (pitDist <= 0.0 && _currentTrack.PitEntryPct > 0.0 && _currentTrack.PitExitPct > 0.0)
+		{
+			double deltaPct = _currentTrack.PitEntryPct < _currentTrack.PitExitPct
+				? (_currentTrack.PitExitPct - _currentTrack.PitEntryPct)
+				: (1.0 - _currentTrack.PitEntryPct + _currentTrack.PitExitPct);
+			pitDist = deltaPct * trackLengthMeters;
+		}
+
+		if (pitDist <= 0.0) return 0.0;
+
+		double speedKmh = _currentTrack.PitLaneSpeedLimit > 0.0
+			? _currentTrack.PitLaneSpeedLimit
+			: GetPitLaneSpeedLimit();
+
+		if (speedKmh <= 0.0) speedKmh = 60.0;
+		double speedMps = speedKmh / 3.6;
+
+		return pitDist / speedMps;
+	}
+
 	public void RecordPitExitSample(double exitPct, CalibrationConfidence confidence = CalibrationConfidence.EstimatedOpponent, LogManager log = null)
 	{
 		if (_currentTrack == null || exitPct <= 0.0 || exitPct > 1.0) return;
+		if (_currentTrack.PitEntryPct > 0.0 && !HasTraversedPitLane(_currentTrack.PitEntryPct, exitPct))
+		{
+			log?.Log(LogModule.RADAR, LogType.FLOW, "Pit Exit Sample Discarded (Too Close To Entry)",
+				$"exit={exitPct:F4} | entry={_currentTrack.PitEntryPct:F4} | minTraversal={MinimumPitTraversalPct:F4}");
+			return;
+		}
 		_exitConsensus.Add(exitPct);
 		CalibrationConfidence level = _exitConsensus.HasConsensus ? CalibrationConfidence.Confirmed : confidence;
 		if (CanOverwrite(_currentTrack.GeofenceConfidence, level) || _currentTrack.PitExitPct <= 0.0 || _currentTrack.PitExitPct == -1.0)
@@ -1276,14 +1317,14 @@ namespace SimRIG
 		CurrentGameName = state.GameName;
 		bool flag = false;
 		string lookupKey = (state.TrackId + "_" + state.CarClassId).ToUpper();
-		if (_currentTrack == null || _currentTrack.TrackClassID != lookupKey)
+		if (_currentTrack == null || !string.Equals(_currentTrack.TrackClassID, lookupKey, StringComparison.OrdinalIgnoreCase))
 		{
 			// Cambio pista o classe: le osservazioni accumulate parlano di un'altra geofence.
 			// Il consenso invece sopravvive al cambio di *sessione* (vedi ResetSession).
 			_entryConsensus.Reset();
 			_exitConsensus.Reset();
 
-			_currentTrack = _database.Tracks.FirstOrDefault((TrackRecord t) => t.TrackClassID == lookupKey);
+			_currentTrack = _database.Tracks.FirstOrDefault((TrackRecord t) => string.Equals(t.TrackClassID, lookupKey, StringComparison.OrdinalIgnoreCase));
 
 			// Si riparte dal consenso gia' raggiunto in passato, invece che da zero: altrimenti un
 			// circuito con una sosta a gara non consoliderebbe mai il dato.
@@ -1302,7 +1343,7 @@ namespace SimRIG
 				};
 				_database.Tracks.Add(_currentTrack);
 				flag = true;
-				log.Log(LogModule.RADAR, LogType.EVENT, "New Track-Class Compound Record Created", lookupKey);
+				log?.Log(LogModule.RADAR, LogType.EVENT, "New Track-Class Compound Record Created", lookupKey);
 			}
 		}
 		if (_currentClass == null || _currentClass.CarClass != state.CarClassId)
@@ -1316,7 +1357,7 @@ namespace SimRIG
 				};
 				_database.Classes.Add(_currentClass);
 				flag = true;
-				log.Log(LogModule.RADAR, LogType.EVENT, "New Class DB Created", state.CarClassId);
+				log?.Log(LogModule.RADAR, LogType.EVENT, "New Class DB Created", state.CarClassId);
 			}
 		}
 		if (flag)
@@ -1325,18 +1366,16 @@ namespace SimRIG
 		}
 		RefreshCalibrationStatus();
 
-		// Il limite di corsia box si legge dal limitatore del Player, non si deduce. Vale in
-		// qualunque sessione e non fa parte della cascata di calibrazione: e' un'osservazione
-		// ambientale continua. Vedi PlayerPitSpeedObserver e Y-28.
-		if (_playerPitSpeed.Update(state.IsPitLimiterOn, state.SpeedKmh, sessionClock))
+		// Sincronizzazione pit speed limit: priorità assoluta allo YAML della sessione (valore esatto senza arrotondamenti)
+		if (state?.Metadata?.PitSpeedLimitKmh.HasValue == true && state.Metadata.PitSpeedLimitKmh.Value > 0.0)
 		{
-			// Arrotondato a 5 km/h: i limiti reali sono numeri tondi, e la lettura oscilla di
-			// qualche decimo. Nessuna lista di valori ammessi come nel percorso avversari — qui il
-			// dato e' letto, non dedotto, quindi un circuito con un limite inusuale non va scartato.
-			double rounded = Math.Round(_playerPitSpeed.ObservedLimitKmh / 5.0) * 5.0;
-			UpdatePitLaneSpeedLimit(rounded, state.CarClassId);
-			log.Log(LogModule.RADAR, LogType.EVENT, "Pit Speed Limit Observed (Player Limiter)",
-				$"{rounded:F0} km/h | misurato={_playerPitSpeed.ObservedLimitKmh:F1} | class={state.CarClassId}");
+			UpdatePitLaneSpeedLimit(state.Metadata.PitSpeedLimitKmh.Value, state.CarClassId);
+		}
+		else if (_playerPitSpeed.Update(state.IsPitLimiterOn, state.SpeedKmh, sessionClock))
+		{
+			UpdatePitLaneSpeedLimit(_playerPitSpeed.ObservedLimitKmh, state.CarClassId);
+			log?.Log(LogModule.RADAR, LogType.EVENT, "Pit Speed Limit Observed (Player Limiter)",
+				$"{_playerPitSpeed.ObservedLimitKmh:F1} km/h | class={state.CarClassId}");
 		}
 
 		// Gate di autorizzazione: valutato a ogni tick, prima di qualunque scrittura di geofence.
@@ -1372,12 +1411,12 @@ namespace SimRIG
 						_currentTrack.PitEntryPct = _entryConsensus.Value;
 						_currentTrack.GeofenceSampleCount = _entryConsensus.AgreeingCount;
 						SaveDatabase();
-						log.Log(LogModule.RADAR, LogType.EVENT, "Pit Entry Pct Calibrated",
+						log?.Log(LogModule.RADAR, LogType.EVENT, "Pit Entry Pct Calibrated",
 							$"{_entryConsensus.Value:F3} | confidence={entryLevel} | sample={state.TrackPositionPercent:F3} | agreeing={_entryConsensus.AgreeingCount}/{_entryConsensus.SampleCount}");
 					}
 					else
 					{
-						log.Log(LogModule.RADAR, LogType.FLOW, "Pit Entry Pct Held",
+						log?.Log(LogModule.RADAR, LogType.FLOW, "Pit Entry Pct Held",
 							$"sample={state.TrackPositionPercent:F3} | median={_entryConsensus.Value:F3} | agreeing={_entryConsensus.AgreeingCount}/{_entryConsensus.SampleCount} | stored={_currentTrack.PitEntryPct:F3} ({_currentTrack.GeofenceConfidence})");
 					}
 				}
@@ -1385,11 +1424,11 @@ namespace SimRIG
 				{
 					// Ingresso non credibile: partenza dai box, teletrasporto, o sessione appena
 					// iniziata. Va detto, altrimenti una calibrazione mancante sembra un bug.
-					log.Log(LogModule.RADAR, LogType.EVENT, "Pit Entry Pct Calibration Skipped",
+					log?.Log(LogModule.RADAR, LogType.EVENT, "Pit Entry Pct Calibration Skipped",
 						$"pos={state.TrackPositionPercent:F3} | genuineTrackSample={_geofenceGate.HasGenuineTrackSample} | continuity={_geofenceGate.LastContinuity}");
 				}
 				_activeMode = ClassifyCalibrationMode(fuelToAdd, selectedTyres);
-				log.Log(LogModule.RADAR, LogType.EVENT, "Player Pit Entry", $"Mode: {_activeMode}");
+				log?.Log(LogModule.RADAR, LogType.EVENT, "Player Pit Entry", $"Mode: {_activeMode}");
 			}
 			// "Fermo ai box" e' la stessa cosa qui e nel percorso spaziale piu' sotto (riga ~1178),
 			// che usa velocita' **oppure** IsInPitBox. Prima qui c'era il solo IsInPitBox, cioe' il
@@ -1410,7 +1449,7 @@ namespace SimRIG
 				{
 					_stopStartTime = sessionClock;
 					_fuelLevelAtStopStart = state.CurrentFuelLevel;
-					log.Log(LogModule.RADAR, LogType.EVENT, "Player Stopped in Box", $"Mode: {_activeMode}");
+					log?.Log(LogModule.RADAR, LogType.EVENT, "Player Stopped in Box", $"Mode: {_activeMode}");
 				}
 				if (_activeMode == CalibrationMode.SplashAndDash && state.CurrentFuelLevel > _lastFuelLevel + 0.05)
 				{
@@ -1447,7 +1486,7 @@ namespace SimRIG
 			// (strada percorsa **e** durata).
 			double visitSeconds = Math.Abs(sessionClock - _pitEntryTime.Value);
 			double visitFloor = MinimumCredibleTransitSec() > 0.0 ? MinimumCredibleTransitSec() : MinimumPitVisitSeconds;
-			log.Log(LogModule.RADAR, LogType.FLOW, "Pit Visit Discarded (Implausible)",
+			log?.Log(LogModule.RADAR, LogType.FLOW, "Pit Visit Discarded (Implausible)",
 				$"entry={_pitEntryPosition:F4} | exit={state.TrackPositionPercent:F4} | " +
 				$"traversed={Math.Abs(TrackPositionValidator.WrappedDelta(state.TrackPositionPercent, _pitEntryPosition)):F4} | " +
 				$"minTraversal={MinimumPitTraversalPct:F4} | durata={visitSeconds:F2}s | minDurata={visitFloor:F2}s");
@@ -1489,12 +1528,12 @@ namespace SimRIG
 						Math.Min(_entryConsensus.AgreeingCount, _exitConsensus.AgreeingCount);
 
 					SaveDatabase();
-					log.Log(LogModule.RADAR, LogType.EVENT, "Pit Exit Pct Calibrated",
-						$"{_exitConsensus.Value:F3} | confidence={pairLevel} | sample={state.TrackPositionPercent:F3} | agreeing={_exitConsensus.AgreeingCount}/{_exitConsensus.SampleCount} | entry={_currentTrack.PitEntryPct:F3}");
+					log?.Log(LogModule.RADAR, LogType.EVENT, "Pit Exit Pct Calibrated",
+						$"{_exitConsensus.Value:F3} | confidence={pairLevel} | sample={state.TrackPositionPercent:F3} | agreeing={_entryConsensus.AgreeingCount}/{_entryConsensus.SampleCount} | entry={_currentTrack.PitEntryPct:F3}");
 				}
 				else
 				{
-					log.Log(LogModule.RADAR, LogType.FLOW, "Pit Exit Pct Held",
+					log?.Log(LogModule.RADAR, LogType.FLOW, "Pit Exit Pct Held",
 						$"sample={state.TrackPositionPercent:F3} | median={_exitConsensus.Value:F3} | agreeing={_exitConsensus.AgreeingCount}/{_exitConsensus.SampleCount} | stored={_currentTrack.PitExitPct:F3} ({_currentTrack.GeofenceConfidence})");
 				}
 			}
@@ -1522,7 +1561,7 @@ namespace SimRIG
 						_currentClass.FuelFillRate = num4;
 						_currentClass.FuelFillRateConfidence = CalibrationConfidence.Confirmed;
 						flag = true;
-						log.Log(LogModule.RADAR, LogType.EVENT, "Fuel Fill Rate Calibrated", $"{num4:F2} L/s | confidence=Confirmed");
+						log?.Log(LogModule.RADAR, LogType.EVENT, "Fuel Fill Rate Calibrated", $"{num4:F2} L/s | confidence=Confirmed");
 					}
 				}
 				// Procedura **guidata**: il pilota ha deliberatamente chiesto questa calibrazione,
@@ -1532,6 +1571,7 @@ namespace SimRIG
 				if (num2 > MinimumCredibleTransitSec() && num2 > 0.5)
 				{
 					_currentTrack.PitTransitTime = num2;
+					_currentTrack.PlayerRecordSet = true;
 					flag = true;
 				}
 			}
@@ -1549,7 +1589,7 @@ namespace SimRIG
 						_currentClass.TyreChangeTime = _pitBoxTimeCache;
 						_currentClass.TyreChangeTimeConfidence = CalibrationConfidence.Confirmed;
 						flag = true;
-						log.Log(LogModule.RADAR, LogType.EVENT, "Tyre Change Time Calibrated", $"{_pitBoxTimeCache:F1}s | confidence=Confirmed");
+						log?.Log(LogModule.RADAR, LogType.EVENT, "Tyre Change Time Calibrated", $"{_pitBoxTimeCache:F1}s | confidence=Confirmed");
 					}
 				}
 				else if (_pitBoxTimeCache > 0.5 && _currentClass.TyreChangeTime > 0.0)
@@ -1564,14 +1604,14 @@ namespace SimRIG
 						{
 							_currentClass.TyreChangeMultiplierHalf = measured;
 							flag = true;
-							log.Log(LogModule.RADAR, LogType.EVENT, "Tyre Multiplier Calibrated (2 tyres)",
+							log?.Log(LogModule.RADAR, LogType.EVENT, "Tyre Multiplier Calibrated (2 tyres)",
 								$"{measured:F3} | {_pitBoxTimeCache:F1}s / {_currentClass.TyreChangeTime:F1}s | scope={selectedTyres}");
 						}
 						else
 						{
 							_currentClass.TyreChangeMultiplierSingle = measured;
 							flag = true;
-							log.Log(LogModule.RADAR, LogType.EVENT, "Tyre Multiplier Calibrated (1 tyre)",
+							log?.Log(LogModule.RADAR, LogType.EVENT, "Tyre Multiplier Calibrated (1 tyre)",
 								$"{measured:F3} | {_pitBoxTimeCache:F1}s / {_currentClass.TyreChangeTime:F1}s | scope={selectedTyres}");
 						}
 					}
@@ -1579,6 +1619,7 @@ namespace SimRIG
 				if (num2 > MinimumCredibleTransitSec() && num2 > 0.5)
 				{
 					_currentTrack.PitTransitTime = num2;
+					_currentTrack.PlayerRecordSet = true;
 					flag = true;
 				}
 			}
@@ -1601,14 +1642,15 @@ namespace SimRIG
 					// oggi il codice non sa fare — e' una decisione di prodotto, non un fix.
 					_currentTrack.PitDriveThroughTime = num;
 					flag = true;
-					log.Log(LogModule.RADAR, LogType.EVENT, "Drive-Through Time Calibrated", num.ToString("F2"));
+					log?.Log(LogModule.RADAR, LogType.EVENT, "Drive-Through Time Calibrated", num.ToString("F2"));
 				}
 			}
 			else if (_activeMode == CalibrationMode.StopAndGo && _currentTrack.PitTransitTime == 0.0 && num2 > MinimumCredibleTransitSec() && num2 > 0.5)
 			{
 				_currentTrack.PitTransitTime = num2;
+				_currentTrack.PlayerRecordSet = true;
 				flag = true;
-				log.Log(LogModule.RADAR, LogType.EVENT, "Transit Time Calibrated", num2.ToString("F2"));
+				log?.Log(LogModule.RADAR, LogType.EVENT, "Transit Time Calibrated", num2.ToString("F2"));
 			}
 			else
 			{
@@ -1627,7 +1669,7 @@ namespace SimRIG
 					_currentClass.FuelFillRate = observed.FuelFillRate;
 					_currentClass.FuelFillRateConfidence = CalibrationConfidence.EstimatedPlayer;
 					flag = true;
-					log.Log(LogModule.RADAR, LogType.EVENT, "Fuel Fill Rate Learned (Natural Stop)",
+					log?.Log(LogModule.RADAR, LogType.EVENT, "Fuel Fill Rate Learned (Natural Stop)",
 						$"{observed.FuelFillRate:F2} L/s | litres={litresAdded:F1} | seconds={fuelingSeconds:F1} | confidence=EstimatedPlayer");
 				}
 
@@ -1637,8 +1679,32 @@ namespace SimRIG
 					_currentClass.TyreChangeTime = observed.TyreChangeTime;
 					_currentClass.TyreChangeTimeConfidence = CalibrationConfidence.EstimatedPlayer;
 					flag = true;
-					log.Log(LogModule.RADAR, LogType.EVENT, "Tyre Change Time Learned (Natural Stop)",
+					log?.Log(LogModule.RADAR, LogType.EVENT, "Tyre Change Time Learned (Natural Stop)",
 						$"{observed.TyreChangeTime:F1}s | confidence=EstimatedPlayer");
+				}
+
+				// Apprendimento TransitTime o DriveThroughTime per sosta naturale del Player
+				if (_pitBoxTimeCache > 0.5)
+				{
+					// C'è stato un arresto in piazzola (StationaryTime > 0.5s): questo è il vero TransitTime della sosta!
+					if (num2 > MinimumCredibleTransitSec() && num2 > 0.5)
+					{
+						_currentTrack.PitTransitTime = num2;
+						_currentTrack.PlayerRecordSet = true;
+						flag = true;
+						log?.Log(LogModule.RADAR, LogType.EVENT, "Transit Time Learned (Natural Stop)",
+							$"{num2:F2}s | total={num:F2}s | stat={_pitBoxTimeCache:F2}s");
+					}
+				}
+				else
+				{
+					// Nessun arresto in piazzola: è un Drive-Through puro!
+					if (_currentTrack.PitDriveThroughTime == 0.0 && num > MinimumCredibleTransitSec() && num > 0.5)
+					{
+						_currentTrack.PitDriveThroughTime = num;
+						flag = true;
+						log?.Log(LogModule.RADAR, LogType.EVENT, "Drive-Through Time Learned (Natural DT)", $"{num:F2}s");
+					}
 				}
 			}
 			if (flag)
@@ -1654,7 +1720,7 @@ namespace SimRIG
 			{
 				TriggerDynamicLayoutDetection(pitBoxTimeCache, num6, dbTireChangeTime, log, "Player");
 			}
-			log.Log(LogModule.RADAR, LogType.EVENT, "Pit Complete", $"TotalTime: {num:F1}s | StatTime: {_pitBoxTimeCache:F1}s | Mode: {_activeMode} | FuelAdded: {num5:F1}L | tFuel: {num6:F1}s");
+			log?.Log(LogModule.RADAR, LogType.EVENT, "Pit Complete", $"TotalTime: {num:F1}s | StatTime: {_pitBoxTimeCache:F1}s | Mode: {_activeMode} | FuelAdded: {num5:F1}L | tFuel: {num6:F1}s");
 			if (!HasValidCleanSectorBounds())
 			{
 				LastPlayerStrictPitLaneTime = num;
@@ -1688,7 +1754,7 @@ namespace SimRIG
 					_playerStrictBoxTimeCache = 0.0;
 					_playerStrictStopStartTime = null;
 					_playerStrictPitValidInTransit = false;
-					log.Log(LogModule.RADAR, LogType.EVENT, "Player Spatial Pit Entry", $"Pos: {state.TrackPositionPercent:F4}");
+					log?.Log(LogModule.RADAR, LogType.EVENT, "Player Spatial Pit Entry", $"Pos: {state.TrackPositionPercent:F4}");
 				}
 				if (state.IsInPitLane || state.IsInPitBox)
 				{
@@ -1699,7 +1765,7 @@ namespace SimRIG
 					if (!_playerStrictStopStartTime.HasValue)
 					{
 						_playerStrictStopStartTime = sessionClock;
-						log.Log(LogModule.RADAR, LogType.EVENT, "Player Spatial Stopped in Box");
+						log?.Log(LogModule.RADAR, LogType.EVENT, "Player Spatial Stopped in Box");
 					}
 				}
 				else if (_playerStrictStopStartTime.HasValue)
@@ -1720,11 +1786,11 @@ namespace SimRIG
 				{
 					double num10 = (LastPlayerStrictPitLaneTime = Math.Abs(sessionClock - _playerStrictEntryTime.Value));
 					LastPlayerStationaryTime = _playerStrictBoxTimeCache;
-					log.Log(LogModule.RADAR, LogType.EVENT, "Player Spatial Pit Complete", $"TotalTime: {num10:F2}s | StatTime: {_playerStrictBoxTimeCache:F2}s");
+					log?.Log(LogModule.RADAR, LogType.EVENT, "Player Spatial Pit Complete", $"TotalTime: {num10:F2}s | StatTime: {_playerStrictBoxTimeCache:F2}s");
 				}
 				else
 				{
-					log.Log(LogModule.RADAR, LogType.FLOW, "Player Spatial Transit Discarded", "Car crossed pit zone on track main straight.");
+					log?.Log(LogModule.RADAR, LogType.FLOW, "Player Spatial Transit Discarded", "Car crossed pit zone on track main straight.");
 				}
 			}
 		}

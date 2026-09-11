@@ -189,6 +189,8 @@ namespace SimRIG
         public int CarIdx { get; set; } = -1;
         public bool IsOnPitRoad { get; set; } = false;
         public IracingTrackSurface TrackSurface { get; set; } = IracingTrackSurface.NotInWorld;
+        public double? NotInWorldStartSec { get; set; } = null;
+        public double NotInWorldDurationSec { get; set; } = 0.0;
         public int NativePitStopCount { get; set; } = 0;
         public int NativeClassPosition { get; set; } = 0;
         public float NativeLapDistPct { get; set; } = 0f;
@@ -1328,19 +1330,56 @@ namespace SimRIG
                     int nativeClassPos = IracingBridge.GetClassPosition(carIdx);
                     float nativeLapDistPct = IracingBridge.GetLapDistPct(carIdx);
 
-                    tData.IsOnPitRoad = nativeOnPitRoad;
+                    // Gestione NotInWorld: se l'auto era già in pit road e va in NotInWorld (culling di rete di iRacing),
+                    // NON usciamo dalla pit road e accumuliamo la durata trascorsa in NotInWorld per dedurre la sosta.
+                    bool effectiveOnPitRoad = nativeOnPitRoad;
+                    if (nativeTrackSurface == IracingTrackSurface.NotInWorld)
+                    {
+                        if (wasOnPitRoad)
+                        {
+                            effectiveOnPitRoad = true;
+                            if (tData.NotInWorldStartSec == null)
+                            {
+                                tData.NotInWorldStartSec = currentSessionClock;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (tData.NotInWorldStartSec != null)
+                        {
+                            tData.NotInWorldDurationSec += Math.Abs(currentSessionClock - tData.NotInWorldStartSec.Value);
+                            tData.NotInWorldStartSec = null;
+                        }
+
+                        // Se era in pit road e nativeOnPitRoad diventa false, l'uscita avviene solo se la superficie
+                        // non è più di pit lane (AproachingPits o InPitStall)
+                        if (wasOnPitRoad && !nativeOnPitRoad)
+                        {
+                            if (nativeTrackSurface == IracingTrackSurface.AproachingPits || nativeTrackSurface == IracingTrackSurface.InPitStall)
+                            {
+                                effectiveOnPitRoad = true;
+                            }
+                            else
+                            {
+                                effectiveOnPitRoad = false;
+                            }
+                        }
+                    }
+
+                    tData.IsOnPitRoad = effectiveOnPitRoad;
                     tData.TrackSurface = nativeTrackSurface;
                     tData.NativePitStopCount = nativePitCount;
                     tData.NativeClassPosition = nativeClassPos;
                     tData.NativeLapDistPct = nativeLapDistPct;
 
                     // Calibrazione Geofence collegata a CarIdxOnPitRoad
-                    if (!wasOnPitRoad && nativeOnPitRoad)
+                    if (!wasOnPitRoad && effectiveOnPitRoad)
                     {
                         double entrySample = nativeLapDistPct > 0 ? (double)nativeLapDistPct : currentPos;
                         radar.RecordPitEntrySample(entrySample, CalibrationConfidence.EstimatedOpponent, log);
                     }
-                    else if (wasOnPitRoad && !nativeOnPitRoad)
+                    else if (wasOnPitRoad && !effectiveOnPitRoad)
                     {
                         double exitSample = nativeLapDistPct > 0 ? (double)nativeLapDistPct : currentPos;
                         radar.RecordPitExitSample(exitSample, CalibrationConfidence.EstimatedOpponent, log);
@@ -1640,6 +1679,32 @@ namespace SimRIG
                         tData.StrictPitValidInTransit = true;
                         tData.ExitTimeSec = currentSessionClock;
 
+                        if (tData.NotInWorldStartSec != null)
+                        {
+                            tData.NotInWorldDurationSec += Math.Abs(currentSessionClock - tData.NotInWorldStartSec.Value);
+                            tData.NotInWorldStartSec = null;
+                        }
+
+                        // Reverse-Engineering Stationary Time se l'avversario è stato in NotInWorld e non ha avuto telemetria diretta
+                        if (tData.StationaryTimeSec <= 0.5 && tData.NotInWorldDurationSec > 0.0)
+                        {
+                            double refTransit = radar.PitTransitTime > 0.0
+                                ? radar.PitTransitTime
+                                : radar.GetTheoreticalTransitTimeSec(state.TrackLengthMeters);
+
+                            if (refTransit > 0.0)
+                            {
+                                double deducedStationary = Math.Max(0.0, tData.NotInWorldDurationSec - refTransit);
+                                if (deducedStationary > 0.5)
+                                {
+                                    tData.StationaryTimeSec = deducedStationary;
+                                    tData.LastPitStationaryTimeSec = deducedStationary;
+                                    log?.Log(LogModule.OPPONENTS, LogType.EVENT, "Opponent Stationary Time Reverse-Engineered",
+                                        $"{tData.Name} | NotInWorld: {tData.NotInWorldDurationSec:F2}s | RefTransit: {refTransit:F2}s | DeducedStationary: {deducedStationary:F2}s");
+                                }
+                            }
+                        }
+
                         double tTyres = radar.DbTireChangeTime; // default 26.0
                         double fillRate = radar.MeasuredFuelFillRate; // default 2.7
                         if (fillRate <= 0.1) fillRate = 2.7;
@@ -1767,19 +1832,16 @@ namespace SimRIG
                         log.Log(LogModule.OPPONENTS, LogType.EVENT, "Pit Loss Dissection",
                             $"{tData.Name} | ObservedTransit: {observedExtendedTransit:F2}s | Stationary: {statDuration:F2}s | RawExtended: {rawExtendedTime:F2}s | RefuelEst: {refuelDuration:F2}s | JackingDeadTime: {empiricalDeadTime:F2}s");
 
-                        // Apprendimento automatico del limite di velocità della pitlane
+                        tData.NotInWorldDurationSec = 0.0;
+                        tData.NotInWorldStartSec = null;
+
+                        // Apprendimento limite di velocità della pitlane: solo se non è già noto da YAML o Player
                         double maxSpeed = tData.MaxSpeedInPitThisTransit;
-                        if (maxSpeed > 30.0 && maxSpeed < 120.0)
+                        if (maxSpeed > 30.0 && maxSpeed < 120.0 && radar.GetPitLaneSpeedLimit(tData.CarClass) <= 0.0)
                         {
-                            double roundedLimit = Math.Round(maxSpeed / 10.0) * 10.0;
-                            if (roundedLimit == 50.0 || roundedLimit == 60.0 || roundedLimit == 80.0 || roundedLimit == 90.0)
-                            {
-                                // La classe è quella della vettura osservata: in multiclasse
-                                // scrivere nel record del Player contaminerebbe entrambe.
-                                radar.UpdatePitLaneSpeedLimit(roundedLimit, tData.CarClass);
-                                log.Log(LogModule.OPPONENTS, LogType.EVENT, "Pit Speed Limit Learned",
-                                    $"{tData.Name} | Class: {tData.CarClass} | MaxSpeed: {maxSpeed:F1} km/h | Learned Limit: {roundedLimit} km/h");
-                            }
+                            radar.UpdatePitLaneSpeedLimit(maxSpeed, tData.CarClass);
+                            log.Log(LogModule.OPPONENTS, LogType.EVENT, "Pit Speed Limit Learned",
+                                $"{tData.Name} | Class: {tData.CarClass} | MaxSpeed: {maxSpeed:F1} km/h");
                         }
 
                         if (opponentTiresChanged)
@@ -1864,6 +1926,8 @@ namespace SimRIG
                     }
                     else
                     {
+                        tData.NotInWorldDurationSec = 0.0;
+                        tData.NotInWorldStartSec = null;
                         log.Log(LogModule.SYSTEM, LogType.EVENT, "Opponent Geofence Exit (Discarded)", $"{tData.Name} | Transit not validated.");
                     }
                 }

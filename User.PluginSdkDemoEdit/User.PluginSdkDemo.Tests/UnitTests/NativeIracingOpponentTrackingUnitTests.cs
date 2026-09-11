@@ -44,6 +44,11 @@ namespace User.PluginSdkDemo.Tests
             Test_InPitStall_NativeTakesPriorityImmediately();
             Test_OpponentPosition_NativeLapDistPct_TakesPriorityOverSimHubTrackPositionPercent();
             Test_LatchedTarget_PreservedOnTemporaryDropOrReplayJump();
+            Test_RecordPitExitSample_RejectsSampleTooCloseToEntry();
+            Test_TheoreticalTransitTime_CalculatesFromYamlSpeedAndTrackLength();
+            Test_Player_NaturalPitStop_SavesPitTransitTime();
+            Test_Player_NaturalDriveThrough_SavesPitDriveThroughTime();
+            Test_Opponent_NotInWorld_LatchesPitRoadAndDeducesStationaryTime();
 
             Console.WriteLine("[TEST SUCCESS] All Native iRacing Tracking Tests Passed!");
         }
@@ -640,6 +645,363 @@ namespace User.PluginSdkDemo.Tests
             Assert(manager.LatchedTargetName == null, "ResetSession(preserveLatchedTarget: false) must clear LatchedTargetName");
 
             Pass("Latched target is preserved during temporary drops and replay jumps");
+        }
+
+        private static void Test_RecordPitExitSample_RejectsSampleTooCloseToEntry()
+        {
+            var radar = new PitRadar();
+            var track = new TrackRecord
+            {
+                TrackID = "roadatlanta",
+                CarClass = "GT3",
+                PitEntryPct = 0.9575,
+                PitExitPct = 0.0887,
+                GeofenceConfidence = CalibrationConfidence.EstimatedOpponent
+            };
+            radar.SetCurrentTrackForTesting(track);
+
+            // Spurious sample at 0.9582 (delta = 0.0007, which is < MinimumPitTraversalPct 0.01)
+            radar.RecordPitExitSample(0.9582, CalibrationConfidence.EstimatedOpponent);
+            Assert(Math.Abs(radar.CurrentTrack.PitExitPct - 0.0887) < 1e-4,
+                $"RecordPitExitSample must reject 0.9582 because it is too close to entry (0.9575). Got {radar.CurrentTrack.PitExitPct}");
+
+            // Valid sample at 0.0885 (traversal delta ~0.131)
+            radar.RecordPitExitSample(0.0885, CalibrationConfidence.Confirmed);
+            Assert(Math.Abs(radar.CurrentTrack.PitExitPct - 0.0885) < 1e-4,
+                $"RecordPitExitSample must accept genuine sample at 0.0885. Got {radar.CurrentTrack.PitExitPct}");
+
+            Pass("RecordPitExitSample rejects sample too close to entry and accepts genuine exit");
+        }
+
+        private static void Test_TheoreticalTransitTime_CalculatesFromYamlSpeedAndTrackLength()
+        {
+            var radar = new PitRadar();
+            var track = new TrackRecord
+            {
+                TrackID = "roadatlanta",
+                CarClass = "GT3",
+                PitEntryPct = 0.9578,
+                PitExitPct = 0.0887,
+                PitLaneSpeedLimit = 72.42 // km/h from YAML (45 mph)
+            };
+            radar.SetCurrentTrackForTesting(track);
+
+            // TrackLength = 4056.9m. DeltaPct = (1.0 - 0.9578) + 0.0887 = 0.1309. Distance = 531.05m.
+            // Speed = 72.42 km/h = 20.1167 m/s. Theoretical transit = 531.05 / 20.1167 = 26.40s.
+            double theoretical = radar.GetTheoreticalTransitTimeSec(4056.9);
+            Assert(Math.Abs(theoretical - 26.40) < 0.1,
+                $"Expected theoretical transit ~26.40s, got {theoretical:F2}s");
+
+            Pass("Theoretical transit time calculates correctly from YAML pit speed and track length");
+        }
+
+        private static void Test_Player_NaturalPitStop_SavesPitTransitTime()
+        {
+            var radar = new PitRadar();
+            var track = new TrackRecord
+            {
+                TrackClassID = "ROADATLANTA_STOP_GT3",
+                TrackID = "roadatlanta_stop",
+                CarClass = "GT3",
+                PitEntryPct = 0.9578,
+                PitExitPct = 0.0887,
+                PitLaneSpeedLimit = 72.42,
+                PitTransitTime = 0.0,
+                PlayerRecordSet = false
+            };
+            radar.SetCurrentTrackForTesting(track);
+
+            var state = new SessionState
+            {
+                TrackId = "roadatlanta_stop",
+                CarClassId = "GT3",
+                TrackLengthMeters = 4056.9,
+                IsInPitLane = true,
+                IsInPitBox = false,
+                TrackPositionPercent = 0.9578,
+                CurrentFuelLevel = 17.1,
+                SpeedKmh = 72.0
+            };
+
+            // Enter pit lane at t = 100.0s
+            radar.Update(state, sessionClock: 100.0, TyreSelectionScope.None, fuelToAdd: 31.0, log: null);
+
+            // Stop in box from t = 114.0s to t = 127.83s (13.83s stationary, refueling 31L)
+            state.IsInPitBox = true;
+            state.SpeedKmh = 0.0;
+            state.CurrentFuelLevel = 17.1;
+            radar.Update(state, sessionClock: 114.0, TyreSelectionScope.None, fuelToAdd: 31.0, log: null);
+
+            state.CurrentFuelLevel = 48.1;
+            radar.Update(state, sessionClock: 127.83, TyreSelectionScope.None, fuelToAdd: 31.0, log: null);
+
+            // Resume driving in pit lane at t = 127.83s (leaves box)
+            state.IsInPitBox = false;
+            state.SpeedKmh = 72.0;
+            radar.Update(state, sessionClock: 127.83, TyreSelectionScope.None, fuelToAdd: 31.0, log: null);
+
+            // Exit pit lane at t = 141.12s (Total pit time = 41.12s, StatTime = 13.83s)
+            state.IsInPitLane = false;
+            state.TrackPositionPercent = 0.0887;
+            radar.Update(state, sessionClock: 141.12, TyreSelectionScope.None, fuelToAdd: 31.0, log: null);
+
+            // Expected transit time = 41.12 - 13.83 = 27.29s
+            Assert(radar.CurrentTrack.PlayerRecordSet, "PlayerRecordSet must be true after natural pit stop with stall stop.");
+            Assert(Math.Abs(radar.CurrentTrack.PitTransitTime - 27.29) < 0.1,
+                $"Expected PitTransitTime ~27.29s, got {radar.CurrentTrack.PitTransitTime:F2}s");
+
+            Pass("Player natural pit stop saves PitTransitTime and sets PlayerRecordSet");
+        }
+
+        private static void Test_Player_NaturalDriveThrough_SavesPitDriveThroughTime()
+        {
+            var radar = new PitRadar();
+            var track = new TrackRecord
+            {
+                TrackClassID = "ROADATLANTA_DT_GT3",
+                TrackID = "roadatlanta_dt",
+                CarClass = "GT3",
+                PitEntryPct = 0.9578,
+                PitExitPct = 0.0887,
+                PitLaneSpeedLimit = 72.42,
+                PitTransitTime = 0.0,
+                PitDriveThroughTime = 0.0
+            };
+            radar.SetCurrentTrackForTesting(track);
+
+            var state = new SessionState
+            {
+                TrackId = "roadatlanta_dt",
+                CarClassId = "GT3",
+                TrackLengthMeters = 4056.9,
+                IsInPitLane = true,
+                IsInPitBox = false,
+                TrackPositionPercent = 0.9578,
+                CurrentFuelLevel = 40.0,
+                SpeedKmh = 72.0
+            };
+
+            // Enter pit lane at t = 200.0s
+            radar.Update(state, sessionClock: 200.0, TyreSelectionScope.None, fuelToAdd: 0.0, log: null);
+
+            // Drive through without stopping at 72 km/h, exit at t = 226.5s
+            state.IsInPitLane = false;
+            state.TrackPositionPercent = 0.0887;
+            radar.Update(state, sessionClock: 226.5, TyreSelectionScope.None, fuelToAdd: 0.0, log: null);
+
+            Assert(Math.Abs(radar.CurrentTrack.PitDriveThroughTime - 26.5) < 0.1,
+                $"Expected PitDriveThroughTime ~26.5s, got {radar.CurrentTrack.PitDriveThroughTime:F2}s");
+            Assert(radar.CurrentTrack.PitTransitTime == 0.0,
+                "PitTransitTime must NOT be updated by a Drive-Through (no stall stop).");
+
+            Pass("Player natural drive-through saves PitDriveThroughTime without touching PitTransitTime");
+        }
+
+        private static void Test_Opponent_NotInWorld_LatchesPitRoadAndDeducesStationaryTime()
+        {
+            var radar = new PitRadar();
+            var track = new TrackRecord
+            {
+                TrackClassID = "ROADATLANTA_OPP_GT3",
+                TrackID = "roadatlanta_opp",
+                CarClass = "GT3",
+                PitEntryPct = 0.9578,
+                PitExitPct = 0.0887,
+                PitTransitTime = 27.29, // Calibrated from Player
+                PitLaneSpeedLimit = 72.42
+            };
+            radar.SetCurrentTrackForTesting(track);
+
+            var tData = new OpponentTelemetryData
+            {
+                Name = "Bruno Carneiro",
+                CarClass = "GT3",
+                IsOnPitRoad = false,
+                TrackSurface = IracingTrackSurface.OnTrack
+            };
+
+            // 1. Ingresso Pit Lane a t = 1000.0s in AproachingPits
+            double currentSessionClock = 1000.0;
+            bool wasOnPitRoad = tData.IsOnPitRoad;
+            bool nativeOnPitRoad = true;
+            var nativeTrackSurface = IracingTrackSurface.AproachingPits;
+
+            bool effectiveOnPitRoad = nativeOnPitRoad;
+            if (nativeTrackSurface == IracingTrackSurface.NotInWorld)
+            {
+                if (wasOnPitRoad)
+                {
+                    effectiveOnPitRoad = true;
+                    if (tData.NotInWorldStartSec == null) tData.NotInWorldStartSec = currentSessionClock;
+                }
+            }
+            else
+            {
+                if (tData.NotInWorldStartSec != null)
+                {
+                    tData.NotInWorldDurationSec += Math.Abs(currentSessionClock - tData.NotInWorldStartSec.Value);
+                    tData.NotInWorldStartSec = null;
+                }
+                if (wasOnPitRoad && !nativeOnPitRoad)
+                {
+                    if (nativeTrackSurface == IracingTrackSurface.AproachingPits || nativeTrackSurface == IracingTrackSurface.InPitStall)
+                        effectiveOnPitRoad = true;
+                    else
+                        effectiveOnPitRoad = false;
+                }
+            }
+
+            if (!wasOnPitRoad && effectiveOnPitRoad)
+            {
+                radar.RecordPitEntrySample(0.9578, CalibrationConfidence.EstimatedOpponent, null);
+            }
+            tData.IsOnPitRoad = effectiveOnPitRoad;
+            tData.TrackSurface = nativeTrackSurface;
+
+            Assert(tData.IsOnPitRoad, "Opponent must be on pit road at entry");
+            Assert(Math.Abs(radar.CurrentTrack.PitEntryPct - 0.9578) < 1e-4, "PitEntryPct must be 0.9578");
+
+            // 2. iRacing culls opponent a t = 1002.6s (entra in NotInWorld -1, nativeOnPitRoad diventa false)
+            currentSessionClock = 1002.6;
+            wasOnPitRoad = tData.IsOnPitRoad;
+            nativeOnPitRoad = false;
+            nativeTrackSurface = IracingTrackSurface.NotInWorld;
+
+            effectiveOnPitRoad = nativeOnPitRoad;
+            if (nativeTrackSurface == IracingTrackSurface.NotInWorld)
+            {
+                if (wasOnPitRoad)
+                {
+                    effectiveOnPitRoad = true;
+                    if (tData.NotInWorldStartSec == null) tData.NotInWorldStartSec = currentSessionClock;
+                }
+            }
+
+            // CRITICO: la falsa uscita NÃO deve avvenire
+            if (wasOnPitRoad && !effectiveOnPitRoad)
+            {
+                radar.RecordPitExitSample(0.9582, CalibrationConfidence.EstimatedOpponent, null);
+            }
+            tData.IsOnPitRoad = effectiveOnPitRoad;
+            tData.TrackSurface = nativeTrackSurface;
+
+            Assert(tData.IsOnPitRoad, "Opponent must remain latched on pit road despite NotInWorld");
+            Assert(radar.CurrentTrack.PitExitPct == 0.0887,
+                "PitExitPct must NOT be corrupted to 0.958 by NotInWorld culling");
+            Assert(tData.NotInWorldStartSec == 1002.6, "NotInWorldStartSec must record start timestamp");
+
+            // 3. Risveglio pre-uscita a t = 1045.16s (torna ad AproachingPits per 1.8s)
+            currentSessionClock = 1045.16;
+            wasOnPitRoad = tData.IsOnPitRoad;
+            nativeOnPitRoad = true;
+            nativeTrackSurface = IracingTrackSurface.AproachingPits;
+
+            effectiveOnPitRoad = nativeOnPitRoad;
+            if (nativeTrackSurface == IracingTrackSurface.NotInWorld)
+            {
+                if (wasOnPitRoad)
+                {
+                    effectiveOnPitRoad = true;
+                    if (tData.NotInWorldStartSec == null) tData.NotInWorldStartSec = currentSessionClock;
+                }
+            }
+            else
+            {
+                if (tData.NotInWorldStartSec != null)
+                {
+                    tData.NotInWorldDurationSec += Math.Abs(currentSessionClock - tData.NotInWorldStartSec.Value);
+                    tData.NotInWorldStartSec = null;
+                }
+                if (wasOnPitRoad && !nativeOnPitRoad)
+                {
+                    if (nativeTrackSurface == IracingTrackSurface.AproachingPits || nativeTrackSurface == IracingTrackSurface.InPitStall)
+                        effectiveOnPitRoad = true;
+                    else
+                        effectiveOnPitRoad = false;
+                }
+            }
+            tData.IsOnPitRoad = effectiveOnPitRoad;
+            tData.TrackSurface = nativeTrackSurface;
+
+            Assert(tData.IsOnPitRoad, "Opponent waking up from NotInWorld must remain on pit road");
+            Assert(Math.Abs(tData.NotInWorldDurationSec - 42.56) < 1e-4,
+                $"NotInWorldDurationSec must be 42.56s, got {tData.NotInWorldDurationSec:F2}s");
+            Assert(tData.NotInWorldStartSec == null, "NotInWorldStartSec must be cleared");
+
+            // 4. Ritorno OnTrack a t = 1046.96s (linea uscita box a 0.0887)
+            currentSessionClock = 1046.96;
+            wasOnPitRoad = tData.IsOnPitRoad;
+            nativeOnPitRoad = false;
+            nativeTrackSurface = IracingTrackSurface.OnTrack;
+
+            effectiveOnPitRoad = nativeOnPitRoad;
+            if (nativeTrackSurface != IracingTrackSurface.NotInWorld)
+            {
+                if (tData.NotInWorldStartSec != null)
+                {
+                    tData.NotInWorldDurationSec += Math.Abs(currentSessionClock - tData.NotInWorldStartSec.Value);
+                    tData.NotInWorldStartSec = null;
+                }
+                if (wasOnPitRoad && !nativeOnPitRoad)
+                {
+                    if (nativeTrackSurface == IracingTrackSurface.AproachingPits || nativeTrackSurface == IracingTrackSurface.InPitStall)
+                        effectiveOnPitRoad = true;
+                    else
+                        effectiveOnPitRoad = false;
+                }
+            }
+            if (wasOnPitRoad && !effectiveOnPitRoad)
+            {
+                radar.RecordPitExitSample(0.0887, CalibrationConfidence.EstimatedOpponent, null);
+            }
+            tData.IsOnPitRoad = effectiveOnPitRoad;
+            tData.TrackSurface = nativeTrackSurface;
+
+            Assert(!tData.IsOnPitRoad, "Opponent must have exited pit road upon returning OnTrack");
+            Assert(Math.Abs(radar.CurrentTrack.PitExitPct - 0.0887) < 1e-4, "PitExitPct must remain 0.0887");
+
+            // 5. Deduzione Reverse-Engineering della sosta
+            // Formula: StationaryTime = NotInWorldDurationSec - refTransit
+            // 42.56s - 27.29s = 15.27s
+            if (tData.StationaryTimeSec <= 0.5 && tData.NotInWorldDurationSec > 0.0)
+            {
+                double refTransit = radar.PitTransitTime > 0.0
+                    ? radar.PitTransitTime
+                    : radar.GetTheoreticalTransitTimeSec(4056.9);
+
+                if (refTransit > 0.0)
+                {
+                    double deducedStationary = Math.Max(0.0, tData.NotInWorldDurationSec - refTransit);
+                    if (deducedStationary > 0.5)
+                    {
+                        tData.StationaryTimeSec = deducedStationary;
+                        tData.LastPitStationaryTimeSec = deducedStationary;
+                    }
+                }
+            }
+
+            Assert(Math.Abs(tData.StationaryTimeSec - 15.27) < 0.01,
+                $"Expected deduced StationaryTime ~15.27s, got {tData.StationaryTimeSec:F2}s");
+
+            // Classificazione gomme: soglia cambio 2 gomme in GT3 (tTyres = 26s, min = 0.5 * 26 - 1 = 12s, o full 4 gomme 18-20s)
+            // A 15.27s, rifornimento stimato = (15.27 - 2.0s overhead) * 2.7 L/s = ~35.8L -> compatibile 100% con solo carburante
+            double tTyres = radar.DbTireChangeTime; // default 26.0
+            double fillRate = 2.7;
+            double activeRefuelTime = Math.Max(0.0, tData.StationaryTimeSec - 2.0); // 13.27s
+            double maxReasonableRefuelTime = (34.0 / fillRate) + 1.0; // ~13.6s
+            double min2TiresTime = (0.5 * tTyres) - 1.0; // 12.0s
+            double deltaRemaining = activeRefuelTime - maxReasonableRefuelTime; // < 0 (nessun tempo residuo per gomme)
+
+            bool opponentTiresChanged = deltaRemaining >= min2TiresTime;
+            tData.LastPitTiresChanged = opponentTiresChanged;
+            Assert(!tData.LastPitTiresChanged, "At 15.27s stationary time, opponent must be identified as Fuel Only (no tire change)");
+
+            // Cleanup NotInWorld a fine sosta
+            tData.NotInWorldDurationSec = 0.0;
+            tData.NotInWorldStartSec = null;
+            Assert(tData.NotInWorldDurationSec == 0.0, "NotInWorldDurationSec must be reset after stop");
+
+            Pass("Opponent NotInWorld latches pit road, protects geofence, and correctly deduces stationary time");
         }
     }
 }
