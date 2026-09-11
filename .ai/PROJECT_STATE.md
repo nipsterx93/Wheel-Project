@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      null
-task:       null
-scope:      null
-expires:    null
+owner:      antigravity
+since:      2026-09-11T14:15:00+02:00
+task:       fix: guard retroactive spatial transit fallback and fix post-pit targetNeedsPit logic
+scope:      User.PluginSdkDemoEdit/OpponentTracker.cs, User.PluginSdkDemoEdit/TargetStrategyManager.cs, User.PluginSdkDemoEdit/SectorTracker.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/
+expires:    2026-09-11T16:00:00+02:00
 ```
 
 **Regole del lock**
