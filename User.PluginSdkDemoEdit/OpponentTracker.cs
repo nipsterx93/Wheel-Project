@@ -1496,6 +1496,12 @@ namespace SimRIG
                     isInsideGeofence = true;
                     triggerReason = "iRacing Native (CarIdxOnPitRoad)";
                 }
+                else if (isNativeAvailable && !tData.IsOnPitRoad && tData.TrackSurface == IracingTrackSurface.OnTrack)
+                {
+                    // Telemetria nativa iRacing dichiara esplicitamente che l'auto è OnTrack e non in pit road:
+                    // il fallback spaziale non deve scavalcare il dato certo!
+                    isInsideGeofence = false;
+                }
                 else if (state.IsSessionActive && isSpatiallyInsideGeofence && !isRaceNotStartedYet && tData.HasExitedPitZoneAtLeastOnce)
                 {
                     if (tData.IsInsideGeofence)
@@ -1559,10 +1565,9 @@ namespace SimRIG
                         }
 
                         // Criterio C: Paracadute di durata nel geofence.
-                        // Non dipende da LastValidSpeedKmh (che a inizio/fine pit lane può subire spike di deltaPos).
-                        // Se il tempo trascorso nella zona pit (tData.PitZone o tempo da EntryTimeSec) supera la soglia di classe (+4.0s)
-                        // o la soglia di sicurezza minima (15.0s), la vettura è confermata ai box.
-                        if (!isInsideGeofence)
+                        // Non deve MAI scattare se l'auto viaggia a velocità di gara sul rettilineo (es. > 100 km/h o > pitSpeedThreshold + 15).
+                        // La soglia di durata deve essere compatibile con un vero transito ai box (almeno 15.0s).
+                        if (!isInsideGeofence && tData.LastValidSpeedKmh < (pitSpeedThreshold + 15.0) && tData.LastValidSpeedKmh < 100.0)
                         {
                             double currentPitTime = 0.0;
                             if (tData.PitZone.IsInside)
@@ -1574,9 +1579,7 @@ namespace SimRIG
                                 currentPitTime = Math.Abs(currentSessionClock - tData.SpatialStrictEntryTimeSec);
                             }
 
-                            double durationThreshold = ClassBestPitZoneRacingTime > 0.0
-                                ? (ClassBestPitZoneRacingTime + 4.0)
-                                : (ClassBestExtendedPitZoneTime > 0.0 ? (ClassBestExtendedPitZoneTime + 5.0) : 15.0);
+                            double durationThreshold = Math.Max(15.0, (ClassBestPitZoneRacingTime > 0.0 ? ClassBestPitZoneRacingTime * 1.8 : 15.0));
 
                             if (currentPitTime > durationThreshold)
                             {
@@ -1637,7 +1640,8 @@ namespace SimRIG
                 }
                 else if (isInsideGeofence && tData.IsInsideGeofence)
                 {
-                    if (tData.LastValidSpeedKmh < 0.5)
+                    bool isCulledNotInWorld = (tData.TrackSurface == IracingTrackSurface.NotInWorld);
+                    if (tData.LastValidSpeedKmh < 0.5 && !isCulledNotInWorld)
                     {
                         if (!tData.HasCountedPitThisTransit)
                         {
@@ -1649,7 +1653,7 @@ namespace SimRIG
 
                         if (tData.StopStartTimeSec == null) tData.StopStartTimeSec = currentSessionClock;
                     }
-                    else
+                    else if (!isCulledNotInWorld)
                     {
                         if (tData.StopStartTimeSec != null)
                         {
@@ -1685,8 +1689,8 @@ namespace SimRIG
                             tData.NotInWorldStartSec = null;
                         }
 
-                        // Reverse-Engineering Stationary Time se l'avversario è stato in NotInWorld e non ha avuto telemetria diretta
-                        if (tData.StationaryTimeSec <= 0.5 && tData.NotInWorldDurationSec > 0.0)
+                        // Reverse-Engineering Stationary Time se l'avversario è stato in NotInWorld
+                        if (tData.NotInWorldDurationSec > 0.0)
                         {
                             double refTransit = radar.PitTransitTime > 0.0
                                 ? radar.PitTransitTime
@@ -1703,6 +1707,14 @@ namespace SimRIG
                                         $"{tData.Name} | NotInWorld: {tData.NotInWorldDurationSec:F2}s | RefTransit: {refTransit:F2}s | DeducedStationary: {deducedStationary:F2}s");
                                 }
                             }
+                        }
+
+                        if (!tData.HasCountedPitThisTransit)
+                        {
+                            tData.PitCount++;
+                            tData.HasCountedPitThisTransit = true;
+                            tData.LastStopLap = rawCurrentLap;
+                            log.Log(LogModule.OPPONENTS, LogType.EVENT, "Opponent Pit Validated", $"{tData.Name} (Pit #{tData.PitCount}) | Lap: {tData.LastStopLap}");
                         }
 
                         double tTyres = radar.DbTireChangeTime; // default 26.0

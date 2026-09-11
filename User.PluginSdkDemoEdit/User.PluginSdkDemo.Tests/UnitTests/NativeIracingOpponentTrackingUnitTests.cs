@@ -49,6 +49,7 @@ namespace User.PluginSdkDemo.Tests
             Test_Player_NaturalPitStop_SavesPitTransitTime();
             Test_Player_NaturalDriveThrough_SavesPitDriveThroughTime();
             Test_Opponent_NotInWorld_LatchesPitRoadAndDeducesStationaryTime();
+            Test_SpatialGeofence_DoesNotTriggerPitStopAtRacingSpeedOnStraight();
 
             Console.WriteLine("[TEST SUCCESS] All Native iRacing Tracking Tests Passed!");
         }
@@ -963,7 +964,7 @@ namespace User.PluginSdkDemo.Tests
             // 5. Deduzione Reverse-Engineering della sosta
             // Formula: StationaryTime = NotInWorldDurationSec - refTransit
             // 42.56s - 27.29s = 15.27s
-            if (tData.StationaryTimeSec <= 0.5 && tData.NotInWorldDurationSec > 0.0)
+            if (tData.NotInWorldDurationSec > 0.0)
             {
                 double refTransit = radar.PitTransitTime > 0.0
                     ? radar.PitTransitTime
@@ -1002,6 +1003,80 @@ namespace User.PluginSdkDemo.Tests
             Assert(tData.NotInWorldDurationSec == 0.0, "NotInWorldDurationSec must be reset after stop");
 
             Pass("Opponent NotInWorld latches pit road, protects geofence, and correctly deduces stationary time");
+        }
+
+        private static void Test_SpatialGeofence_DoesNotTriggerPitStopAtRacingSpeedOnStraight()
+        {
+            var radar = new PitRadar();
+            var track = new TrackRecord
+            {
+                TrackClassID = "ROADATLANTA_STRAIGHT_GT3",
+                TrackID = "roadatlanta_straight",
+                CarClass = "GT3",
+                PitEntryPct = 0.9575,
+                PitExitPct = 0.1051,
+                PitLaneSpeedLimit = 72.42
+            };
+            radar.SetCurrentTrackForTesting(track);
+
+            var tData = new OpponentTelemetryData
+            {
+                Name = "Bruno Carneiro",
+                CarClass = "GT3",
+                IsOnPitRoad = false,
+                TrackSurface = IracingTrackSurface.OnTrack,
+                LastValidSpeedKmh = 196.8,
+                HasExitedPitZoneAtLeastOnce = true
+            };
+
+            // 1. Con telemetria nativa disponibile (isNativeAvailable = true), OnTrack esplicito e !IsOnPitRoad
+            // Il bypass nativo impone isInsideGeofence = false, a prescindere dalla posizione spaziale
+            bool isNativeAvailable = true;
+            bool isSpatiallyInsideGeofence = true; // es. 0.9600 a cavallo del rettilineo di Road Atlanta
+            bool isInsideGeofence = false;
+
+            if (isNativeAvailable && tData.IsOnPitRoad)
+            {
+                isInsideGeofence = true;
+            }
+            else if (isNativeAvailable && !tData.IsOnPitRoad && tData.TrackSurface == IracingTrackSurface.OnTrack)
+            {
+                isInsideGeofence = false;
+            }
+            else if (isSpatiallyInsideGeofence)
+            {
+                isInsideGeofence = true;
+            }
+
+            Assert(!isInsideGeofence, "Native OnTrack telemetry must bypass spatial geofence and force isInsideGeofence = false.");
+
+            // 2. Senza telemetria nativa (fallback puramente spaziale):
+            // L'auto transita sul rettilineo principale a 196.8 km/h per 9.4s (il pit zone a Road Atlanta è lungo 598.9m)
+            isNativeAvailable = false;
+            double pitSpeedThreshold = PitLaneDetector.SpeedThresholdFor(radar.GetPitLaneSpeedLimit(tData.CarClass)); // ~82.4 km/h
+
+            // Criterio B: Velocità sotto soglia
+            bool criterioBTrigger = tData.LastValidSpeedKmh < pitSpeedThreshold;
+            Assert(!criterioBTrigger, "Racing speed 196.8 km/h must not satisfy Criterio B speed threshold.");
+
+            // Criterio C: Paracadute di durata nel geofence
+            // Protezione 1: Velocità massima per attivare Criterio C (< pitSpeedThreshold + 15 e < 100 km/h)
+            bool criterioCAllowed = tData.LastValidSpeedKmh < (pitSpeedThreshold + 15.0) && tData.LastValidSpeedKmh < 100.0;
+            Assert(!criterioCAllowed, "Criterio C must be strictly disabled when car is at racing speed (196.8 km/h >= 100 km/h).");
+
+            // Protezione 2: Pavimento minimo della soglia di durata (Math.Max(15.0, ...))
+            double classBestRacingTime = 5.3; // Esempio di campione sporco/stretto registrato in passato
+            double durationThreshold = Math.Max(15.0, (classBestRacingTime > 0.0 ? classBestRacingTime * 1.8 : 15.0));
+            Assert(durationThreshold >= 15.0, $"Duration threshold must be at least 15.0s, got {durationThreshold:F1}s.");
+
+            double elapsedStraightTransitTime = 9.4; // 598.9m a ~200 km/h impiegano ~9.4-9.5s
+            bool durationTrigger = elapsedStraightTransitTime > durationThreshold;
+            Assert(!durationTrigger, "9.4s straight transit must NOT exceed duration threshold (>= 15.0s).");
+
+            bool fallbackInsideGeofence = criterioBTrigger || (criterioCAllowed && durationTrigger);
+            Assert(!fallbackInsideGeofence, "Fallback geofence logic must not trigger pit stop at racing speed on straight.");
+
+            Pass("Spatial geofence does not falsely trigger pit stops for cars at racing speed on main straight");
         }
     }
 }
