@@ -860,11 +860,11 @@ namespace SimRIG
                     CurrentTarget.PitLaneZoneRacingTime = pitLaneZoneRacingTime;
 
                     // Calcolo unificato basato sulla Extended Pit Zone
-                    double extendedRacingTime = CarPitData.CalculateExtendedRacingTime(
-                        tracker.ClassBestExtendedPitZoneTime,
-                        pitDistance,
-                        trackLen,
-                        tracker.ClassTopSpeed);
+                    double extZoneFraction = (radar != null) ? (1.0 - radar.GetExtendedSectorRacingZoneWeight()) : 0.0;
+                    double refPaceForZone = oppData.NormalizedRaceStartPace > 0.0 ? oppData.NormalizedRaceStartPace : (state.BestLapTimeSec > 0.0 ? state.BestLapTimeSec : (radar?.CurrentTrack != null && radar.CurrentTrack.AverageLapPace > 0.0 ? radar.CurrentTrack.AverageLapPace : 80.0));
+                    double extendedRacingTime = (extZoneFraction > 0.05 && refPaceForZone > 30.0)
+                        ? CarPitData.CalculateExtendedRacingTime(tracker.ClassBestExtendedPitZoneTime, extZoneFraction, refPaceForZone)
+                        : CarPitData.CalculateExtendedRacingTime(tracker.ClassBestExtendedPitZoneTime, pitDistance, trackLen, tracker.ClassTopSpeed);
 
                     double accDecTime = CurrentTarget.InOutPitAccDecTime;
 

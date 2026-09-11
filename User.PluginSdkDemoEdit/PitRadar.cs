@@ -1551,17 +1551,24 @@ namespace SimRIG
 			flag = false;
 			if (_activeMode == CalibrationMode.SplashAndDash && _isFueling)
 			{
-				double num3 = Math.Abs(_lastFuelIncreaseTime - _fuelStartTime);
-				if (num3 > 0.5)
+				double fuelingSeconds = Math.Abs(_lastFuelIncreaseTime - _fuelStartTime);
+				double litresAdded = Math.Max(0.0, state.CurrentFuelLevel - _fuelLevelAtStopStart);
+				double effectiveLitres = litresAdded >= MinLitresForFuelRate ? litresAdded : (fuelToAdd >= MinLitresForFuelRate ? fuelToAdd : 20.0);
+
+				if (fuelingSeconds > 0.5 && effectiveLitres >= MinLitresForFuelRate)
 				{
-					double num4 = 20.0 / num3;
-					// Procedura guidata: isolata per costruzione, quindi Confirmed.
-					if (CanOverwrite(_currentClass.FuelFillRateConfidence, CalibrationConfidence.Confirmed))
+					double measuredRate = effectiveLitres / fuelingSeconds;
+					if (measuredRate >= 0.5 && measuredRate <= 10.0)
 					{
-						_currentClass.FuelFillRate = num4;
-						_currentClass.FuelFillRateConfidence = CalibrationConfidence.Confirmed;
-						flag = true;
-						log?.Log(LogModule.RADAR, LogType.EVENT, "Fuel Fill Rate Calibrated", $"{num4:F2} L/s | confidence=Confirmed");
+						// Procedura guidata: isolata per costruzione, quindi Confirmed.
+						if (CanOverwrite(_currentClass.FuelFillRateConfidence, CalibrationConfidence.Confirmed))
+						{
+							_currentClass.FuelFillRate = measuredRate;
+							_currentClass.FuelFillRateConfidence = CalibrationConfidence.Confirmed;
+							flag = true;
+							log?.Log(LogModule.RADAR, LogType.EVENT, "Fuel Fill Rate Calibrated",
+								$"{measuredRate:F2} L/s | litres={effectiveLitres:F1} | seconds={fuelingSeconds:F2}s | confidence=Confirmed");
+						}
 					}
 				}
 				// Procedura **guidata**: il pilota ha deliberatamente chiesto questa calibrazione,

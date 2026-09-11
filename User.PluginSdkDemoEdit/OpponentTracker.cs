@@ -876,8 +876,19 @@ namespace SimRIG
             var activeOpponents = state.Opponents.Where(o => o.TrackPositionPercent.HasValue || GetOpponentTrackPosition(o, state) > 0.0).ToList();
             if (activeOpponents.Count == 0) return;
 
+            double minPhysicalExtendedTime = 12.0;
+            if (radar != null && radar.CurrentTrack != null)
+            {
+                double pitFraction = 1.0 - radar.GetExtendedSectorRacingZoneWeight();
+                double refPace = state.BestLapTimeSec > 0.0 ? state.BestLapTimeSec : (state.Metadata?.PlayerEstimatedPaceSec ?? 76.5);
+                if (pitFraction > 0.05 && refPace > 30.0)
+                {
+                    minPhysicalExtendedTime = Math.Max(12.0, pitFraction * refPace * 0.70);
+                }
+            }
+
             double classBestStrictPitTime = playerBestStrictPitZoneTime > 0.0 ? playerBestStrictPitZoneTime : 999.0;
-            double classBestExtendedPitTime = playerBestExtendedPitZoneTime > 0.0 ? playerBestExtendedPitZoneTime : 999.0;
+            double classBestExtendedPitTime = (playerBestExtendedPitZoneTime >= minPhysicalExtendedTime) ? playerBestExtendedPitZoneTime : 999.0;
             foreach (var opp in _telemetry.Values)
             {
                 if (opp.CarClass == state.CarClassId)
@@ -886,7 +897,7 @@ namespace SimRIG
                     {
                         classBestStrictPitTime = opp.PitZone.BestRawTime;
                     }
-                    if (opp.ExtendedPitZone.BestRawTime > 0.0 && opp.ExtendedPitZone.BestRawTime < classBestExtendedPitTime)
+                    if (opp.ExtendedPitZone.BestRawTime >= minPhysicalExtendedTime && opp.ExtendedPitZone.BestRawTime < classBestExtendedPitTime)
                     {
                         classBestExtendedPitTime = opp.ExtendedPitZone.BestRawTime;
                     }

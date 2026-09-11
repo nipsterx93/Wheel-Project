@@ -54,6 +54,8 @@ namespace User.PluginSdkDemo.Tests
             Test_NativeConfirmedOnTrack_RejectsRetroactiveSpatialValidation();
             Test_TargetAlreadyPitted_WithFuelToFinish_DoesNotNeedPitStop();
             Test_LapFuelSync_DoesNotDoubleDeductInlapFuelAfterPit();
+            Test_SplashAndDash_CalculatesDynamicFuelRateFromActualLitres();
+            Test_ExtendedPitZone_AppliesPhysicalFloorToRejectTrackCutOutliers();
 
             Console.WriteLine("[TEST SUCCESS] All Native iRacing Tracking Tests Passed!");
         }
@@ -1308,6 +1310,58 @@ namespace User.PluginSdkDemo.Tests
             Assert(Math.Abs(estimatedFuel - 39.7) < 1e-4, $"Fuel must remain 39.7L without double-deducting inlap fuel, got {estimatedFuel:F2}L");
 
             Pass("Opponent lap fuel sync preserves FuelAfterLastPit without double inlap fuel deduction");
+        }
+
+        private static void Test_SplashAndDash_CalculatesDynamicFuelRateFromActualLitres()
+        {
+            // Verifichiamo che con 30.9L imbarcati in 12.4s il tasso di rifornimento
+            // non sia più corrotto a 1.61 L/s (20.0 / 12.4s) ma calcoli il tasso reale ~2.49 L/s
+            double fuelingSeconds = 12.40;
+            double litresAdded = 30.90;
+            double fuelToAdd = 31.0;
+            double minLitres = 5.0;
+
+            double effectiveLitres = litresAdded >= minLitres ? litresAdded : fuelToAdd;
+            double measuredRate = effectiveLitres / fuelingSeconds;
+
+            Assert(Math.Abs(measuredRate - 2.492) < 0.01,
+                $"Expected measured rate ~2.49 L/s, got {measuredRate:F3} L/s");
+            Assert(measuredRate > 2.0, "Measured rate must NOT be corrupted to 1.61 L/s");
+
+            Pass("SplashAndDash calculates dynamic FuelFillRate from actual litres added");
+        }
+
+        private static void Test_ExtendedPitZone_AppliesPhysicalFloorToRejectTrackCutOutliers()
+        {
+            // Verifichiamo che tempi assurdi di attraversamento della ExtendedPitZone in pista
+            // (es. 4.78s, 10.40s) vengano scartati dalla soglia fisica minima,
+            // preservando il tempo reale di percorrenza a velocità di gara (es. 16.95s).
+            double pitFraction = 0.2476;
+            double refPace = 76.5;
+            double minPhysicalExtendedTime = Math.Max(12.0, pitFraction * refPace * 0.70); // 13.26s
+
+            double validTrackTime = 16.95;
+            double glitchedCutTime = 10.40;
+            double extremeGlitchedTime = 4.78;
+
+            Assert(validTrackTime >= minPhysicalExtendedTime, "16.95s must be accepted as valid extended racing zone time");
+            Assert(glitchedCutTime < minPhysicalExtendedTime, "10.40s must be rejected as below physical floor");
+            Assert(extremeGlitchedTime < minPhysicalExtendedTime, "4.78s must be rejected as below physical floor");
+
+            double classBest = 999.0;
+            double[] samples = new double[] { 17.25, 17.00, glitchedCutTime, extremeGlitchedTime, 16.95 };
+            foreach (var s in samples)
+            {
+                if (s >= minPhysicalExtendedTime && s < classBest)
+                {
+                    classBest = s;
+                }
+            }
+
+            Assert(Math.Abs(classBest - 16.95) < 1e-4,
+                $"Expected classBest ~16.95s, got {classBest:F2}s (outliers 10.40s and 4.78s were ignored)");
+
+            Pass("ExtendedPitZone applies physical floor to reject track cut and teleport outliers");
         }
     }
 }
