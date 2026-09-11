@@ -497,6 +497,7 @@ namespace SimRIG
             pm.AddProperty("SimRIG.Target.TargetPittedRecently", t, false);
 
             pm.AddProperty("SimRIG.Target.ProjectedMergeGap", t, 0.0);
+            pm.AddProperty("SimRIG.Target.IsMergeGapLatched", t, false);
             pm.AddProperty("SimRIG.Target.TrafficAlert", t, false);
             pm.AddProperty("SimRIG.Target.TargetMode", t, "UNKNOWN");
             pm.AddProperty("SimRIG.Target.CurrentTank", t, 0.0);
@@ -1863,6 +1864,7 @@ namespace SimRIG
             PluginManager.SetPropertyValue("SimRIG.Target.TargetPittedRecently", t, tgt.TargetPittedRecently);
 
             PluginManager.SetPropertyValue("SimRIG.Target.ProjectedMergeGap", t, Math.Round(tgt.ProjectedMergeGap, 2));
+            PluginManager.SetPropertyValue("SimRIG.Target.IsMergeGapLatched", t, tgt.IsMergeGapLatched);
             PluginManager.SetPropertyValue("SimRIG.Target.TrafficAlert", t, tgt.TrafficAlert);
             PluginManager.SetPropertyValue("SimRIG.Target.TargetMode", t, tgt.TargetMode);
             PluginManager.SetPropertyValue("SimRIG.Target.CurrentTank", t, Math.Round(tgt.CurrentTank, 2));

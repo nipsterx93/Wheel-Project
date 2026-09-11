@@ -140,6 +140,7 @@ namespace SimRIG
         public bool UndercutViable { get; set; } = false;
         public bool OvercutViable { get; set; } = false;
         public double ProjectedMergeGap { get; set; } = 0.0;
+        public bool IsMergeGapLatched { get; set; } = false;
         public bool TrafficAlert { get; set; } = false;
 
         public double UndercutAdvantage { get; set; } = 0.0;
@@ -229,6 +230,59 @@ namespace SimRIG
             return signedGap + effPlayerLoss - effTargetLoss;
         }
 
+        /// <summary>
+        /// Aggiorna il ProjectedMergeGap gestendo il congelamento (latch) quando una delle due vetture
+        /// entra in corsia box o nella piazzola di sosta. Mantiene il valore stimato pre-sosta
+        /// come riferimento fisso durante l'intera sosta finché entrambe le vetture non sono tornate su pista.
+        /// </summary>
+        public void UpdateProjectedMergeGap(double projectedPhysicalMergeGap, bool isTargetInPit, bool isPlayerInPit, string targetName)
+        {
+            bool anyInPit = isTargetInPit || isPlayerInPit;
+
+            if (!anyInPit)
+            {
+                _isMergeGapLatched = false;
+                _pitPhaseStartTime = DateTime.MinValue;
+                _lastOnTrackProjectedMergeGap = projectedPhysicalMergeGap;
+                _latchedMergeGapTargetName = targetName;
+                CurrentTarget.ProjectedMergeGap = projectedPhysicalMergeGap;
+                CurrentTarget.IsMergeGapLatched = false;
+                return;
+            }
+
+            // Se eravamo agganciati su un target e il target cambia durante la sosta, resetta il latch
+            if (_isMergeGapLatched && !string.IsNullOrEmpty(_latchedMergeGapTargetName) && !string.IsNullOrEmpty(targetName) &&
+                !targetName.Equals(_latchedMergeGapTargetName, StringComparison.OrdinalIgnoreCase))
+            {
+                _isMergeGapLatched = false;
+                _latchedMergeGapTargetName = targetName;
+                CurrentTarget.ProjectedMergeGap = projectedPhysicalMergeGap;
+                CurrentTarget.IsMergeGapLatched = false;
+                return;
+            }
+
+            // Timeout di sicurezza: se la sosta dura oltre 120 secondi (es. vettura ritirata o trainata)
+            if (_isMergeGapLatched && _pitPhaseStartTime != DateTime.MinValue && (DateTime.UtcNow - _pitPhaseStartTime).TotalSeconds > 120.0)
+            {
+                _isMergeGapLatched = false;
+                CurrentTarget.ProjectedMergeGap = projectedPhysicalMergeGap;
+                CurrentTarget.IsMergeGapLatched = false;
+                return;
+            }
+
+            // Se si entra nella fase di pit per la prima volta, congela l'ultimo valore valido calcolato a bordo pista
+            if (!_isMergeGapLatched)
+            {
+                _isMergeGapLatched = true;
+                _latchedProjectedMergeGap = (_lastOnTrackProjectedMergeGap != 0.0) ? _lastOnTrackProjectedMergeGap : projectedPhysicalMergeGap;
+                _latchedMergeGapTargetName = targetName;
+                _pitPhaseStartTime = DateTime.UtcNow;
+            }
+
+            CurrentTarget.ProjectedMergeGap = _latchedProjectedMergeGap;
+            CurrentTarget.IsMergeGapLatched = true;
+        }
+
         private StrategyDecision _lastStrategyDecision = StrategyDecision.None;
         private bool _lastUndercutViable = false;
         private bool _lastOvercutViable = false;
@@ -265,6 +319,19 @@ namespace SimRIG
         private bool _lastLoggedTargetPitRoad = false;
         private IracingTrackSurface _lastLoggedPlayerSurface = IracingTrackSurface.NotInWorld;
         private bool _lastLoggedPlayerPitRoad = false;
+
+        private bool _isMergeGapLatched = false;
+        private double _latchedProjectedMergeGap = 0.0;
+        private double _lastOnTrackProjectedMergeGap = 0.0;
+        private string _latchedMergeGapTargetName = "";
+        private DateTime _pitPhaseStartTime = DateTime.MinValue;
+
+        /// <summary>
+        /// Indica se il ProjectedMergeGap è attualmente congelato (latched) durante la fase di sosta ai box
+        /// di una delle due vetture per fornire un valore di riferimento fisso mentre il gap live evolve.
+        /// </summary>
+        public bool IsMergeGapLatched => _isMergeGapLatched;
+        public double LatchedProjectedMergeGap => _latchedProjectedMergeGap;
 
         private readonly RelativePaceTracker _relativePace = new RelativePaceTracker();
 
@@ -1268,7 +1335,11 @@ namespace SimRIG
                     double effectivePlayerPitLoss = playerNeedsPit ? playerTotalPitLoss : 0.0;
                     double effectiveTargetPitLoss = targetNeedsPit ? targetTotalPitLoss : 0.0;
                     double projectedPhysicalMergeGap = CalculateProjectedMergeGap(CurrentTarget.SignedGapSeconds, playerNeedsPit, playerTotalPitLoss, targetNeedsPit, targetTotalPitLoss);
-                    CurrentTarget.ProjectedMergeGap = projectedPhysicalMergeGap;
+
+                    bool isTargetInPit = CurrentTarget.IsOnPitRoad || CurrentTarget.IsInPitStall || (oppData != null && (oppData.IsInsideGeofence || oppData.IsOnPitRoad || oppData.TrackSurface == IracingTrackSurface.InPitStall));
+                    bool isPlayerInPit = (tracker != null && (tracker.PlayerData.IsOnPitRoad || tracker.PlayerData.TrackSurface == IracingTrackSurface.InPitStall)) || state.IsInPitLane;
+
+                    UpdateProjectedMergeGap(projectedPhysicalMergeGap, isTargetInPit, isPlayerInPit, CurrentTarget.Name);
 
                     // Log dedicato di monitoraggio MergeGap aggiornato ogni 10 secondi (attivo solo quando SessionState == 4)
                     // Mantiene sempre il focus su LatchedTargetName se presente, altrimenti segue targetOpp
@@ -1399,7 +1470,7 @@ namespace SimRIG
                             bool logPlayerNeedsPit = !canFinishWithoutPitting;
                             double logEffectivePlayerPitLoss = logPlayerNeedsPit ? playerTotalPitLoss : 0.0;
                             double logEffectiveTargetPitLoss = logTargetNeedsPit ? logTargetTotalPitLoss : 0.0;
-                            double logProjectedMergeGap = CalculateProjectedMergeGap(logTargetSignedGap, logPlayerNeedsPit, playerTotalPitLoss, logTargetNeedsPit, logTargetTotalPitLoss);
+                            double logProjectedMergeGap = _isMergeGapLatched ? _latchedProjectedMergeGap : CalculateProjectedMergeGap(logTargetSignedGap, logPlayerNeedsPit, playerTotalPitLoss, logTargetNeedsPit, logTargetTotalPitLoss);
 
                             int playerPitCount = raceResult.PlayerPitCount;
                             int playerPos = state.PositionInClass > 0 ? state.PositionInClass : state.Position;
@@ -1418,6 +1489,7 @@ namespace SimRIG
                             bool targetInPitStall = CurrentTarget.IsInPitStall;
                             int targetSurfaceCode = CurrentTarget.TrackSurfaceCode;
 
+                            string latchedTag = _isMergeGapLatched ? " [FROZEN IN PIT]" : "";
                             string logMsg =
                                 $"========================================================================================\n" +
                                 $"[MERGE_GAP_MONITOR] SessionTimeLeft: {state.SessionTimeLeftSec:F1}s | Lap: {state.CurrentLap} | Target: {logTargetOpp.Name}\n" +
@@ -1429,7 +1501,7 @@ namespace SimRIG
                                 $"  Player (+{logEffectivePlayerPitLoss:F2}s): Staz: {playerStationaryTime:F2}s (incl. 2s) | Transit: {radar.PitTransitTime:F2}s | AccDec: {accDecTime:F2}s | ExtZone: {extendedRacingTime:F2}s\n" +
                                 $"  Target (+{logEffectiveTargetPitLoss:F2}s) : Staz: {logTargetStationaryTime:F2}s | Transit: {radar.PitTransitTime:F2}s | AccDec: {accDecTime:F2}s | ExtZone: {extendedRacingTime:F2}s\n" +
                                 $"RESULT:\n" +
-                                $"  LiveSignedGap: {logTargetSignedGap:F2}s -> ProjectedMergeGap: {logProjectedMergeGap:F2}s ({logTargetSignedGap:F2} + {logEffectivePlayerPitLoss:F2} - {logEffectiveTargetPitLoss:F2})\n" +
+                                $"  LiveSignedGap: {logTargetSignedGap:F2}s -> ProjectedMergeGap: {logProjectedMergeGap:F2}s{latchedTag} ({logTargetSignedGap:F2} + {logEffectivePlayerPitLoss:F2} - {logEffectiveTargetPitLoss:F2})\n" +
                                 $"========================================================================================\n";
 
                             log.Log(LogModule.MERGEGAP, LogType.FLOW, logMsg);
@@ -1439,7 +1511,7 @@ namespace SimRIG
                     if (sectorChanged)
                     {
                         log.Log(LogModule.STRATEGY, LogType.FLOW, "Undercut Math",
-                            $"AccDec:{accDecTime:F1} | P_PitLoss:{playerTotalPitLoss:F1} | ReactLaps:{CurrentTarget.ReactionDeltaLaps} | P_AfterPitPace:{playerPaceFresh:F2} | T_RawPace:{targetRawPace:F2} | MergeGap:{projectedPhysicalMergeGap:F2}");
+                            $"AccDec:{accDecTime:F1} | P_PitLoss:{playerTotalPitLoss:F1} | ReactLaps:{CurrentTarget.ReactionDeltaLaps} | P_AfterPitPace:{playerPaceFresh:F2} | T_RawPace:{targetRawPace:F2} | MergeGap:{CurrentTarget.ProjectedMergeGap:F2}");
 
                         double pPosPct = (tracker.PlayerData.LastPosPct > 0.0 ? tracker.PlayerData.LastPosPct : state.TrackPositionPercent) * 100.0;
                         int pPos = state.PositionInClass > 0 ? state.PositionInClass : state.Position;
@@ -1837,9 +1909,17 @@ namespace SimRIG
             CurrentTarget.UndercutViable = false;
             CurrentTarget.OvercutViable = false;
             CurrentTarget.TrafficAlert = false;
+            CurrentTarget.ProjectedMergeGap = 0.0;
+            CurrentTarget.IsMergeGapLatched = false;
             CurrentTarget.UndercutAdvantage = 0.0;
             CurrentTarget.OvercutAdvantage = 0.0;
             CurrentTarget.CurrentMicrosector = 0;
+
+            _isMergeGapLatched = false;
+            _latchedProjectedMergeGap = 0.0;
+            _lastOnTrackProjectedMergeGap = 0.0;
+            _latchedMergeGapTargetName = "";
+            _pitPhaseStartTime = DateTime.MinValue;
 
             CurrentTarget.NormalizedRaceStartPace = 0.0;
 
@@ -1891,6 +1971,15 @@ namespace SimRIG
             _relativePace.Reset();
             _hysteresis.Reset();
             _lastPaceSample = default(RelativePaceSample);
+            _isMergeGapLatched = false;
+            _latchedProjectedMergeGap = 0.0;
+            _lastOnTrackProjectedMergeGap = 0.0;
+            _latchedMergeGapTargetName = "";
+            _pitPhaseStartTime = DateTime.MinValue;
+            if (CurrentTarget != null)
+            {
+                CurrentTarget.IsMergeGapLatched = false;
+            }
             CurrentTarget.RelativeGapDelta = 0.0;
             CurrentTarget.RelativeGapDeltaValid = false;
             _prevPosDiff = double.NaN;

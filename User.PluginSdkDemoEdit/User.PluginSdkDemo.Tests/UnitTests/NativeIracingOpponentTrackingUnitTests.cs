@@ -56,6 +56,7 @@ namespace User.PluginSdkDemo.Tests
             Test_LapFuelSync_DoesNotDoubleDeductInlapFuelAfterPit();
             Test_SplashAndDash_CalculatesDynamicFuelRateFromActualLitres();
             Test_ExtendedPitZone_AppliesPhysicalFloorToRejectTrackCutOutliers();
+            Test_ProjectedMergeGap_LatchesDuringPitStopAndUnlatchesOnTrackExit();
 
             Console.WriteLine("[TEST SUCCESS] All Native iRacing Tracking Tests Passed!");
         }
@@ -1362,6 +1363,67 @@ namespace User.PluginSdkDemo.Tests
                 $"Expected classBest ~16.95s, got {classBest:F2}s (outliers 10.40s and 4.78s were ignored)");
 
             Pass("ExtendedPitZone applies physical floor to reject track cut and teleport outliers");
+        }
+
+        private static void Test_ProjectedMergeGap_LatchesDuringPitStopAndUnlatchesOnTrackExit()
+        {
+            var manager = new TargetStrategyManager();
+            string targetName = "Bruno Carneiro";
+
+            // 1. Entrambe le vetture sono su pista (pre-sosta Target)
+            // Distacco live in pista +32.0s, Target deve pittare (loss 33.9s) -> ProjectedMergeGap = -1.9s
+            manager.UpdateProjectedMergeGap(-1.90, isTargetInPit: false, isPlayerInPit: false, targetName);
+            Assert(Math.Abs(manager.CurrentTarget.ProjectedMergeGap - (-1.90)) < 1e-4,
+                $"Expected ProjectedMergeGap -1.90s, got {manager.CurrentTarget.ProjectedMergeGap:F2}s");
+            Assert(!manager.IsMergeGapLatched, "Latch must be inactive while on track");
+            Assert(!manager.CurrentTarget.IsMergeGapLatched, "CurrentTarget.IsMergeGapLatched must be false");
+
+            // 2. Il Target imbocca la corsia box (IsOnPitRoad = true)
+            // Mentre il Target è nei box, il distacco live crolla (+20s, +5s, 0s, -4s)
+            // e il calcolo puro non congelato produrrebbe valori errati (es. +5.0s o +20.0s).
+            manager.UpdateProjectedMergeGap(20.0, isTargetInPit: true, isPlayerInPit: false, targetName);
+            Assert(manager.IsMergeGapLatched, "Latch must be active when Target is in pit road");
+            Assert(manager.CurrentTarget.IsMergeGapLatched, "CurrentTarget.IsMergeGapLatched must be true");
+            Assert(Math.Abs(manager.CurrentTarget.ProjectedMergeGap - (-1.90)) < 1e-4,
+                $"ProjectedMergeGap must remain frozen at -1.90s, got {manager.CurrentTarget.ProjectedMergeGap:F2}s");
+
+            // 3. Target fermo in piazzola, Player gli sfila a fianco (raw gap = +5.0s, poi -3.5s)
+            manager.UpdateProjectedMergeGap(5.0, isTargetInPit: true, isPlayerInPit: false, targetName);
+            Assert(Math.Abs(manager.CurrentTarget.ProjectedMergeGap - (-1.90)) < 1e-4,
+                $"ProjectedMergeGap must remain frozen at -1.90s while in stall, got {manager.CurrentTarget.ProjectedMergeGap:F2}s");
+
+            manager.UpdateProjectedMergeGap(-3.5, isTargetInPit: true, isPlayerInPit: false, targetName);
+            Assert(Math.Abs(manager.CurrentTarget.ProjectedMergeGap - (-1.90)) < 1e-4,
+                $"ProjectedMergeGap must remain frozen at -1.90s while accelerating in pit, got {manager.CurrentTarget.ProjectedMergeGap:F2}s");
+
+            // 4. Target esce dalla pit lane e rientra in pista (IsOnPitRoad = false)
+            // La sosta è completata: il latch si rilascia e ProjectedMergeGap si unifica al gap reale di rientro (-5.25s)
+            manager.UpdateProjectedMergeGap(-5.25, isTargetInPit: false, isPlayerInPit: false, targetName);
+            Assert(!manager.IsMergeGapLatched, "Latch must release when Target exits pit road");
+            Assert(!manager.CurrentTarget.IsMergeGapLatched, "CurrentTarget.IsMergeGapLatched must be false");
+            Assert(Math.Abs(manager.CurrentTarget.ProjectedMergeGap - (-5.25)) < 1e-4,
+                $"ProjectedMergeGap must update to post-pit rejoin gap -5.25s, got {manager.CurrentTarget.ProjectedMergeGap:F2}s");
+
+            // 5. Test simmetrico: Player nei box (isPlayerInPit = true)
+            manager.UpdateProjectedMergeGap(+12.40, isTargetInPit: false, isPlayerInPit: false, targetName);
+            manager.UpdateProjectedMergeGap(+2.00, isTargetInPit: false, isPlayerInPit: true, targetName);
+            Assert(manager.IsMergeGapLatched, "Latch must be active when Player is in pit");
+            Assert(Math.Abs(manager.CurrentTarget.ProjectedMergeGap - 12.40) < 1e-4,
+                $"ProjectedMergeGap must freeze at pre-pit value +12.40s during Player pit, got {manager.CurrentTarget.ProjectedMergeGap:F2}s");
+
+            manager.UpdateProjectedMergeGap(+11.80, isTargetInPit: false, isPlayerInPit: false, targetName);
+            Assert(!manager.IsMergeGapLatched, "Latch must release when Player exits pit");
+            Assert(Math.Abs(manager.CurrentTarget.ProjectedMergeGap - 11.80) < 1e-4,
+                $"ProjectedMergeGap must update to post-pit value +11.80s, got {manager.CurrentTarget.ProjectedMergeGap:F2}s");
+
+            // 6. Test sicurezza: se il Target cambia mentre la vettura è nei box, il latch si resetta
+            manager.UpdateProjectedMergeGap(-2.0, isTargetInPit: false, isPlayerInPit: false, "Bruno Carneiro");
+            manager.UpdateProjectedMergeGap(-2.0, isTargetInPit: true, isPlayerInPit: false, "Bruno Carneiro");
+            Assert(manager.IsMergeGapLatched, "Latch must be active for Bruno Carneiro");
+            manager.UpdateProjectedMergeGap(-3.0, isTargetInPit: true, isPlayerInPit: false, "Aake Korte");
+            Assert(!manager.IsMergeGapLatched, "Latch must reset if target changes");
+
+            Pass("ProjectedMergeGap latches during active pit stop phase and releases upon track rejoin");
         }
     }
 }
