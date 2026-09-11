@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      antigravity
-since:      2026-09-11 13:30
-task:       Fix culled opponent false stop triggers and simultaneous pit tyre classification
-scope:      User.PluginSdkDemoEdit/
-expires:    2026-09-11 15:30
+owner:      NONE
+since:      null
+task:       null
+scope:      null
+expires:    null
 ```
 
 **Regole del lock**
