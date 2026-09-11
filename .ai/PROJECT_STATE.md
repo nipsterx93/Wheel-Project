@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      null
-task:       null
-scope:      null
-expires:    null
+owner:      antigravity
+since:      2026-09-11 12:30
+task:       Fix opponent NotInWorld stationary deduction and prevent false duration pit triggers at racing speed
+scope:      User.PluginSdkDemoEdit/
+expires:    2026-09-11 14:30
 ```
 
 **Regole del lock**
