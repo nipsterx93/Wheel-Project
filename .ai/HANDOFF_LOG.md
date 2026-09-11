@@ -47,6 +47,41 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-11 12:35] antigravity → chiunque entri dopo
+
+**Task:** Fix deduzione StationaryTime avversari in NotInWorld e protezione da falsi trigger box sul rettilineo
+**Piano:** —
+**Commit:** `0d9ec82` (codice e test), questo (handoff e rilascio lock)
+
+### Fatto
+- `User.PluginSdkDemoEdit/OpponentTracker.cs`:
+  - **Bypass telemetria nativa OnTrack** (r. 1499-1504): se la telemetria nativa iRacing dichiara esplicitamente `!tData.IsOnPitRoad && tData.TrackSurface == IracingTrackSurface.OnTrack`, il fallback spaziale non scavalca il dato certo e `isInsideGeofence` viene forzato a `false`.
+  - **Protezione Criterio C a velocità di gara** (r. 1567-1589): Criterio C (paracadute di durata) vietato se l'auto viaggia a velocità di gara (`tData.LastValidSpeedKmh < (pitSpeedThreshold + 15.0) && tData.LastValidSpeedKmh < 100.0`). Inoltre, introdotto pavimento minimo di 15.0s (`Math.Max(15.0, ClassBestPitZoneRacingTime * 1.8)`), impedendo a transiti di 9.4s sul rettilineo (es. a 196.8 km/h a Road Atlanta su zona pit da 598.9m) di far scattare false soste.
+  - **Congelamento accumulo stazionario fittizio in NotInWorld** (r. 1640-1660): quando l'avversario viene culled in `NotInWorld (-1)`, iRacing congela le coordinate all'ultimo punto noto (`deltaPos = 0` => velocità calcolata 0.0 km/h). Escluso `NotInWorld` dall'accumulare artificialmente tempo stazionario in `StopStartTimeSec`.
+  - **Deduzione inversa StationaryTime garantita all'uscita** (r. 1690-1718): rimossa la condizione bloccante `StationaryTimeSec <= 0.5`. Se `NotInWorldDurationSec > 0.0`, all'uscita box viene sempre applicata la deduzione inversa $T_{\text{stationary}} = \max(0.0, T_{\text{NotInWorld}} - T_{\text{refTransit}})$ (per Carneiro $42.56 - 26.37 = 16.19\text{s}$ anziché $42.6\text{s}$), classificando la sosta correttamente come "Fuel Only" invece di "Danni/Riparazioni". Garantito l'incremento di `PitCount` anche se l'avversario è stato in NotInWorld durante tutta la sosta.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs`:
+  - Aggiunto unit test `Test_SpatialGeofence_DoesNotTriggerPitStopAtRacingSpeedOnStraight` (r. 1008-1077) registrato in `RunAllTests()`.
+  - Allineato test `Test_Opponent_NotInWorld_LatchesPitRoadAndDeducesStationaryTime`.
+  - Suite test: **353 PASS (100%)**.
+
+### Come verificare
+```bash
+& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build pulita (0 errori) e test runner console a **353 PASS (100%)**.
+
+### Stato
+- ✅ Compila (0 errori, 1 warning CS0219 noto)
+- ✅ 353 PASS (100%)
+
+### Per chi entra
+**Prossimo passo:** Test su replay reale in SimHub per osservare il comportamento su pista; chiarito con l'utente il motivo del FuelToAdd 33L vs 31L (proiezione giri 36 vs 35 latched al lap 1 per passo lento iniziale, nessuna formula modificata).
+**NON toccare:** `Hardware/` rimane territorio di Andreas.
+**Attenzione a:** Il conteggio test corrente del plugin C# è **353 PASS**.
+
+---
+
 ## [2026-09-11 11:00] antigravity → chiunque entri dopo
 
 **Task:** Calibrazione pit stop, persistenza PitTransitTime Player e deduzione StationaryTime avversari via NotInWorld
@@ -405,41 +440,6 @@ Atteso: exit `0`, **338 PASS**.
 **Prossimo passo:** Test su replay reale in SimHub (es. Road Atlanta) per verificare visivamente i dati di telemetria avversari, tempi sosta e stabilità gap su HUD.
 **NON toccare:** `Hardware/` (riservato ad Andreas).
 **Attenzione a:** `iRacingSDK.dll` viene copiato in `bin/Debug` tramite PostBuildEvent del `.csproj`. Nei test mock o simulatori non-iRacing, `IracingTelemetryBridge` degrada dolcemente alla telemetria euristiche standard.
-
----
-
-## [2026-09-09 08:55] antigravity → chiunque entri dopo
-
-**Task:** Firmware INPUT V2.8.2 — aggiunta stato MAP su Rotary POS 6, versionamento PaddleClutch.h e chiusura Y-53
-**Piano:** —
-**Commit:** `questo`
-
-### Fatto
-- `Hardware/Firmware INPUT/V2_8_2/V2_8_2.ino:407`:
-  - Aggiunto stato `MAP` su posizione rotary 6 in `sendNormalModeUpdate(int pos)` (`else if (pos == 6) sendSimHubMsg(SH_MODE_PREFIX, F("MAP"));`), posizionato subito dopo `FORECAST` (pos 5). Il firmware invia ora `WMODE:MAP` verso SimHub quando il Rotary 1 viene ruotato in posizione 6. Nessun'altra logica modificata come richiesto.
-- `Hardware/Firmware INPUT/V2_8_2/PaddleClutch.h`:
-  - Copiato `PaddleClutch.h` da `Hardware/Firmware INPUT/libraries/PaddleClutch-main/` direttamente nella cartella dello sketch `Hardware/Firmware INPUT/V2_8_2/`. Versionato nel repository.
-- Chiusura punto **Y-53**:
-  - Rimosso Y-53 dalla tabella "Congelati in attesa di decisione" di `.ai/PROJECT_STATE.md`.
-  - Archiviato il punto con motivazione tecnica e dettagli in `.ai/archive/CLOSED_POINTS.md`.
-  - Aggiunta riga di riferimento nell'indice dei punti chiusi di `.ai/PROJECT_STATE.md`.
-  - Aggiornato conteggio test PASS a 332 in `.ai/PROJECT_STATE.md` (allineato all'ultimo handoff verificato).
-
-### Come verificare
-```bash
-& "C:\Users\Andreas\AppData\Local\Programs\Arduino IDE\resources\app\lib\backend\resources\arduino-cli.exe" compile --fqbn arduino:avr:leonardo "Hardware/Firmware INPUT/V2_8_2"
-```
-Atteso: compilazione completata con 0 errori (24.744 byte programma, 1.364 byte variabili globali).
-
-### Stato
-- ✅ Firmware compila pulito con `arduino-cli` (0 errori)
-- ✅ `PaddleClutch.h` presente nello sketch folder
-- ✅ 332 test PASS C# (invariati, nessun codice .NET toccato)
-
-### Per chi entra
-**Prossimo passo:** Test su volante fisico ruotando il selettore Rotary 1 su posizione 6 e verifica ricezione proprietà `SimRIG.Mode` = `"MAP"` in SimHub.
-**NON toccare:** `Hardware/` rimane territorio di Andreas.
-**Attenzione a:** Il conteggio test corrente del plugin C# è 332 PASS.
 
 ---
 

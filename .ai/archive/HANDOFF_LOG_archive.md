@@ -9,6 +9,41 @@
 
 ---
 
+## [2026-09-09 08:55] antigravity → chiunque entri dopo
+
+**Task:** Firmware INPUT V2.8.2 — aggiunta stato MAP su Rotary POS 6, versionamento PaddleClutch.h e chiusura Y-53
+**Piano:** —
+**Commit:** `questo`
+
+### Fatto
+- `Hardware/Firmware INPUT/V2_8_2/V2_8_2.ino:407`:
+  - Aggiunto stato `MAP` su posizione rotary 6 in `sendNormalModeUpdate(int pos)` (`else if (pos == 6) sendSimHubMsg(SH_MODE_PREFIX, F("MAP"));`), posizionato subito dopo `FORECAST` (pos 5). Il firmware invia ora `WMODE:MAP` verso SimHub quando il Rotary 1 viene ruotato in posizione 6. Nessun'altra logica modificata come richiesto.
+- `Hardware/Firmware INPUT/V2_8_2/PaddleClutch.h`:
+  - Copiato `PaddleClutch.h` da `Hardware/Firmware INPUT/libraries/PaddleClutch-main/` direttamente nella cartella dello sketch `Hardware/Firmware INPUT/V2_8_2/`. Versionato nel repository.
+- Chiusura punto **Y-53**:
+  - Rimosso Y-53 dalla tabella "Congelati in attesa di decisione" di `.ai/PROJECT_STATE.md`.
+  - Archiviato il punto con motivazione tecnica e dettagli in `.ai/archive/CLOSED_POINTS.md`.
+  - Aggiunta riga di riferimento nell'indice dei punti chiusi di `.ai/PROJECT_STATE.md`.
+  - Aggiornato conteggio test PASS a 332 in `.ai/PROJECT_STATE.md` (allineato all'ultimo handoff verificato).
+
+### Come verificare
+```bash
+& "C:\Users\Andreas\AppData\Local\Programs\Arduino IDE\resources\app\lib\backend\resources\arduino-cli.exe" compile --fqbn arduino:avr:leonardo "Hardware/Firmware INPUT/V2_8_2"
+```
+Atteso: compilazione completata con 0 errori (24.744 byte programma, 1.364 byte variabili globali).
+
+### Stato
+- ✅ Firmware compila pulito con `arduino-cli` (0 errori)
+- ✅ `PaddleClutch.h` presente nello sketch folder
+- ✅ 332 test PASS C# (invariati, nessun codice .NET toccato)
+
+### Per chi entra
+**Prossimo passo:** Test su volante fisico ruotando il selettore Rotary 1 su posizione 6 e verifica ricezione proprietà `SimRIG.Mode` = `"MAP"` in SimHub.
+**NON toccare:** `Hardware/` rimane territorio di Andreas.
+**Attenzione a:** Il conteggio test corrente del plugin C# è 332 PASS.
+
+---
+
 ## [2026-09-08 22:15] antigravity → chiunque entri dopo (Claude in particolare)
 
 **Task:** Cronometro reale Pit Zone (SectorTracker) per Player e Opponent, rimozione formula geometrica, fix cascata pit detection e inizializzazione fuel Lap 1
