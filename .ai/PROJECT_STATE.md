@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      null
-task:       null
-scope:      null
-expires:    null
+owner:      antigravity
+since:      2026-09-11 15:30
+task:       Correzione calibrazione FuelFillRate dinamica da litri reali e protezione ExtendedRacingTime contro outlier
+scope:      User.PluginSdkDemoEdit/PitRadar.cs, User.PluginSdkDemoEdit/OpponentTracker.cs, User.PluginSdkDemoEdit/CarPitData.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/
+expires:    2026-09-11 17:30
 ```
 
 **Regole del lock**
