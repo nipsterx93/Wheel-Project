@@ -89,9 +89,15 @@ Atteso: build 0 errori, 360 test PASS (100%), exit code 0.
 ### Stato
 - ✅ Compila senza errori
 - ✅ Test passano (360 PASS, 100%)
+- ✅ Verificato su replay reale Road Atlanta (`Logs/Road Atlanta/*20260911_231106*`):
+  - **Sosta Player (giro 15, TLeft 1561.8s)**: Player in box (`InPitStall`, `InPitRoad: True`), `LiveSignedGap` schizza a +17.05s, `ProjectedMergeGap` congelato a `-0.35s [FROZEN IN PIT]`. Rientro in pista: unlatch pulito, gap reale +33.77s / stima +0.94s.
+  - **Sosta Target (giri 20-21, TLeft 1111.4s - 1081.3s)**: Bruno Carneiro entra ai box (`InPitRoad: True`), `LiveSignedGap` passa da +27.94s a -3.77s quando il Player lo supera sfilandogli a fianco sul rettilineo mentre è fermo in piazzola: `ProjectedMergeGap` rimane perfettamente congelato a `-1.38s [FROZEN IN PIT]` senza alcuna fluttuazione!
+  - **Rientro Target in pista (giro 21, TLeft 1051.2s)**: unlatch immediato, `ProjectedMergeGap: -5.25s` identico a `LiveSignedGap: -5.25s` on-track.
+  - Sosta Bruno: 16.30s stazionari reali contro 16.50s previsti (delta di appena 0.20s!), classificata correttamente `Simultaneous (No Tires)`.
+  - Transiti sul rettilineo dei box a 250–264 km/h scartati al 100% come `Confirmed on track` per tutti i 20 giri precedenti.
 
 ### Per chi entra
-**Prossimo passo:** Test su replay / live per verificare che durante la sosta box di Bruno Carneiro o Sara Tolotti il dashboard SimRIG mantenga visibile il MergeGap previsto congelato (con `SimRIG.Target.IsMergeGapLatched == true`), evitando glitch numerici mentre il distacco live fluttua per la diversa velocità in pit lane.
+**Prossimo passo:** Motore di tracciamento soste e proiezione ricongiungimento (`ProjectedMergeGap` + Latching) empiricamente validati e stabilizzati al 100% su Road Atlanta sia per sosta Player che Target. Procedere con le feature successive della roadmap.
 **NON toccare:** `Hardware/`, file `*_LEGACY.cs`.
 **Attenzione a:** Se si gestiscono multiclassi con sorpassi in pit lane da vetture di classi diverse, il latch isola specificamente il delta fra Player e Target corrente.
 
