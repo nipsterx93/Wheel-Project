@@ -51,6 +51,52 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+---
+
+## [2026-09-11 22:50] antigravity → chiunque entri dopo
+
+**Task:** Congelamento (latch) del ProjectedMergeGap durante la fase attiva di pit stop di Target e Player
+**Piano:** —
+**Commit:** `722a9d6` (latch e test), questo (handoff e rilascio lock)
+
+### Fatto
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:115, 165, 875-925, 1835-1845, 1895-1910`:
+  - **Latch ProjectedMergeGap durante i box:** implementato `UpdateProjectedMergeGap(double rawMergeGap, bool isTargetInPit, bool isPlayerInPit, string targetName)` e introdotte proprietà `IsMergeGapLatched` in `TargetState` e `TargetStrategyManager`.
+  - Quando il Target o il Player è in corsia box (`isTargetInPit`: `IsOnPitRoad || IsInPitStall || IsInsideGeofence || TrackSurface == InPitStall`; `isPlayerInPit`: `PlayerData.IsOnPitRoad || TrackSurface == InPitStall || state.IsInPitLane`), il valore di `CurrentTarget.ProjectedMergeGap` viene congelato all'ultima stima on-track stabile prima dell'ingresso (`_lastOnTrackProjectedMergeGap`).
+  - Questo impedisce a `ProjectedMergeGap` di collassare temporaneamente sul `LiveSignedGap` mentre l'auto è ferma in piazzola o percorre la pitlane a limitatore, mantenendo sulla dashboard/HUD il gap di ricongiungimento previsto.
+  - Al rientro effettivo di entrambe le vetture in pista a regime di gara (`!isTargetInPit && !isPlayerInPit`), il latch si rilascia istantaneamente e il valore converge sul gap on-track reale.
+  - Aggiunti guard di sicurezza: timeout di 120s (in caso di ritiro/tow) e reset immediato in caso di cambio target o `ResetSession()` / `SetNoTarget()`.
+  - Monitor log `SimRIG_MergeGapLog` aggiornato con tag `[FROZEN IN PIT]` durante la fase di blocco.
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs:468, 612, 1840, 2055`:
+  - Registrata ed esposta la nuova proprietà SimHub: `SimRIG.Target.IsMergeGapLatched` (bool).
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs:59, 1368-1428`:
+  - Aggiunto unit test esaustivo: `Test_ProjectedMergeGap_LatchesDuringPitStopAndUnlatchesOnTrackExit` che copre:
+    1. Fase pre-pit in pista (unlatched, -1.90s).
+    2. Ingresso pit road Target (latched, resta -1.90s anche se il raw gap crolla a +20s).
+    3. Fermata in piazzola e sfilamento Player (latched, resta -1.90s con raw gap a +5.0s e -3.5s).
+    4. Rientro Target in pista (unlatch immediato, gap reale -5.25s).
+    5. Test simmetrico per Player in pit lane (latch a +12.40s, unlatch all'uscita).
+    6. Safety guard per cambio target durante il pit.
+  - Suite di test: **360 PASS (100% success)**.
+
+### Come verificare
+```bash
+& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build 0 errori, 360 test PASS (100%), exit code 0.
+
+### Stato
+- ✅ Compila senza errori
+- ✅ Test passano (360 PASS, 100%)
+
+### Per chi entra
+**Prossimo passo:** Test su replay / live per verificare che durante la sosta box di Bruno Carneiro o Sara Tolotti il dashboard SimRIG mantenga visibile il MergeGap previsto congelato (con `SimRIG.Target.IsMergeGapLatched == true`), evitando glitch numerici mentre il distacco live fluttua per la diversa velocità in pit lane.
+**NON toccare:** `Hardware/`, file `*_LEGACY.cs`.
+**Attenzione a:** Se si gestiscono multiclassi con sorpassi in pit lane da vetture di classi diverse, il latch isola specificamente il delta fra Player e Target corrente.
+
+---
+
 ## [2026-09-11 15:35] antigravity -> chiunque entri dopo
 
 **Task:** Risoluzione FuelFillRate errato (20L hardcoded Splash&Dash) e distorsione ClassBestExtendedPitZoneTime (outlier 10.4s)
@@ -89,6 +135,9 @@ Atteso: build pulita (0 errori) e test runner console a **359 PASS (100%)**.
 **Prossimo passo:** Riprodurre il replay Road Atlanta per osservare `EstimatedStationaryTime` di Bruno Carneiro scendere da ~22s a ~11.8s e `ProjectedMergeGap` prima della sosta convergere a ~ -5.2s (in perfetto accordo con i -5.25s misurati su pista all'uscita).
 **NON toccare:** `Hardware/`, file `*_LEGACY.cs`.
 **Attenzione a:** `SimRIG_Data.json` ha ora `IMSA23.FuelFillRate` calibrato a 2.60 L/s; con la nuova logica dinamica, future soste Splash&Dash calcoleranno il rate corretto basandosi sui litri realmente imbarcati.
+
+---
+
 
 ---
 
@@ -136,6 +185,9 @@ Atteso: build pulita (0 errori) e test runner console a **357 PASS (100%)**.
 
 ---
 
+
+---
+
 ## [2026-09-11 13:35] antigravity → chiunque entri dopo
 
 **Task:** Risoluzione falsi stop su auto culled in NotInWorld e correzione classificazione gomme in soste simultanee
@@ -178,6 +230,9 @@ Atteso: build pulita (0 errori) e test runner console a **354 PASS (100%)**.
 
 ---
 
+
+---
+
 ## [2026-09-11 12:35] antigravity → chiunque entri dopo
 
 **Task:** Fix deduzione StationaryTime avversari in NotInWorld e protezione da falsi trigger box sul rettilineo
@@ -214,6 +269,9 @@ Atteso: build pulita (0 errori) e test runner console a **353 PASS (100%)**.
 ---
 
 ---
+
+---
+
 
 ---
 
@@ -267,6 +325,9 @@ Atteso: build pulita (0 errori) e test runner console a **352 PASS (100%)**.
 
 ---
 
+
+---
+
 ## [2026-09-10 16:05] antigravity → chiunque entri dopo
 
 **Task:** Prioritizzazione telemetria nativa CarIdxLapDistPct su SimHub opponent position e salvaguardia target lock su replay jump
@@ -316,6 +377,9 @@ Atteso: 347 PASS (100%).
 
 ---
 
+
+---
+
 ## [2026-09-10 15:10] antigravity → chiunque entri dopo
 
 **Task:** Fallback rilevamento InPitStall per avversario fermo su pit road (Punto 1 dell'analisi Road Atlanta)
@@ -355,6 +419,9 @@ Atteso: 345 PASS (100%).
 
 ---
 
+
+---
+
 ## [2026-09-10 12:10] antigravity → chiunque entri dopo
 
 **Task:** Formattazione diagnostica e log completi di superficie e pit per Player e Target
@@ -389,6 +456,9 @@ Atteso: 0 errori di compilazione, DLL copiata in SimHub, **343 PASS (100%)**.
 ---
 
 ---
+
+---
+
 
 ---
 
@@ -436,54 +506,3 @@ Atteso: build 0 errori, 343 PASS, exit code 0.
 
 ---
 
-## [2026-09-09 23:35] antigravity → chiunque entri dopo
-
-**Task:** Esposizione proprietà SimHub TrackSurface / IsInPitStall / IsOnPitRoad per Player e Target e fallback per replay array
-**Piano:** `implementation_plan.md`
-**Commit:** `56321b5`
-
-### Fatto
-- `User.PluginSdkDemoEdit/IracingTelemetryBridge.cs:22, 60-150, 316-328`:
-  - Aggiunto fallback da `PluginManager` in `IracingTelemetryBridge.Update(object rawObject, SimHub.Plugins.PluginManager pm = null)`. Quando si riproducono replay SimHub (`.telemetry.json`), i campi array di `GameRawData.Telemetry` (`CarIdxTrackSurface`, `CarIdxOnPitRoad`) possono essere restituiti come array .NET boxed (`System.Array`, `int[]`, `bool[]`, `TrackLocation[]`). Il bridge ora effettua l'unboxing dinamico per tutti i 64 indici auto `CarIdx`.
-  - Aggiunto helper pubblico `GetTrackSurfaceString(IracingTrackSurface surface)` per mappare l'enum in stringhe leggibili (`"OnTrack"`, `"InPitStall"`, `"ApproachingPits"`, `"OffTrack"`, `"NotInWorld"`).
-- `User.PluginSdkDemoEdit/SessionState.cs:137-140, 185-188`:
-  - Aggiunte proprietà `PlayerTrackSurface` (`IracingTrackSurface`) e `PlayerIsOnPitRoad` (`bool`) con reset in `SessionState.Reset()`.
-- `User.PluginSdkDemoEdit/OpponentTracker.cs:142, 658-662`:
-  - Passato `PluginManager` a `IracingBridge.Update(rawObject, _pluginManager)`.
-  - Popolati `PlayerData.TrackSurface`, `PlayerData.IsOnPitRoad`, `state.PlayerTrackSurface` e `state.PlayerIsOnPitRoad` per la vettura del giocatore (`PlayerCarIdx`).
-- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:122-126, 172-176, 1495-1510`:
-  - Esteso `TargetState` con `TrackSurface` (string), `TrackSurfaceCode` (int), `TrackSurfaceString` (string), `IsInPitStall` (bool), `IsOnPitRoad` (bool).
-  - A ogni tick di `Update`, i dati dello stato pista del target selezionato (`oppData.TrackSurface` e `oppData.IsOnPitRoad`) vengono mappati e sincronizzati in `CurrentTarget`.
-- `User.PluginSdkDemoEdit/DataPluginDemo.cs:450-460, 595-605, 1815-1830, 2030-2045`:
-  - Registrate e pubblicate a ogni tick le 8 nuove proprietà SimHub:
-    - `SimRIG.Player.TrackSurface` (string, es. "OnTrack", "InPitStall")
-    - `SimRIG.Player.TrackSurfaceCode` (int, 0=NotInWorld, 1=OffTrack, 2=InPitStall, 3=ApproachingPits, 4=OnTrack)
-    - `SimRIG.Player.IsInPitStall` (bool, true se TrackSurface == InPitStall)
-    - `SimRIG.Player.IsOnPitRoad` (bool, true se sulla pit road)
-    - `SimRIG.Target.TrackSurface` (string)
-    - `SimRIG.Target.TrackSurfaceCode` (int)
-    - `SimRIG.Target.IsInPitStall` (bool)
-    - `SimRIG.Target.IsOnPitRoad` (bool)
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs:330-410`:
-  - Aggiunti 2 unit test: `Test_IracingTelemetryBridge_PluginManagerReplayFallback` e `Test_TargetState_TrackSurface_Properties`.
-  - Suite test: passata da 340 a **342 test PASS** (100% verdi, 0 falliti).
-
-### Come verificare
-```bash
-"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
-"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: build 0 errori, 342 PASS, exit code 0.
-
-### Stato
-- ✅ Compila senza errori
-- ✅ 342 test passano (100%)
-
-### Per chi entra
-**Prossimo passo:** Test su replay con SimHub aperto per visualizzare le nuove proprietà `SimRIG.Player.*` e `SimRIG.Target.*` nella lista proprietà e su dashboard/overlay.
-**NON toccare:** Non agganciare `StationaryTime` a `InPitStall` (richiesta esplicita utente: mantenere separato per ora).
-**Attenzione a:** Se si modificano o leggono altre proprietà array da `GameRawData.Telemetry`, utilizzare sempre l'estrazione unboxing tramite `IracingTelemetryBridge` con fallback su `PluginManager`.
-
----
-
----

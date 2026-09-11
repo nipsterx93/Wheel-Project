@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      antigravity
-since:      2026-09-11 22:45
-task:       Congelamento (latch) del ProjectedMergeGap durante la fase attiva di pit stop
-scope:      User.PluginSdkDemoEdit/TargetStrategyManager.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/
-expires:    2026-09-12 00:45
+owner:      NONE
+since:      null
+task:       null
+scope:      null
+expires:    null
 ```
 
 **Regole del lock**
