@@ -47,6 +47,52 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-11 11:00] antigravity → chiunque entri dopo
+
+**Task:** Calibrazione pit stop, persistenza PitTransitTime Player e deduzione StationaryTime avversari via NotInWorld
+**Piano:** —
+**Commit:** `e66a591` (codice e test), questo (handoff e rilascio lock)
+
+### Fatto
+- `User.PluginSdkDemoEdit/PitRadar.cs`:
+  - Aggiunto metodo `GetTheoreticalTransitTimeSec(double trackLengthMeters)` (r. 290-305): calcola il tempo di transito teorico al limite YAML della pitlane $(d / v)$ con fallback a velocità media.
+  - In `SetCurrentTrackForTesting` (r. 525-533): registra e sincronizza il record di test in `_database.Tracks`, garantendo l'isolamento dei test dai file di stato su disco.
+  - In `Update` (r. 1320-1327): comparazione case-insensitive (`StringComparison.OrdinalIgnoreCase`) per `TrackClassID` e `lookupKey`.
+  - In `Update` (r. 1569, 1617, 1646): salvataggio `_currentTrack.PlayerRecordSet = true` ogni volta che `PitTransitTime` viene calibrato da procedure guidate.
+  - In `Update` (r. 1682-1703): introdotto apprendimento automatico di `PitTransitTime` e `PlayerRecordSet = true` per soste naturali del Player in cui c'è arresto in piazzola (`_pitBoxTimeCache > 0.5s`), distinguendolo dal Drive-Through naturale (`PitDriveThroughTime`).
+  - Salvaguardato `log?.Log(...)` in tutti i rami di `PitRadar` contro `NullReferenceException` con logger nullo.
+- `User.PluginSdkDemoEdit/OpponentTracker.cs`:
+  - Gestione `NotInWorld` (r. 1333-1375): latching di `effectiveOnPitRoad = true` se un avversario era già in pit road ed entra in `NotInWorld` (culling di rete iRacing). Accumulo preciso del tempo trascorso in `NotInWorldDurationSec`.
+  - Protezione geofence: impedita la registrazione di false uscite su culling (`RecordPitExitSample` a 0.958 ignorato durante `NotInWorld`).
+  - Reverse-engineering StationaryTime (r. 1689-1706): all'uscita dalla pit lane, deduzione inversa $T_{\text{stationary}} = \max(0.0, T_{\text{NotInWorld}} - T_{\text{refTransit}})$, con $T_{\text{refTransit}}$ ricavato da `radar.PitTransitTime` (Player) o dal transito teorico da YAML.
+  - Rimozione arrotondamenti artificiali sul pit speed limit appreso (r. 1838-1845): salvata la velocità reale esatta senza forzare multipli di 10.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs`:
+  - Aggiunti 5 nuovi unit test registrati in `RunAllTests()`:
+    1. `Test_RecordPitExitSample_RejectsSampleTooCloseToEntry`: valida il rifiuto di uscite fittizie a 0.9582.
+    2. `Test_TheoreticalTransitTime_CalculatesFromYamlSpeedAndTrackLength`: verifica il calcolo teorico su distanza e limite YAML (Road Atlanta 26.40s).
+    3. `Test_Player_NaturalPitStop_SavesPitTransitTime`: verifica la sosta naturale di Sara Tolotti con rifornimento (41.12s totali, 13.83s fermo -> 27.29s transito persistito e `PlayerRecordSet = true`).
+    4. `Test_Player_NaturalDriveThrough_SavesPitDriveThroughTime`: verifica che un passaggio senza fermarsi aggiorni `PitDriveThroughTime` senza toccare `PitTransitTime`.
+    5. `Test_Opponent_NotInWorld_LatchesPitRoadAndDeducesStationaryTime`: simula la sosta di Bruno Carneiro con culling `NotInWorld` (42.56s) deducendo 15.27s di sosta e classificando correttamente "Fuel Only" (nessun cambio gomme).
+  - Suite eseguita con successo: **352 PASS (100%)**.
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build pulita (0 errori) e test runner console a **352 PASS (100%)**.
+
+### Stato
+- ✅ Compila (0 errori, 1 warning CS0219 noto)
+- ✅ 352 PASS (100%)
+
+### Per chi entra
+**Prossimo passo:** Test sui replay completi (es. Road Atlanta) per validare la visualizzazione live delle soste degli avversari con tempi in piazzola dedotti e persistenza su `SimRIG.Pit.TransitTime`.
+**NON toccare:** `Hardware/` rimane territorio di Andreas.
+**Attenzione a:** Il conteggio test corrente del plugin C# è **352 PASS**. Se si aggiornano altri file di documentazione, mantenere allineato il numero reale.
+
+---
+
 ## [2026-09-10 16:05] antigravity → chiunque entri dopo
 
 **Task:** Prioritizzazione telemetria nativa CarIdxLapDistPct su SimHub opponent position e salvaguardia target lock su replay jump
@@ -394,59 +440,6 @@ Atteso: compilazione completata con 0 errori (24.744 byte programma, 1.364 byte 
 **Prossimo passo:** Test su volante fisico ruotando il selettore Rotary 1 su posizione 6 e verifica ricezione proprietà `SimRIG.Mode` = `"MAP"` in SimHub.
 **NON toccare:** `Hardware/` rimane territorio di Andreas.
 **Attenzione a:** Il conteggio test corrente del plugin C# è 332 PASS.
-
----
-
-## [2026-09-08 22:15] antigravity → chiunque entri dopo (Claude in particolare)
-
-**Task:** Cronometro reale Pit Zone (SectorTracker) per Player e Opponent, rimozione formula geometrica, fix cascata pit detection e inizializzazione fuel Lap 1
-**Piano:** —
-**Commit:** `42564a2` (codice e test), questo (handoff e rilascio lock)
-
-### Fatto
-- `User.PluginSdkDemoEdit/PitRadar.cs:275-288, 946-956`:
-  - Aggiunto `TrackRecord.GetPitZoneWeight()` e `PitRadar.GetPitZoneWeight()` che calcolano la frazione esatta del tracciato coperta dalla zona pit standard `[PitEntryPct, PitExitPct]` (clamp `[0.01, 0.50]`).
-- `User.PluginSdkDemoEdit/RaceAnalyzer.cs:298, 455-470, 511, 2414`:
-  - Aggiunto cronometro puro `PlayerPitZone` (`SectorTracker { Name = "PlayerPitZone" }`) cablato in `RaceAnalyzer.Update` con `radar.IsInPitLaneZone` e `radar.GetPitZoneWeight()`.
-  - Aggiunto reset in entrambi i blocchi di pulizia sessione.
-- `User.PluginSdkDemoEdit/SectorTracker.cs:112, 163`:
-  - Abbassata la soglia di transito minimo da 5.0s a 3.0s per supportare zone pit corte su rettilinei veloci.
-  - Abilitato l'aggiornamento di `BestRawTime` a partire dal giro 1 (`lapsOnTyres >= 1`) anche oltre i 40 km di vita gomma se `sectorTime < BestRawTime`.
-- `User.PluginSdkDemoEdit/OpponentTracker.cs:177, 192, 543, 565-566, 768-782, 885-910, 1263-1310, 1391-1398, 1619-1635, 2095-2115`:
-  - Aggiunto `PitZone` (`SectorTracker`) in `OpponentTelemetryData` e aggiornato frame-by-frame nel settore pit standard.
-  - Aggiunta proprietà pubblica `ClassBestPitZoneRacingTime` che traccia il miglior tempo di transito a velocità di gara attraverso la pit zone per la classe, sia dal Player che dagli avversari.
-  - Inizializzazione carburante Lap 1: assegnati `EstimatedFuel = opponentStartingFuel` ed `EstimatedFuelTank = opponentStartingFuel` sia alla creazione dell'istanza sia quando `raceStartingFuel` diventa disponibile.
-  - Criterio B (Speed Persistence): aggiunto debounce di 0.4s (`HighSpeedStartSec`) per tollerare spike e jitter dei pacchetti di telemetria o replay senza azzerare prematuramente la persistenza di velocità.
-  - Criterio C (Duration Parachute): sganciato dal controllo restrittivo di velocità (`LastValidSpeedKmh < pitSpeedThreshold + 5.0`). Ora scatta direttamente per superamento del tempo di gara di classe (`> ClassBestPitZoneRacingTime + 4.0s` o fallback 15s), garantendo il rilevamento della sosta anche in caso di salti temporali/lag.
-  - Validazione uscita box: attivato l'uso effettivo di `adaptiveThreshold` (`if (tData.StrictPitValidInTransit || totalTransitTime > adaptiveThreshold)`).
-  - Livello 4 (Safety Net uscita spaziale): logging dettagliato e verifica adattiva su `SpatialStrictEntryTimeSec` all'uscita spaziale da `PitExitPct`.
-- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:707-711`:
-  - `PitLaneZoneRacingTime` ora assegna prioritariamente la misura reale `tracker.ClassBestPitZoneRacingTime > 0.0`, conservando la formula geometrica `pitDistance / racingSpeedMs` esclusivamente come ripiego iniziale a freddo.
-- `User.PluginSdkDemoEdit/DataPluginDemo.cs:373, 1262, 1754`:
-  - Registrata ed esposta la proprietà SimHub `SimRIG.Session.ClassBestPitZoneRacingTime`.
-  - Passati sia `RaceAnalyzer.PlayerPitZone.BestRawTime` sia `RaceAnalyzer.PlayerExtendedPitZone.BestRawTime` a `OpponentTracker.Update`.
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/PitZoneStopwatchAndOpponentCascadeUnitTests.cs`:
-  - Nuova suite di test con 4 unit test dedicati che validano:
-    - Rilevamento e registrazione di `BestRawTime` su transito veloce di gara.
-    - Immunità di `BestRawTime` da corruzione durante una sosta lenta ai box.
-    - Esclusione dei transiti di outlap a Lap 0.
-    - Calcolo geometrico del peso pit zone.
-
-### Come verificare
-```bash
-"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
-"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: build pulita (0 errori) e test runner console a **332 PASS (100%)**.
-
-### Stato
-- ✅ Compila (0 errori, 1 warning CS0219 noto)
-- ✅ 332 PASS (100%)
-
-### Per chi entra
-**Prossimo passo:** Esecuzione del replay Road Atlanta (`20260908_144534` o nuova corsa) per verificare che Aake Korte venga correttamente riconosciuto ai box (PitCount = 1, calcolo fuel tank accurato, nessun transito scartato) e che `SimRIG.Session.ClassBestPitZoneRacingTime` e `Target.PitLaneZoneRacingTime` mostrino il tempo cronometrato reale anziché la stima geometrica.
-**NON toccare:** La struttura del `SectorTracker` per la gestione outlap/inlap/normal.
-**Attenzione a:** Il conteggio test corrente è **332 PASS**. Se si aggiornano altri file di documentazione, mantenere allineato il numero reale.
 
 ---
 
