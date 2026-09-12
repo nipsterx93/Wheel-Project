@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      null
-task:       null
-scope:      null
-expires:    null
+owner:      antigravity
+since:      2026-09-12 13:57
+task:       Esposizione proprietà SimRIG.Hardware e migrazione binding Test.djson
+scope:      User.PluginSdkDemoEdit/DataPluginDemo.cs, User.PluginSdkDemoEdit/SettingsControlDemo.xaml.cs, E:/SimHub/DashTemplates/Test/Test.djson
+expires:    2026-09-12 15:57
 ```
 
 **Regole del lock**
