@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      null
-task:       null
-scope:      null
-expires:    null
+owner:      antigravity
+since:      2026-09-12 22:38
+task:       fix leader tracking, leader lap sync, and final lap projection freeze
+scope:      User.PluginSdkDemoEdit/RaceAnalyzer.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/
+expires:    2026-09-12 23:38
 ```
 
 **Regole del lock**
