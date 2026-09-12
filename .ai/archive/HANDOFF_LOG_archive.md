@@ -9,6 +9,48 @@
 
 ---
 
+## [2026-09-10 12:10] antigravity → chiunque entri dopo
+
+**Task:** Formattazione diagnostica e log completi di superficie e pit per Player e Target
+**Piano:** —
+**Commit:** `f432865`
+
+### Fatto
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs`:
+  - Introdotti campi di tracking stato: `_lastLoggedPlayerSurface`, `_lastLoggedPlayerPitRoad`, `_lastLoggedTargetSurface`, `_lastLoggedTargetPitRoad` con reset in `ResetSession()`.
+  - Aggiunto log di evento immediato (`LogModule.STRATEGY`, `LogType.EVENT`) ad ogni transizione di `TrackSurface` o `IsOnPitRoad` per Player e Target nel formato esatto:
+    `Player: P1 | PosPct: 45.21% | Surface: OnTrack | InPitRoad: False | InPitStall : True | SurfaceCode : 3`
+    `Target: P2 | PosPct: 43.80% | Surface: InPitStall | InPitRoad: True | InPitStall : True | SurfaceCode : 1`
+  - Aggiornata la sezione `DRIVERS` del monitor periodico `[MERGE_GAP_MONITOR]` (file `..._MergeGap.log`) integrando la stessa riga completa per entrambi i piloti.
+  - Aggiornato il log di transizione microsettori (`sectorChanged`) con la stringa di stato unificata.
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: 0 errori di compilazione, DLL copiata in SimHub, **343 PASS (100%)**.
+
+### Stato
+- ✅ Compila (0 errori, 1 warning CS0219 noto)
+- ✅ 343 PASS (100%)
+
+### Per chi entra
+**Prossimo passo:** Collegamento delle nuove proprietà e telemetrie native (`TrackPositionPercent`, `IsInPitStall`, `TrackSurface`, `IsOnPitRoad`) alle logiche strategiche (Merge Gap fine-grained, stationary time, geofencing pit entry/exit).
+**NON toccare:** Le formule di stationary time e pit loss senza test dedicati.
+**Attenzione a:** Build con SimHub aperto fallisce con MSB3073 (DLL lockata da SimHub).
+
+---
+
+---
+
+---
+
+
+---
+
+---
+
 ## [2026-09-10 11:35] antigravity → chiunque entri dopo
 
 **Task:** Esposizione proprietà SimHub TrackPositionPercent per Player e Target

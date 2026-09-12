@@ -55,6 +55,54 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+---
+
+## [2026-09-12 14:00] antigravity → chiunque entri dopo
+
+**Task:** Esposizione proprietà SimRIG.Hardware (WheelMode, WheelMessage, LiveBitePoint), retrocompatibilità e migrazione dash Test.djson
+**Piano:** —
+**Commit:** `afbda6d` (hardware properties & UI), questo (handoff e rilascio lock)
+
+### Fatto
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs:98, 309-312, 719-733, 1675-1680`:
+  - Registrate come proprietà ufficiali SimHub:
+    * `SimRIG.Hardware.WheelMode` (string, default "NORMAL"): modalità attiva ricevuta dal volante via seriale/USB.
+    * `SimRIG.Hardware.WheelMessage` (string, default "READY"): messaggi e notifiche a display.
+    * `SimRIG.Hardware.LiveBitePoint` (double, default 50.0): percentuale live punto di stacco frizione.
+  - Aggiornate in tempo reale all'evento seriale `HardwareManager_OnHardwareInputReceived()` (`MODE`, `MSG`, `VAL`) e nel ciclo `UpdateSimHubProperties()`.
+  - Mantenute le delegazioni `PersoSteeringWheelMode`, `PersoSteeringWheelMessage`, `PersoSteeringWheelLiveBitePoint` e la proprietà `SimRIG.Mode` per retrocompatibilità trasparente al 100%.
+  - Aggiunta proprietà pubblica C# `LiveBitePoint => _liveBitePoint` mantenendo `PersoSteeringWheelLiveBitePoint` come getter alias.
+- `User.PluginSdkDemoEdit/SettingsControlDemo.xaml.cs:1797`:
+  - Aggiornato il binding UI da `Plugin.PersoSteeringWheelLiveBitePoint` a `Plugin.LiveBitePoint`.
+- `E:/SimHub/DashTemplates/Test/Test.djson`:
+  - Creato backup di sicurezza in `Test.djson.bak`.
+  - Aggiornate tutte le formule dei 14 Item/gruppi di cambio schermata (RACE, PIT, PIT2, STRAT, FORECAST, MAP, TESTS, TEST, PRECISE/GROSS BITE, CLUTCH CAL) mappando `DataPluginDemo.PersoSteeringWheelMode` su `DataPluginDemo.SimRIG.Hardware.WheelMode`.
+  - Aggiornate le notifiche popup mappando `PersoSteeringWheelMessage` su `SimRIG.Hardware.WheelMessage`.
+  - Aggiornati i campi bite point su `SimRIG.Hardware.LiveBitePoint`.
+  - Allineati i campi diagnostici nelle pagine `STRAT`, `TEST` e `TESTS` alle proprietà unificate (`CurrentTank`, `TankLapsRemaining`, `LastPitFuelAdded`, `LastPitStationaryTime`, `EstimatedStationaryTime`, `Leader.RaceTotalLaps`, `Leader.ProjectedPosAtCheckered`).
+- Build e test:
+  - MSBuild VS2022: 0 errori, plugin installato in `%SIMHUB_INSTALL_PATH%`.
+  - Test runner: **360 PASS (100% success)**.
+
+### Come verificare
+```bash
+& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build 0 errori, 360 test PASS (100%), exit code 0.
+
+### Stato
+- ✅ Compila senza errori
+- ✅ Test passano (360 PASS, 100%)
+- ✅ `Test.djson` migrato e validato JSON con 0 errori (backup in `Test.djson.bak`)
+
+### Per chi entra
+**Prossimo passo:** Procedere con la roadmap delle feature successive concordate con Andreas.
+**NON toccare:** `Hardware/` (territorio di Andreas).
+**Attenzione a:** Le proprietà hardware sono ora ufficialmente esposte come `SimRIG.Hardware.WheelMode`, `SimRIG.Hardware.WheelMessage`, `SimRIG.Hardware.LiveBitePoint` sia in SimHub che nella dashboard del volante.
+
+---
+
 ## [2026-09-12 12:45] antigravity → chiunque entri dopo
 
 **Task:** Pulizia e rimozione proprietà SimHub obsolete/morte, deduplica e consolidamento namespace Leader
@@ -106,6 +154,8 @@ Atteso: build 0 errori, 360 test PASS (100%), exit code 0.
 **Prossimo passo:** Procedere con la roadmap delle feature successive concordate con Andreas.
 **NON toccare:** `Hardware/` (territorio di Andreas).
 **Attenzione a:** Se si configurano nuove dashboard SimHub, fare riferimento alle proprietà unificate sotto `SimRIG.Leader.*` e ai nuovi nomi non ambigui (`LastPitStationaryTime`, `LastPitFuelAdded`, `PlayerPitsRemaining`, `SimRIG.Fuel.IsPredictionValid`).
+
+---
 
 ---
 
@@ -161,6 +211,8 @@ Atteso: build 0 errori, 360 test PASS (100%), exit code 0.
 
 ---
 
+---
+
 ## [2026-09-11 15:35] antigravity -> chiunque entri dopo
 
 **Task:** Risoluzione FuelFillRate errato (20L hardcoded Splash&Dash) e distorsione ClassBestExtendedPitZoneTime (outlier 10.4s)
@@ -202,6 +254,8 @@ Atteso: build pulita (0 errori) e test runner console a **359 PASS (100%)**.
 
 ---
 
+
+---
 
 ---
 
@@ -256,6 +310,8 @@ Atteso: build pulita (0 errori) e test runner console a **357 PASS (100%)**.
 
 ---
 
+---
+
 ## [2026-09-11 13:35] antigravity → chiunque entri dopo
 
 **Task:** Risoluzione falsi stop su auto culled in NotInWorld e correzione classificazione gomme in soste simultanee
@@ -303,6 +359,8 @@ Atteso: build pulita (0 errori) e test runner console a **354 PASS (100%)**.
 
 ---
 
+---
+
 ## [2026-09-11 12:35] antigravity → chiunque entri dopo
 
 **Task:** Fix deduzione StationaryTime avversari in NotInWorld e protezione da falsi trigger box sul rettilineo
@@ -342,6 +400,8 @@ Atteso: build pulita (0 errori) e test runner console a **353 PASS (100%)**.
 
 ---
 
+
+---
 
 ---
 
@@ -402,6 +462,8 @@ Atteso: build pulita (0 errori) e test runner console a **352 PASS (100%)**.
 
 ---
 
+---
+
 ## [2026-09-10 16:05] antigravity → chiunque entri dopo
 
 **Task:** Prioritizzazione telemetria nativa CarIdxLapDistPct su SimHub opponent position e salvaguardia target lock su replay jump
@@ -456,6 +518,8 @@ Atteso: 347 PASS (100%).
 
 ---
 
+---
+
 ## [2026-09-10 15:10] antigravity → chiunque entri dopo
 
 **Task:** Fallback rilevamento InPitStall per avversario fermo su pit road (Punto 1 dell'analisi Road Atlanta)
@@ -497,45 +561,5 @@ Atteso: 345 PASS (100%).
 
 
 ---
-
----
-
-## [2026-09-10 12:10] antigravity → chiunque entri dopo
-
-**Task:** Formattazione diagnostica e log completi di superficie e pit per Player e Target
-**Piano:** —
-**Commit:** `f432865`
-
-### Fatto
-- `User.PluginSdkDemoEdit/TargetStrategyManager.cs`:
-  - Introdotti campi di tracking stato: `_lastLoggedPlayerSurface`, `_lastLoggedPlayerPitRoad`, `_lastLoggedTargetSurface`, `_lastLoggedTargetPitRoad` con reset in `ResetSession()`.
-  - Aggiunto log di evento immediato (`LogModule.STRATEGY`, `LogType.EVENT`) ad ogni transizione di `TrackSurface` o `IsOnPitRoad` per Player e Target nel formato esatto:
-    `Player: P1 | PosPct: 45.21% | Surface: OnTrack | InPitRoad: False | InPitStall : True | SurfaceCode : 3`
-    `Target: P2 | PosPct: 43.80% | Surface: InPitStall | InPitRoad: True | InPitStall : True | SurfaceCode : 1`
-  - Aggiornata la sezione `DRIVERS` del monitor periodico `[MERGE_GAP_MONITOR]` (file `..._MergeGap.log`) integrando la stessa riga completa per entrambi i piloti.
-  - Aggiornato il log di transizione microsettori (`sectorChanged`) con la stringa di stato unificata.
-
-### Come verificare
-```bash
-"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
-"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: 0 errori di compilazione, DLL copiata in SimHub, **343 PASS (100%)**.
-
-### Stato
-- ✅ Compila (0 errori, 1 warning CS0219 noto)
-- ✅ 343 PASS (100%)
-
-### Per chi entra
-**Prossimo passo:** Collegamento delle nuove proprietà e telemetrie native (`TrackPositionPercent`, `IsInPitStall`, `TrackSurface`, `IsOnPitRoad`) alle logiche strategiche (Merge Gap fine-grained, stationary time, geofencing pit entry/exit).
-**NON toccare:** Le formule di stationary time e pit loss senza test dedicati.
-**Attenzione a:** Build con SimHub aperto fallisce con MSB3073 (DLL lockata da SimHub).
-
----
-
----
-
----
-
 
 ---
