@@ -53,6 +53,62 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+---
+
+## [2026-09-12 12:45] antigravity → chiunque entri dopo
+
+**Task:** Pulizia e rimozione proprietà SimHub obsolete/morte, deduplica e consolidamento namespace Leader
+**Piano:** —
+**Commit:** `dc1a53d` (refactor proprietà), questo (handoff e rilascio lock)
+
+### Fatto
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs:214-223`:
+  - Rimosse le registrazioni delegate ridondanti `Enc_TopLeft_Label`, `Enc_TopRight_Label`, `Enc_BotLeft_Label`, `Enc_BotRight_Label` (già coperte da `SimRIG.Input.Enc_*_Label`) e `LeftWidgetPage`, `BottomLeftWidgetPage`, `BottomRightWidgetPage` (già coperte da `SimRIG.*WidgetPage`).
+  - Mantenute intatte le proprietà delegate richieste dal volante fisico: `PersoSteeringWheelMode`, `PersoSteeringWheelMessage`, `PersoSteeringWheelLiveBitePoint`.
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs:655-665`:
+  - Rimosse 35 proprietà morte non aggiornate create nel loop `for (int i = 1; i <= 7; i++)`: `SimRIG.Relative.R{i}_Pos`, `_Name`, `_Gap`, `_LastLap`, `_Class` (residui storici mai usati dopo lo split nei widget Left/Right).
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs:319, 424, 495, 500, 507, 509, 512, 1690, 1702, 1850-1865`:
+  - Eliminate duplicazioni matematiche al 100%:
+    * `SimRIG.Target.ProjectedStationaryTime` (duplicato esatto di `SimRIG.Target.EstimatedStationaryTime`)
+    * `SimRIG.Target.EstimatedFuelTank` (duplicato esatto di `SimRIG.Target.CurrentTank`)
+    * `SimRIG.Fuel.EstimatedPitWindow` (duplicato esatto di `SimRIG.Fuel.TankLapsRemaining`)
+    * `SimRIG.Target.EstimatedPitWindow` (duplicato esatto di `SimRIG.Target.TankLapsRemaining`)
+    * `SimRIG.Pit.SelectedTireTime` (duplicato esatto di `SimRIG.Tyres.SelectedTireTime`)
+    * `SimRIG.Session.PitLayoutMode` (duplicato esatto di `SimRIG.Pit.PitLayoutMode`)
+    * `SimRIG.Target.TargetMode` (duplicato esatto di `SimRIG.Target.Mode`)
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs:502, 505, 381, 388, 1711, 1855, 1860`:
+  - Risolta la sovrapposizione concettuale e ambiguità nei nomi:
+    * `SimRIG.Target.CalculatedStationaryTime` -> `SimRIG.Target.LastPitStationaryTime` (durata stop passata misurata vs stime future)
+    * `SimRIG.Target.EstimatedFuelAdded` -> `SimRIG.Target.LastPitFuelAdded` (carburante imbarcato nello stop appena concluso vs stime future)
+    * `SimRIG.Strategy.RemainingPitsPlayer` -> `SimRIG.Strategy.PlayerPitsRemaining` (uniformità con `Leader.PitsRemaining` e `Target.PitsRemaining`)
+    * `SimRIG.Strategy.IsPredictionValid` -> `SimRIG.Fuel.IsPredictionValid` (spostata sotto Fuel per distinguere la validità stime carburante da `SimRIG.Session.IsLapsPredictionValid`)
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs:338-355, 375-387, 1715-1735`:
+  - Consolidamento namespace Leader: accorpate tutte le metriche del Leader di gara sotto `SimRIG.Leader.*`:
+    * `Pace`, `PaceStr`, `AveragePace` (da `SimRIG.Strategy.Leader*`)
+    * `StintLaps`, `PitsRemaining`, `PitLossTime`, `DataSource` (da `SimRIG.Strategy.Leader*`)
+    * `RaceTotalLaps`, `RaceLapsCompleted`, `RaceLapsRemaining`, `ProjectedPosAtCheckered`, `TrackPct` (da `SimRIG.Session.Leader*`)
+- Build e test:
+  - Soluzione compilata con successo (0 errori, MSBuild VS2022).
+  - Test runner: **360 PASS (100% success)**.
+
+### Come verificare
+```bash
+& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build 0 errori, 360 test PASS (100%), exit code 0.
+
+### Stato
+- ✅ Compila senza errori
+- ✅ Test passano (360 PASS, 100%)
+
+### Per chi entra
+**Prossimo passo:** Procedere con la roadmap delle feature successive concordate con Andreas.
+**NON toccare:** `Hardware/` (territorio di Andreas).
+**Attenzione a:** Se si configurano nuove dashboard SimHub, fare riferimento alle proprietà unificate sotto `SimRIG.Leader.*` e ai nuovi nomi non ambigui (`LastPitStationaryTime`, `LastPitFuelAdded`, `PlayerPitsRemaining`, `SimRIG.Fuel.IsPredictionValid`).
+
+---
+
 ## [2026-09-11 22:50] antigravity → chiunque entri dopo
 
 **Task:** Congelamento (latch) del ProjectedMergeGap durante la fase attiva di pit stop di Target e Player
@@ -103,6 +159,8 @@ Atteso: build 0 errori, 360 test PASS (100%), exit code 0.
 
 ---
 
+---
+
 ## [2026-09-11 15:35] antigravity -> chiunque entri dopo
 
 **Task:** Risoluzione FuelFillRate errato (20L hardcoded Splash&Dash) e distorsione ClassBestExtendedPitZoneTime (outlier 10.4s)
@@ -144,6 +202,8 @@ Atteso: build pulita (0 errori) e test runner console a **359 PASS (100%)**.
 
 ---
 
+
+---
 
 ---
 
@@ -194,6 +254,8 @@ Atteso: build pulita (0 errori) e test runner console a **357 PASS (100%)**.
 
 ---
 
+---
+
 ## [2026-09-11 13:35] antigravity → chiunque entri dopo
 
 **Task:** Risoluzione falsi stop su auto culled in NotInWorld e correzione classificazione gomme in soste simultanee
@@ -239,6 +301,8 @@ Atteso: build pulita (0 errori) e test runner console a **354 PASS (100%)**.
 
 ---
 
+---
+
 ## [2026-09-11 12:35] antigravity → chiunque entri dopo
 
 **Task:** Fix deduzione StationaryTime avversari in NotInWorld e protezione da falsi trigger box sul rettilineo
@@ -278,6 +342,8 @@ Atteso: build pulita (0 errori) e test runner console a **353 PASS (100%)**.
 
 ---
 
+
+---
 
 ---
 
@@ -334,6 +400,8 @@ Atteso: build pulita (0 errori) e test runner console a **352 PASS (100%)**.
 
 ---
 
+---
+
 ## [2026-09-10 16:05] antigravity → chiunque entri dopo
 
 **Task:** Prioritizzazione telemetria nativa CarIdxLapDistPct su SimHub opponent position e salvaguardia target lock su replay jump
@@ -386,6 +454,8 @@ Atteso: 347 PASS (100%).
 
 ---
 
+---
+
 ## [2026-09-10 15:10] antigravity → chiunque entri dopo
 
 **Task:** Fallback rilevamento InPitStall per avversario fermo su pit road (Punto 1 dell'analisi Road Atlanta)
@@ -428,6 +498,8 @@ Atteso: 345 PASS (100%).
 
 ---
 
+---
+
 ## [2026-09-10 12:10] antigravity → chiunque entri dopo
 
 **Task:** Formattazione diagnostica e log completi di superficie e pit per Player e Target
@@ -467,48 +539,3 @@ Atteso: 0 errori di compilazione, DLL copiata in SimHub, **343 PASS (100%)**.
 
 
 ---
-
-## [2026-09-10 11:35] antigravity → chiunque entri dopo
-
-**Task:** Esposizione proprietà SimHub TrackPositionPercent per Player e Target
-**Piano:** —
-**Commit:** `7bccd62`
-
-### Fatto
-- `User.PluginSdkDemoEdit/OpponentTracker.cs:601-604`:
-  - Aggiunto aggiornamento di `PlayerData.NativeLapDistPct` (tramite `IracingBridge.GetLapDistPct(state.PlayerCarIdx)`) e `PlayerData.LastPosPct` con fallback trasparente su `state.TrackPositionPercent` se nativo assente o non valido.
-- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:82, 497, 743, 1739`:
-  - Aggiunta proprietà `TrackPositionPercent` a `TargetState` (default `0.0`).
-  - Sincronizzata in `TargetStrategyManager.SelectTarget` e nel loop periodico di `Update`: legge prioritariamente `oppData.NativeLapDistPct` a 60Hz se `> 0.0f`, ricadendo su `targetOpp.TrackPositionPercent ?? oppData.LastPosPct`.
-  - Resettata a `0.0` in `SetNoTarget()`.
-- `User.PluginSdkDemoEdit/DataPluginDemo.cs:448, 593, 1814, 2032`:
-  - Registrate e pubblicate le proprietà SimHub:
-    - `SimRIG.Target.TrackPositionPercent` (double, arrotondato a 4 decimali)
-    - `SimRIG.Player.TrackPositionPercent` (double, arrotondato a 4 decimali)
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs:368, 382-425`:
-  - Esteso `Test_TargetState_TrackSurface_Properties` per verificare il reset e l'assegnazione di `TrackPositionPercent`.
-  - Aggiunto nuovo unit test `Test_PlayerAndTarget_TrackPositionPercent_Properties`: valida che `PlayerData.LastPosPct` utilizzi `NativeLapDistPct` quando disponibile o ripieghi su `state.TrackPositionPercent`, e che `TargetState.TrackPositionPercent` sincronizzi fedelmente la posizione.
-  - Suite test: passata da 342 a **343 test PASS** (100% verdi, 0 falliti).
-
-### Come verificare
-```bash
-"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/User.PluginSdkDemo.Tests.csproj" -p:Configuration=Debug -p:PostBuildEvent="" -v:minimal -nologo
-"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: build 0 errori, 343 PASS, exit code 0.
-
-### Stato
-- ✅ Compila senza errori
-- ✅ 343 test passano (100%)
-
-### Per chi entra
-**Prossimo passo:** Test su cruscotto/dashboard con replay aperto per visualizzare `SimRIG.Player.TrackPositionPercent` e `SimRIG.Target.TrackPositionPercent` affiancate alle proprietà `TrackSurface`. Successivamente procedere con il collegamento delle proprietà alle logiche strategiche (Merge Gap, posizione rispetto a PitEntryPct/PitExitPct).
-**NON toccare:** `Hardware/` (territorio di Andreas).
-**Attenzione a:** Se SimHub è aperto in background, compilare con `-p:PostBuildEvent=""` per evitare errori di condivisione file (`Sharing violation` su `User.PluginSdkDemo.dll` lockata da SimHub).
-
----
-
----
-
----
-

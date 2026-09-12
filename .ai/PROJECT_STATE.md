@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      antigravity
-since:      2026-09-12 12:30
-task:       Pulizia e consolidamento proprietà SimHub esposte in DataPluginDemo.cs
-scope:      User.PluginSdkDemoEdit/DataPluginDemo.cs, User.PluginSdkDemoEdit/TargetStrategyManager.cs
-expires:    2026-09-12 14:30
+owner:      NONE
+since:      null
+task:       null
+scope:      null
+expires:    null
 ```
 
 **Regole del lock**

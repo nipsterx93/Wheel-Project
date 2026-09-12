@@ -9,6 +9,52 @@
 
 ---
 
+## [2026-09-10 11:35] antigravity → chiunque entri dopo
+
+**Task:** Esposizione proprietà SimHub TrackPositionPercent per Player e Target
+**Piano:** —
+**Commit:** `7bccd62`
+
+### Fatto
+- `User.PluginSdkDemoEdit/OpponentTracker.cs:601-604`:
+  - Aggiunto aggiornamento di `PlayerData.NativeLapDistPct` (tramite `IracingBridge.GetLapDistPct(state.PlayerCarIdx)`) e `PlayerData.LastPosPct` con fallback trasparente su `state.TrackPositionPercent` se nativo assente o non valido.
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:82, 497, 743, 1739`:
+  - Aggiunta proprietà `TrackPositionPercent` a `TargetState` (default `0.0`).
+  - Sincronizzata in `TargetStrategyManager.SelectTarget` e nel loop periodico di `Update`: legge prioritariamente `oppData.NativeLapDistPct` a 60Hz se `> 0.0f`, ricadendo su `targetOpp.TrackPositionPercent ?? oppData.LastPosPct`.
+  - Resettata a `0.0` in `SetNoTarget()`.
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs:448, 593, 1814, 2032`:
+  - Registrate e pubblicate le proprietà SimHub:
+    - `SimRIG.Target.TrackPositionPercent` (double, arrotondato a 4 decimali)
+    - `SimRIG.Player.TrackPositionPercent` (double, arrotondato a 4 decimali)
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs:368, 382-425`:
+  - Esteso `Test_TargetState_TrackSurface_Properties` per verificare il reset e l'assegnazione di `TrackPositionPercent`.
+  - Aggiunto nuovo unit test `Test_PlayerAndTarget_TrackPositionPercent_Properties`: valida che `PlayerData.LastPosPct` utilizzi `NativeLapDistPct` quando disponibile o ripieghi su `state.TrackPositionPercent`, e che `TargetState.TrackPositionPercent` sincronizzi fedelmente la posizione.
+  - Suite test: passata da 342 a **343 test PASS** (100% verdi, 0 falliti).
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/User.PluginSdkDemo.Tests.csproj" -p:Configuration=Debug -p:PostBuildEvent="" -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build 0 errori, 343 PASS, exit code 0.
+
+### Stato
+- ✅ Compila senza errori
+- ✅ 343 test passano (100%)
+
+### Per chi entra
+**Prossimo passo:** Test su cruscotto/dashboard con replay aperto per visualizzare `SimRIG.Player.TrackPositionPercent` e `SimRIG.Target.TrackPositionPercent` affiancate alle proprietà `TrackSurface`. Successivamente procedere con il collegamento delle proprietà alle logiche strategiche (Merge Gap, posizione rispetto a PitEntryPct/PitExitPct).
+**NON toccare:** `Hardware/` (territorio di Andreas).
+**Attenzione a:** Se SimHub è aperto in background, compilare con `-p:PostBuildEvent=""` per evitare errori di condivisione file (`Sharing violation` su `User.PluginSdkDemo.dll` lockata da SimHub).
+
+---
+
+---
+
+---
+
+---
+
 ## [2026-09-09 23:35] antigravity → chiunque entri dopo
 
 **Task:** Esposizione proprietà SimHub TrackSurface / IsInPitStall / IsOnPitRoad per Player e Target e fallback per replay array
