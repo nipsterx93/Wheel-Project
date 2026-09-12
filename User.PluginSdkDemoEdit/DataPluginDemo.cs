@@ -214,13 +214,6 @@ namespace SimRIG
             this.AttachDelegate("PersoSteeringWheelMode", () => _steeringWheelMode);
             this.AttachDelegate("PersoSteeringWheelMessage", () => _steeringWheelMessage);
             this.AttachDelegate("PersoSteeringWheelLiveBitePoint", () => _liveBitePoint);
-            this.AttachDelegate("Enc_TopLeft_Label", () => _encoderLabels[0]);
-            this.AttachDelegate("Enc_TopRight_Label", () => _encoderLabels[1]);
-            this.AttachDelegate("Enc_BotLeft_Label", () => _encoderLabels[2]);
-            this.AttachDelegate("Enc_BotRight_Label", () => _encoderLabels[3]);
-            this.AttachDelegate("LeftWidgetPage", () => _leftWidgetPage);
-            this.AttachDelegate("BottomLeftWidgetPage", () => _bottomLeftWidgetPage);
-            this.AttachDelegate("BottomRightWidgetPage", () => _bottomRightWidgetPage);
 
             pluginManager.AddAction("LeftWidget_NextPage", this.GetType(), (a, b) => {
                 _leftWidgetPage = (_leftWidgetPage + 1) % 2;
@@ -323,7 +316,6 @@ namespace SimRIG
             pm.AddProperty("SimRIG.Fuel.ActionMessage", t, "");
             pm.AddProperty("SimRIG.Fuel.FuelToAdd", t, 0.0);
             pm.AddProperty("SimRIG.Fuel.TankLapsRemaining", t, 0.0);
-            pm.AddProperty("SimRIG.Fuel.EstimatedPitWindow", t, 0.0);
             pm.AddProperty("SimRIG.Fuel.EstimatedPitWindowTargetLap", t, 0.0);
             pm.AddProperty("SimRIG.Fuel.PitRequiredNumber", t, 0.0);
             // Y-1: consumo per giro necessario ad arrivare in fondo senza un'altra sosta.
@@ -341,22 +333,32 @@ namespace SimRIG
             pm.AddProperty("SimRIG.Fuel.TargetEnabled", t, false);
             pm.AddProperty("SimRIG.Fuel.SyncEnabled", t, false);
             pm.AddProperty("SimRIG.Fuel.RaceStartingFuel", t, 0.0);
+            pm.AddProperty("SimRIG.Fuel.IsPredictionValid", t, false);
 
-            pm.AddProperty("SimRIG.Session.LeaderRaceTotalLaps", t, 0.0);
-            pm.AddProperty("SimRIG.Session.LeaderRaceLapsCompleted", t, 0);
-            pm.AddProperty("SimRIG.Session.LeaderRaceLapsRemaining", t, 0.0);
+            // Leader
+            pm.AddProperty("SimRIG.Leader.Pace", t, 0.0);
+            pm.AddProperty("SimRIG.Leader.PaceStr", t, "00:00.000");
+            pm.AddProperty("SimRIG.Leader.AveragePace", t, 0.0);
+            pm.AddProperty("SimRIG.Leader.StintLaps", t, 0.0);
+            pm.AddProperty("SimRIG.Leader.PitsRemaining", t, 0.0);
+            pm.AddProperty("SimRIG.Leader.PitLossTime", t, 0.0);
+            pm.AddProperty("SimRIG.Leader.DataSource", t, "NONE");
+            pm.AddProperty("SimRIG.Leader.RaceTotalLaps", t, 0.0);
+            pm.AddProperty("SimRIG.Leader.RaceLapsCompleted", t, 0);
+            pm.AddProperty("SimRIG.Leader.RaceLapsRemaining", t, 0.0);
+            pm.AddProperty("SimRIG.Leader.ProjectedPosAtCheckered", t, 0.0);
+            pm.AddProperty("SimRIG.Leader.TrackPct", t, 0.0);
+
+            // Session
             pm.AddProperty("SimRIG.Session.RaceTotalLaps", t, 0.0);
             // Dove sara' il Player quando esce la bandiera, col decimale (es. 34.80). La parte
             // decimale dice quanto manca a essere costretti a un giro in piu'.
             pm.AddProperty("SimRIG.Session.ProjectedPosAtCheckered", t, 0.0);
-            // Dove sara' il LEADER ASSOLUTO quando scade il cronometro, col decimale (es. 38.85).
-            pm.AddProperty("SimRIG.Session.LeaderProjectedPosAtCheckered", t, 0.0);
             // Punto 4: chi decide il momento della bandiera, e dove sara' allo scadere.
             pm.AddProperty("SimRIG.Session.FlagLeaderName", t, "");
             pm.AddProperty("SimRIG.Session.FlagLeaderProjectedPos", t, 0.0);
             // Posizione grezza del leader adesso, e la fotografia allo scadere del cronometro:
             // e' la verita' di terreno contro cui si verifica la proiezione (vedi RaceAnalyzer).
-            pm.AddProperty("SimRIG.Session.LeaderTrackPct", t, 0.0);
             pm.AddProperty("SimRIG.Session.LeaderPosAtExpiry", t, -1.0);
             pm.AddProperty("SimRIG.Session.LeaderTrackPctAtExpiry", t, -1.0);
             pm.AddProperty("SimRIG.Session.LeaderNameAtExpiry", t, "");
@@ -378,19 +380,11 @@ namespace SimRIG
             pm.AddProperty("SimRIG.Session.PitLaneSpeedLimitKnown", t, false);
             pm.AddProperty("SimRIG.Session.IsLapsPredictionValid", t, false);
 
-            pm.AddProperty("SimRIG.Strategy.IsPredictionValid", t, false);
-            pm.AddProperty("SimRIG.Strategy.LeaderPaceStr", t, "00:00.000");
-            pm.AddProperty("SimRIG.Strategy.LeaderPace", t, 0.0);
+            // Strategy
             pm.AddProperty("SimRIG.Strategy.Mode", t, "MANUAL");
             pm.AddProperty("SimRIG.Strategy.FuelCalculatorEnabled", t, Settings.EnableFuelCalculatorSystem);
             pm.AddProperty("SimRIG.Strategy.AutoPitEnabled", t, Settings.EnableAutoPitStrategy);
-
-            pm.AddProperty("SimRIG.Strategy.RemainingPitsPlayer", t, 0.0);
-            pm.AddProperty("SimRIG.Strategy.RemainingPitsLeader", t, 0.0);
-            pm.AddProperty("SimRIG.Strategy.LeaderStintLaps", t, 0.0);
-            pm.AddProperty("SimRIG.Strategy.LeaderAveragePace", t, 0.0);
-            pm.AddProperty("SimRIG.Strategy.LeaderDataSource", t, "NONE");
-            pm.AddProperty("SimRIG.Strategy.LeaderPitLossTime", t, 0.0);
+            pm.AddProperty("SimRIG.Strategy.PlayerPitsRemaining", t, 0.0);
 
             pm.AddProperty("SimRIG.Driver.NormalizedRaceStartPace", t, 0.0);
             pm.AddProperty("SimRIG.Driver.NormalizedRaceStartPaceStr", t, "00:00.000");
@@ -427,7 +421,6 @@ namespace SimRIG
             pm.AddProperty("SimRIG.Tyres.SelectedTireTime", t, 0.0);
             pm.AddProperty("SimRIG.Tyres.SelectedTireTimeStr", t, "0.0s");
             pm.AddProperty("SimRIG.Tyres.ActionMessage", t, "");
-            pm.AddProperty("SimRIG.Pit.SelectedTireTime", t, 0.0);
             pm.AddProperty("SimRIG.Pressure.UserOffset", t, 0.0);
             pm.AddProperty("SimRIG.Pressure.UserOffsetStr", t, "+0.00 bar");
             pm.AddProperty("SimRIG.Pressure.OffsetKpa", t, 0);
@@ -499,24 +492,19 @@ namespace SimRIG
             pm.AddProperty("SimRIG.Target.ProjectedMergeGap", t, 0.0);
             pm.AddProperty("SimRIG.Target.IsMergeGapLatched", t, false);
             pm.AddProperty("SimRIG.Target.TrafficAlert", t, false);
-            pm.AddProperty("SimRIG.Target.TargetMode", t, "UNKNOWN");
             pm.AddProperty("SimRIG.Target.CurrentTank", t, 0.0);
             pm.AddProperty("SimRIG.Target.TankLapsRemaining", t, 0.0);
             pm.AddProperty("SimRIG.Target.SpeedDrop", t, 0.0);
             pm.AddProperty("SimRIG.Target.CurrentMicrosector", t, 0);
-            pm.AddProperty("SimRIG.Target.ProjectedStationaryTime", t, 0.0);
             pm.AddProperty("SimRIG.Target.PitCount", t, 0);
-            pm.AddProperty("SimRIG.Target.CalculatedStationaryTime", t, 0.0);
+            pm.AddProperty("SimRIG.Target.LastPitStationaryTime", t, 0.0);
             pm.AddProperty("SimRIG.Target.InOutPitAccDecTime", t, 0.0);
             pm.AddProperty("SimRIG.Target.EstimatedFuelToAdd", t, 0.0);
-            pm.AddProperty("SimRIG.Target.EstimatedFuelAdded", t, 0.0);
+            pm.AddProperty("SimRIG.Target.LastPitFuelAdded", t, 0.0);
             pm.AddProperty("SimRIG.Target.EstimatedStationaryTime", t, 0.0);
-            pm.AddProperty("SimRIG.Target.EstimatedFuelTank", t, 0.0);
             pm.AddProperty("SimRIG.Target.LapCount", t, 0);
-            pm.AddProperty("SimRIG.Target.EstimatedPitWindow", t, 0.0);
             pm.AddProperty("SimRIG.Target.EstimatedPitWindowTargetLap", t, 0.0);
             pm.AddProperty("SimRIG.Session.ClassRaceStartingFuel", t, 0.0);
-            pm.AddProperty("SimRIG.Session.PitLayoutMode", t, "CALIBRATING");
             pm.AddProperty("SimRIG.Session.IsTrackWet", t, false);
             pm.AddProperty("SimRIG.Session.TrackWetnessLevel", t, 0);
             pm.AddProperty("SimRIG.Session.WindSpeed", t, 0.0);
@@ -664,15 +652,9 @@ namespace SimRIG
             pm.AddProperty("SimRIG.Right.Overall.HeaderStr", t, "OVERALL LEADERBOARD");
             pm.AddProperty("SimRIG.Right.Relative.HeaderStr", t, "RELATIVE LEADERBOARD");
 
-            // Relative (R1 to R7)
+            // Widget Leaderboards (1 to 7)
             for (int i = 1; i <= 7; i++)
             {
-                pm.AddProperty("SimRIG.Relative.R" + i + "_Pos", t, "--");
-                pm.AddProperty("SimRIG.Relative.R" + i + "_Name", t, "---");
-                pm.AddProperty("SimRIG.Relative.R" + i + "_Gap", t, "---");
-                pm.AddProperty("SimRIG.Relative.R" + i + "_LastLap", t, "--:--.---");
-                pm.AddProperty("SimRIG.Relative.R" + i + "_Class", t, "");
-
                 // Left Widget Leaderboards
                 pm.AddProperty("SimRIG.Left.Class.C" + i + "_Pos", t, "P" + i);
                 pm.AddProperty("SimRIG.Left.Class.C" + i + "_Name", t, "---");
@@ -1706,7 +1688,6 @@ namespace SimRIG
             PluginManager.SetPropertyValue("SimRIG.Fuel.FuelDelta", t, Math.Round(FuelManager.Calculations.FuelDelta, 2));
             PluginManager.SetPropertyValue("SimRIG.Fuel.TankLapsRemaining", t, Math.Round(FuelManager.Calculations.TankLapsRemaining, 2));
             double playerPitWindowTargetLap = CurrentState.CurrentLap + FuelManager.Calculations.TankLapsRemaining;
-            PluginManager.SetPropertyValue("SimRIG.Fuel.EstimatedPitWindow", t, Math.Round(FuelManager.Calculations.TankLapsRemaining, 1));
             PluginManager.SetPropertyValue("SimRIG.Fuel.EstimatedPitWindowTargetLap", t, Math.Round(playerPitWindowTargetLap, 1));
             PluginManager.SetPropertyValue("SimRIG.Fuel.CurrentTankLevel", t, Math.Round(CurrentState.CurrentFuelLevel, 2));
             PluginManager.SetPropertyValue("SimRIG.Fuel.TargetFuel", t, FuelManager.Calculations.FuelPerLapTarget);
@@ -1715,11 +1696,11 @@ namespace SimRIG
             PluginManager.SetPropertyValue("SimRIG.Fuel.RaceStartingFuel", t, Math.Round(CurrentState.RaceStartingFuel, 2));
             PluginManager.SetPropertyValue("SimRIG.Fuel.HistoricalPerLap", t, Math.Round(FuelManager.Calculations.AverageFuelPerLap, 2));
             PluginManager.SetPropertyValue("SimRIG.Fuel.LastLapFuelUsed", t, Math.Round(FuelManager.Calculations.LastLapFuelUsed, 2));
+            PluginManager.SetPropertyValue("SimRIG.Fuel.IsPredictionValid", t, FuelManager.Calculations.IsPredictionValid);
 
             PluginManager.SetPropertyValue("SimRIG.Tyres.SelectionScope", t, GetTyreScopeLabel());
             PluginManager.SetPropertyValue("SimRIG.Tyres.SelectedTireTime", t, TyreManager.GetSelectedTireTime(CurrentState.CarClassId));
             PluginManager.SetPropertyValue("SimRIG.Tyres.SelectedTireTimeStr", t, $"{TyreManager.GetSelectedTireTime(CurrentState.CarClassId):F1}s");
-            PluginManager.SetPropertyValue("SimRIG.Pit.SelectedTireTime", t, TyreManager.GetSelectedTireTime(CurrentState.CarClassId));
             PluginManager.SetPropertyValue("SimRIG.Tyres.ActionMessage", t, _msgTR);
             PluginManager.SetPropertyValue("SimRIG.Pressure.UserOffset", t, TyreManager.UserPressureOffset);
             PluginManager.SetPropertyValue("SimRIG.Pressure.UserOffsetStr", t, TyreManager.GetPressureLabel());
@@ -1732,26 +1713,27 @@ namespace SimRIG
             PluginManager.SetPropertyValue("SimRIG.Strategy.Mode", t, GetPitStratLabel());
             PluginManager.SetPropertyValue("SimRIG.Strategy.FuelCalculatorEnabled", t, Settings.EnableFuelCalculatorSystem);
             PluginManager.SetPropertyValue("SimRIG.Strategy.AutoPitEnabled", t, Settings.EnableAutoPitStrategy && Settings.EnableFuelCalculatorSystem);
-            PluginManager.SetPropertyValue("SimRIG.Strategy.IsPredictionValid", t, FuelManager.Calculations.IsPredictionValid);
-            PluginManager.SetPropertyValue("SimRIG.Strategy.LeaderPace", t, Math.Round(RaceAnalyzer.Results.LeaderEstimatedPace, 3));
-            PluginManager.SetPropertyValue("SimRIG.Strategy.LeaderPaceStr", t, FormatTime(RaceAnalyzer.Results.LeaderEstimatedPace));
+            PluginManager.SetPropertyValue("SimRIG.Strategy.PlayerPitsRemaining", t, Math.Round(RaceAnalyzer.Results.RemainingPitsPlayer, 2));
 
-            PluginManager.SetPropertyValue("SimRIG.Strategy.RemainingPitsPlayer", t, Math.Round(RaceAnalyzer.Results.RemainingPitsPlayer, 2));
-            PluginManager.SetPropertyValue("SimRIG.Strategy.RemainingPitsLeader", t, Math.Round(RaceAnalyzer.Results.RemainingPitsLeader, 2));
-            PluginManager.SetPropertyValue("SimRIG.Strategy.LeaderStintLaps", t, Math.Round(RaceAnalyzer.Results.LeaderStintLaps, 1));
-            PluginManager.SetPropertyValue("SimRIG.Strategy.LeaderAveragePace", t, Math.Round(RaceAnalyzer.Results.LeaderAveragePace, 3));
-            PluginManager.SetPropertyValue("SimRIG.Strategy.LeaderDataSource", t, RaceAnalyzer.Results.LeaderDataSource);
-            PluginManager.SetPropertyValue("SimRIG.Strategy.LeaderPitLossTime", t, Math.Round(RaceAnalyzer.Results.LeaderPitLossTime, 1));
+            // Leader
+            PluginManager.SetPropertyValue("SimRIG.Leader.Pace", t, Math.Round(RaceAnalyzer.Results.LeaderEstimatedPace, 3));
+            PluginManager.SetPropertyValue("SimRIG.Leader.PaceStr", t, FormatTime(RaceAnalyzer.Results.LeaderEstimatedPace));
+            PluginManager.SetPropertyValue("SimRIG.Leader.AveragePace", t, Math.Round(RaceAnalyzer.Results.LeaderAveragePace, 3));
+            PluginManager.SetPropertyValue("SimRIG.Leader.StintLaps", t, Math.Round(RaceAnalyzer.Results.LeaderStintLaps, 1));
+            PluginManager.SetPropertyValue("SimRIG.Leader.PitsRemaining", t, Math.Round(RaceAnalyzer.Results.RemainingPitsLeader, 2));
+            PluginManager.SetPropertyValue("SimRIG.Leader.PitLossTime", t, Math.Round(RaceAnalyzer.Results.LeaderPitLossTime, 1));
+            PluginManager.SetPropertyValue("SimRIG.Leader.DataSource", t, RaceAnalyzer.Results.LeaderDataSource);
+            PluginManager.SetPropertyValue("SimRIG.Leader.RaceTotalLaps", t, RaceAnalyzer.Results.LeaderRaceTotalLaps);
+            PluginManager.SetPropertyValue("SimRIG.Leader.RaceLapsCompleted", t, RaceAnalyzer.Results.LeaderRaceLapsCompleted);
+            PluginManager.SetPropertyValue("SimRIG.Leader.RaceLapsRemaining", t, RaceAnalyzer.Results.LeaderRaceLapsRemaining);
+            PluginManager.SetPropertyValue("SimRIG.Leader.ProjectedPosAtCheckered", t, Math.Round(RaceAnalyzer.Results.LeaderProjectedPosAtCheckered, 2));
+            PluginManager.SetPropertyValue("SimRIG.Leader.TrackPct", t, Math.Round(RaceAnalyzer.Results.LeaderTrackPct, 4));
 
-            PluginManager.SetPropertyValue("SimRIG.Session.LeaderRaceTotalLaps", t, RaceAnalyzer.Results.LeaderRaceTotalLaps);
-            PluginManager.SetPropertyValue("SimRIG.Session.LeaderRaceLapsCompleted", t, RaceAnalyzer.Results.LeaderRaceLapsCompleted);
-            PluginManager.SetPropertyValue("SimRIG.Session.LeaderRaceLapsRemaining", t, RaceAnalyzer.Results.LeaderRaceLapsRemaining);
+            // Session
             PluginManager.SetPropertyValue("SimRIG.Session.RaceTotalLaps", t, RaceAnalyzer.Results.RaceTotalLaps);
             PluginManager.SetPropertyValue("SimRIG.Session.ProjectedPosAtCheckered", t, Math.Round(RaceAnalyzer.Results.ProjectedPosAtCheckered, 2));
-            PluginManager.SetPropertyValue("SimRIG.Session.LeaderProjectedPosAtCheckered", t, Math.Round(RaceAnalyzer.Results.LeaderProjectedPosAtCheckered, 2));
             PluginManager.SetPropertyValue("SimRIG.Session.FlagLeaderName", t, RaceAnalyzer.Results.FlagLeaderName);
             PluginManager.SetPropertyValue("SimRIG.Session.FlagLeaderProjectedPos", t, Math.Round(RaceAnalyzer.Results.FlagLeaderProjectedPos, 2));
-            PluginManager.SetPropertyValue("SimRIG.Session.LeaderTrackPct", t, Math.Round(RaceAnalyzer.Results.LeaderTrackPct, 4));
             PluginManager.SetPropertyValue("SimRIG.Session.LeaderPosAtExpiry", t, Math.Round(RaceAnalyzer.Results.LeaderPosAtExpiry, 3));
             PluginManager.SetPropertyValue("SimRIG.Session.LeaderTrackPctAtExpiry", t, Math.Round(RaceAnalyzer.Results.LeaderTrackPctAtExpiry, 4));
             PluginManager.SetPropertyValue("SimRIG.Session.LeaderNameAtExpiry", t, RaceAnalyzer.Results.LeaderNameAtExpiry);
@@ -1866,24 +1848,19 @@ namespace SimRIG
             PluginManager.SetPropertyValue("SimRIG.Target.ProjectedMergeGap", t, Math.Round(tgt.ProjectedMergeGap, 2));
             PluginManager.SetPropertyValue("SimRIG.Target.IsMergeGapLatched", t, tgt.IsMergeGapLatched);
             PluginManager.SetPropertyValue("SimRIG.Target.TrafficAlert", t, tgt.TrafficAlert);
-            PluginManager.SetPropertyValue("SimRIG.Target.TargetMode", t, tgt.TargetMode);
             PluginManager.SetPropertyValue("SimRIG.Target.CurrentTank", t, Math.Round(tgt.CurrentTank, 2));
             PluginManager.SetPropertyValue("SimRIG.Target.TankLapsRemaining", t, Math.Round(tgt.TankLapsRemaining, 1));
             PluginManager.SetPropertyValue("SimRIG.Target.SpeedDrop", t, Math.Round(tgt.SpeedDrop, 1));
             PluginManager.SetPropertyValue("SimRIG.Target.CurrentMicrosector", t, tgt.CurrentMicrosector);
-            PluginManager.SetPropertyValue("SimRIG.Target.ProjectedStationaryTime", t, Math.Round(tgt.ProjectedStationaryTime, 1));
             PluginManager.SetPropertyValue("SimRIG.Target.PitCount", t, tgt.PitCount);
-            PluginManager.SetPropertyValue("SimRIG.Target.CalculatedStationaryTime", t, Math.Round(tgt.CalculatedStationaryTime, 1));
+            PluginManager.SetPropertyValue("SimRIG.Target.LastPitStationaryTime", t, Math.Round(tgt.CalculatedStationaryTime, 1));
             PluginManager.SetPropertyValue("SimRIG.Target.InOutPitAccDecTime", t, Math.Round(tgt.InOutPitAccDecTime, 2));
             PluginManager.SetPropertyValue("SimRIG.Target.EstimatedFuelToAdd", t, Math.Round(tgt.EstimatedFuelToAdd, 2));
-            PluginManager.SetPropertyValue("SimRIG.Target.EstimatedFuelAdded", t, Math.Round(tgt.EstimatedFuelAdded, 2));
+            PluginManager.SetPropertyValue("SimRIG.Target.LastPitFuelAdded", t, Math.Round(tgt.EstimatedFuelAdded, 2));
             PluginManager.SetPropertyValue("SimRIG.Target.EstimatedStationaryTime", t, Math.Round(tgt.EstimatedStationaryTime, 1));
-            PluginManager.SetPropertyValue("SimRIG.Target.EstimatedFuelTank", t, Math.Round(tgt.EstimatedFuelTank, 2));
             PluginManager.SetPropertyValue("SimRIG.Target.LapCount", t, tgt.LapCount);
-            PluginManager.SetPropertyValue("SimRIG.Target.EstimatedPitWindow", t, Math.Round(tgt.EstimatedPitWindow, 1));
             PluginManager.SetPropertyValue("SimRIG.Target.EstimatedPitWindowTargetLap", t, Math.Round(tgt.EstimatedPitWindowTargetLap, 1));
             PluginManager.SetPropertyValue("SimRIG.Session.ClassRaceStartingFuel", t, Math.Round(OpponentTracker.ClassRaceStartingFuel, 2));
-            PluginManager.SetPropertyValue("SimRIG.Session.PitLayoutMode", t, PitRadar.PitLayoutMode);
 
             PluginManager.SetPropertyValue("SimRIG.Session.IsTrackWet", t, CurrentState.IsTrackWet);
             PluginManager.SetPropertyValue("SimRIG.Session.TrackWetnessLevel", t, CurrentState.TrackWetnessLevel);
