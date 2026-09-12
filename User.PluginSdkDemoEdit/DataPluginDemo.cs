@@ -95,6 +95,7 @@ namespace SimRIG
         public bool IsLedsConnected => HardwareManager != null && HardwareManager.IsLedsConnected;
         public string InputPortName => HardwareManager?.InputPortName ?? "N/A";
         public string LedsPortName => HardwareManager?.LedsPortName ?? "N/A";
+        public double LiveBitePoint => _liveBitePoint;
         public double PersoSteeringWheelLiveBitePoint => _liveBitePoint;
 
         public ImageSource PictureIcon => null;
@@ -306,6 +307,10 @@ namespace SimRIG
         private void RegisterSimHubProperties(PluginManager pm)
         {
             Type t = this.GetType();
+            pm.AddProperty("SimRIG.Hardware.WheelMode", t, "NORMAL");
+            pm.AddProperty("SimRIG.Hardware.WheelMessage", t, "READY");
+            pm.AddProperty("SimRIG.Hardware.LiveBitePoint", t, 50.0);
+
             pm.AddProperty("SimRIG.Input.TopLeftEncoder", t, "");
             pm.AddProperty("SimRIG.Input.TopRightEncoder", t, "");
             pm.AddProperty("SimRIG.Input.BottomLeftEncoder", t, "");
@@ -714,14 +719,22 @@ namespace SimRIG
             if (e.CommandType == "MODE")
             {
                 _steeringWheelMode = e.RawValue;
+                PluginManager.SetPropertyValue("SimRIG.Hardware.WheelMode", this.GetType(), _steeringWheelMode);
                 PluginManager.SetPropertyValue("SimRIG.Mode", this.GetType(), _steeringWheelMode);
                 UpdateSimHubProperties();
             }
-            else if (e.CommandType == "MSG") _steeringWheelMessage = e.RawValue;
+            else if (e.CommandType == "MSG")
+            {
+                _steeringWheelMessage = e.RawValue;
+                PluginManager.SetPropertyValue("SimRIG.Hardware.WheelMessage", this.GetType(), _steeringWheelMessage);
+            }
             else if (e.CommandType == "VAL")
             {
                 if (double.TryParse(e.RawValue, NumberStyles.Any, CultureInfo.InvariantCulture, out double val))
+                {
                     _liveBitePoint = val;
+                    PluginManager.SetPropertyValue("SimRIG.Hardware.LiveBitePoint", this.GetType(), _liveBitePoint);
+                }
             }
             else if (e.CommandType == "IDX")
             {
@@ -1661,6 +1674,10 @@ namespace SimRIG
         public void UpdateSimHubProperties()
         {
             Type t = this.GetType();
+
+            PluginManager.SetPropertyValue("SimRIG.Hardware.WheelMode", t, _steeringWheelMode);
+            PluginManager.SetPropertyValue("SimRIG.Hardware.WheelMessage", t, _steeringWheelMessage);
+            PluginManager.SetPropertyValue("SimRIG.Hardware.LiveBitePoint", t, _liveBitePoint);
 
             PluginManager.SetPropertyValue("SimRIG.Input.TopLeftEncoder", t, GetEncoderActionLabel(0));
             PluginManager.SetPropertyValue("SimRIG.Input.TopRightEncoder", t, GetEncoderActionLabel(1));

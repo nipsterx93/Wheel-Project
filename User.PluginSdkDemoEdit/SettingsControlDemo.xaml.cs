@@ -1794,7 +1794,7 @@ namespace SimRIG
 
 
 
-            TxtBitePoint.Text = $"{Plugin.PersoSteeringWheelLiveBitePoint:F1}%";
+            TxtBitePoint.Text = $"{Plugin.LiveBitePoint:F1}%";
 
         }
 
