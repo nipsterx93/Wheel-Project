@@ -47,13 +47,51 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
----
+## [2026-09-12 22:45] antigravity → chiunque entri dopo
 
----
+**Task:** Fix Leader.TrackPct (telemetria nativa e hold), Leader.RaceLapsCompleted (sync CurrentLap senza offset _leaderRaceStartLap), e rimozione freeze proiezioni all'ultimo giro
+**Piano:** —
+**Commit:** questo (fix RaceAnalyzer, test e rilascio lock)
 
----
+### Fatto
+- `User.PluginSdkDemoEdit/RaceAnalyzer.cs`:
+  - **Punto 1 (`Leader.TrackPct` non va più a zero)**:
+    * `r. 588-630`: Per `state.Position != 1`, `leaderTrackPosPct` ora interroga in via prioritaria `tracker.GetOpponentTrackPosition(overallLeader, state)` (telemetria nativa 60 Hz `CarIdxLapDistPct` via IracingBridge, poi SimHub `TrackPositionPercent`, poi memoria del tracker).
+    * Aggiunto campo `_lastGoodLeaderTrackPct` che mantiene l'ultimo valore valido in caso di drop temporaneo di pacchetti SimHub, evitando che la proprietà `SimRIG.Leader.TrackPct` lampeggi a `0.0`.
+    * In `r. 834` (`ResolveLeaderAbsolutePos`) e `r. 1325` (diagnostica), unificato l'uso di `leaderTrackPosPct` invece di rileggere il dato grezzo non filtrato.
+  - **Punto 2 (`Leader.RaceLapsCompleted` sincronizzato)**:
+    * `r. 630-650`: Rimosso l'erroneo latch `_leaderRaceStartLap` (che nel replay Daytona aveva agganciato 6 congelando la differenza a `10 - 6 = 4` al giro 9).
+    * I giri completati del leader per gli avversari sono ora semplicemente `Math.Max(0, leaderCurrentLap - 1)` (in iRacing `CurrentLap` è 1-indicizzato), perfettamente allineato a `FlagMoment` (linea 1836).
+    * Rimosso il campo `_leaderRaceStartLap` e il suo azzeramento da `ResetSession()`.
+  - **Punto 5 (Nessun freeze proiezioni all'ultimo giro)**:
+    * `r. 774`: La guardia di uscita anticipata `state.IsTimeLimited && state.SessionTimeLeftSec < 0.0` azzerava immediatamente tutte le proiezioni appena il timer di sessione raggiungeva 0:00, mentre il Player stava ancora correndo l'in-lap finale. Ora la condizione richiede `!_hasSeenPositiveCountdown` (evita l'uscita a gara avviata).
+    * `r. 896-908`: Quando `_leaderHasFinished == true`, se il Player non ha ancora tagliato il traguardo (`!_isRaceFinished`), il sistema aggiorna attivamente `RaceLifeTimeLeftSec = remainingLapFraction * activePlayerPace`, mantiene `RaceTotalLaps = _latchedPlayerTotalReality`, e `RaceLapsRemaining` scala dolcemente la frazione residua (`1.0 - effTrackPos`) fino alla linea del traguardo.
+    * `r. 1268-1286`: `IsLapsPredictionValid` rimane `true` durante l'in-lap finale.
+    * `r. 776-785`: Quando la gara è formalmente conclusa (`_isRaceFinished == true`), `RaceTotalLaps` preserva il totale latchato invece di azzerarsi a 0.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/LeaderSampleUnitTests.cs`:
+  - Aggiunti test mirati:
+    * `Test_OpponentLeaderLapsCompleted_MatchesCurrentLapMinusOne`
+    * `Test_LeaderTrackPct_HoldsLastGoodWhenTelemetryDrops`
+    * `Test_LastLapInLapProjections_ActiveAfterTimeExpiry`
+- Build e Test:
+  - MSBuild VS2022: 0 errori, installazione DLL in SimHub completata.
+  - Test runner: **363 PASS (100% success)**, exit code 0.
 
----
+### Come verificare
+```bash
+& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build 0 errori, 363 test PASS (100%), exit code 0.
+
+### Stato
+- ✅ Compila senza errori
+- ✅ 363 PASS (100%)
+
+### Per chi entra
+**Prossimo passo:** Continuare l'analisi con Andreas sulle metriche di gara e backtest Daytona.
+**NON toccare:** `Hardware/` (territorio di Andreas).
+**Attenzione a:** `PitDistanceMeters: 813.35m` a Daytona è strettamente la distanza fisica tra `PitEntryPct` e `PitExitPct` (`PitRadar.cs:1740-1745`). La formula di pit loss è `TotalPitLoss = Stationary + (PitTransitTime + InOutAccDecTime - ExtendedPitZoneRacingTime)`.
 
 ---
 
@@ -518,48 +556,3 @@ Atteso: 347 PASS (100%).
 
 ---
 
----
-
-## [2026-09-10 15:10] antigravity → chiunque entri dopo
-
-**Task:** Fallback rilevamento InPitStall per avversario fermo su pit road (Punto 1 dell'analisi Road Atlanta)
-**Piano:** —
-**Commit:** `626158d`
-
-### Fatto
-- `User.PluginSdkDemoEdit/OpponentTracker.cs`:
-  - Aggiunti campi `PitRoadStationaryStartSec` e `PitRoadStationaryPosPct` in `TrackedOpponent` (r. 196-198).
-  - Aggiunto fallback `state.IsInPitBox` per `PlayerData.TrackSurface` (r. 603-606).
-  - In `OpponentTracker.Update` (r. 1314-1355): quando `nativeTrackSurface != InPitStall` ma l'auto è su pit road (`IsOnPitRoad` o `nativeTrackSurface == AproachingPits`), se la vettura è ferma (`Speed < 0.5 km/h` e posizione stabile) per $\ge 1.0\text{s}$, promuove `effectiveInPitStall = true`, forza `TrackSurface = InPitStall`, e retrodata l'inizio sosta `InPitStallStartTimeSec` all'inizio dell'arresto.
-  - Al movimento (`Speed >= 0.5 km/h`), decade a `AproachingPits` e `WasInPitStall` salva `LastPitStationaryTimeSec`.
-  - In r. 1720, `statDuration` a fine sosta calcola `StationaryTimeSec > 0 ? StationaryTimeSec : LastPitStationaryTimeSec`.
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs`:
-  - Aggiunti test `Test_InPitStall_Fallback_WhenApproachingPitsAndStationary` e `Test_InPitStall_NativeTakesPriorityImmediately`.
-- Build MSBuild e Test: **345 PASS** su 345 (100%).
-
-### Come verificare
-```bash
-& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
-& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: 345 PASS (100%).
-
-### Stato
-- ✅ Compila
-- ✅ 345 PASS (100%)
-
-### Per chi entra
-**Prossimo passo:** Procedere con i punti successivi dell'analisi Road Atlanta (Punti 2, 4, 5, 7, 8, 3).
-**NON toccare:** La priorità del segnale nativo iRacing (`CarIdxTrackSurface == InPitStall`).
-**Attenzione a:** Il fallback si disattiva istantaneamente quando la vettura riparte (`Speed >= 0.5 km/h`), consentendo al normale ciclo di pit stop di registrare la ripartenza.
-
----
-
----
-
----
-
-
----
-
----

@@ -229,7 +229,7 @@ namespace SimRIG
         /// esposta alla dashboard, non solo il calcolo derivato.
         /// </summary>
         private int _lastGoodLeaderLapsCompleted = -1;
-        private int _leaderRaceStartLap = 0;
+        private double _lastGoodLeaderTrackPct = 0.0;
 
         /// <summary>
         /// Protegge la media del passo del leader dai campioni raccolti mentre l'identita' del P1
@@ -592,12 +592,46 @@ namespace SimRIG
                 if (overallLeader != null)
                 {
                     leaderCurrentLap = overallLeader.CurrentLap ?? state.CurrentLap;
-                    leaderTrackPosPct = overallLeader.TrackPositionPercent ?? 0.0;
+
+                    // Priorità 1: telemetria nativa CarIdxLapDistPct a 60 Hz (via tracker / IracingBridge)
+                    // Priorità 2: TrackPositionPercent di SimHub
+                    // Priorità 3: continuità sull'ultimo valore valido
+                    double rawPos = 0.0;
+                    if (tracker != null)
+                    {
+                        rawPos = tracker.GetOpponentTrackPosition(overallLeader, state);
+                    }
+                    if (rawPos <= 0.0 && overallLeader.TrackPositionPercent.HasValue)
+                    {
+                        rawPos = overallLeader.TrackPositionPercent.Value;
+                    }
+
+                    if (rawPos > 0.0)
+                    {
+                        leaderTrackPosPct = rawPos;
+                        _lastGoodLeaderTrackPct = rawPos;
+                    }
+                    else if (_lastGoodLeaderTrackPct > 0.0)
+                    {
+                        leaderTrackPosPct = _lastGoodLeaderTrackPct;
+                    }
+                    else
+                    {
+                        leaderTrackPosPct = 0.0;
+                    }
                 }
                 else
                 {
                     leaderCurrentLap = state.CurrentLap + (Results.IsLapped ? 1 : 0);
+                    if (_lastGoodLeaderTrackPct > 0.0)
+                    {
+                        leaderTrackPosPct = _lastGoodLeaderTrackPct;
+                    }
                 }
+            }
+            else
+            {
+                _lastGoodLeaderTrackPct = leaderTrackPosPct;
             }
 
             int resolvedLeaderLaps = 0;
@@ -606,7 +640,6 @@ namespace SimRIG
                 if (state.SessionStateStatus < 4)
                 {
                     resolvedLeaderLaps = 0;
-                    _leaderRaceStartLap = 0;
                 }
                 else
                 {
@@ -616,21 +649,10 @@ namespace SimRIG
                     }
                     else
                     {
-                        if (_leaderRaceStartLap == 0)
-                        {
-                            if (state.Metadata.IsStandingStart == true)
-                            {
-                                _leaderRaceStartLap = leaderCurrentLap;
-                            }
-                            else if (state.RaceStartLineCrossed || leaderCurrentLap > 1)
-                            {
-                                _leaderRaceStartLap = leaderCurrentLap;
-                            }
-                        }
-
-                        resolvedLeaderLaps = (_leaderRaceStartLap > 0)
-                            ? Math.Max(0, leaderCurrentLap - _leaderRaceStartLap)
-                            : 0;
+                        // In iRacing / SimHub gli avversari hanno CurrentLap 1-indicizzato.
+                        // I giri completati sono semplicemente (CurrentLap - 1), identico alla
+                        // convenzione di FlagMoment (linea 1836).
+                        resolvedLeaderLaps = Math.Max(0, leaderCurrentLap - 1);
                     }
                 }
             }
@@ -749,14 +771,14 @@ namespace SimRIG
 
 
 
-            if (!state.IsRaceSession || _isRaceFinished || state.SessionStateStatus < 4 || (state.IsTimeLimited && state.SessionTimeLeftSec < 0.0))
+            if (!state.IsRaceSession || _isRaceFinished || state.SessionStateStatus < 4 || (state.IsTimeLimited && state.SessionTimeLeftSec < 0.0 && !_hasSeenPositiveCountdown))
             {
                 Results.RaceLapsRemaining = 0.0;
-                Results.RaceTotalLaps = 0.0;
-                Results.ProjectedPosAtCheckered = 0.0;
-                Results.LeaderProjectedPosAtCheckered = 0.0;
+                Results.RaceTotalLaps = _latchedPlayerTotalReality > 0.0 ? _latchedPlayerTotalReality : 0.0;
+                Results.ProjectedPosAtCheckered = _latchedPlayerTotalReality;
+                Results.LeaderProjectedPosAtCheckered = _latchedLeaderTotalLaps;
                 Results.LeaderRaceLapsRemaining = 0.0;
-                Results.LeaderRaceTotalLaps = 0.0;
+                Results.LeaderRaceTotalLaps = _latchedLeaderTotalLaps;
                 Results.RaceLifeTimeLeftSec = 0.0;
                 Results.IsLapsPredictionValid = false;
 
@@ -799,7 +821,7 @@ namespace SimRIG
                 : (Results.RaceLapsCompleted + effTrackPos);
 
             double leaderAbsolutePos = Results.LeaderRaceLapsCompleted + 0.0;
-            if (state.IsRaceSession && (state.SessionStateStatus < 4 || (state.Position != 1 && _leaderRaceStartLap == 0 && !state.RaceStartLineCrossed)))
+            if (state.IsRaceSession && state.SessionStateStatus < 4)
             {
                 leaderAbsolutePos = 0.0;
             }
@@ -811,10 +833,7 @@ namespace SimRIG
             }
             else
             {
-                var overallLeader = state.Opponents.FirstOrDefault(o => o.Position == 1);
-                double rawLeaderTrackPos = overallLeader != null && overallLeader.TrackPositionPercent.HasValue
-                    ? overallLeader.TrackPositionPercent.Value
-                    : 0.0;
+                double rawLeaderTrackPos = leaderTrackPosPct;
 
                 // Due buchi diversi nello stesso dato, entrambi gestiti da ResolveLeaderAbsolutePos:
                 //  - record del leader momentaneamente vuoto, posizione **e** giri a zero (Y-24);
@@ -875,15 +894,17 @@ namespace SimRIG
 
 
             if (_leaderHasFinished)
-
             {
-
                 leaderLapsRem = 0.0;
-
                 double projectedPlayerTotal = Math.Ceiling(playerAbsolutePos + (1.0 - effTrackPos));
-
                 _latchedPlayerTotalReality = UpdateLatchedLaps(projectedPlayerTotal, _latchedPlayerTotalReality, !state.IsInPitLane);
 
+                // Durante l'in-lap finale dopo che il leader ha tagliato il traguardo, il Player continua la sua gara:
+                // aggiorniamo il countdown residuo e le proiezioni fino alla sua bandiera a scacchi
+                double remainingLapFraction = Math.Max(0.0, _latchedPlayerTotalReality - playerAbsolutePos);
+                Results.RaceLifeTimeLeftSec = Math.Max(0.0, remainingLapFraction * activePlayerPace);
+                Results.ProjectedPosAtCheckered = _latchedPlayerTotalReality;
+                Results.LeaderProjectedPosAtCheckered = _latchedLeaderTotalLaps;
             }
 
             else
@@ -1244,18 +1265,25 @@ namespace SimRIG
             Results.LeaderRaceLapsRemaining = Math.Truncate(leaderLapsRem * 100) / 100.0;
 
             Results.RaceTotalLaps = _latchedPlayerTotalReality;
-            Results.IsLapsPredictionValid = IsLapsPredictionValid(
-                state.IsRaceSession,
-                _isRaceFinished,
-                state.IsLapLimited,
-                state.IsTimeLimited,
-                state.TotalLaps,
-                Results.NormalizedRaceStartPace,
-                state.BestLapTimeSec,
-                state.Metadata.PlayerEstimatedPaceSec,
-                state.Metadata.EstimatedPaceFor(null, state.CarClassId),
-                state.SessionStateStatus,
-                state.SessionTimeLeftSec);
+            if (_leaderHasFinished && !_isRaceFinished)
+            {
+                Results.IsLapsPredictionValid = true;
+            }
+            else
+            {
+                Results.IsLapsPredictionValid = IsLapsPredictionValid(
+                    state.IsRaceSession,
+                    _isRaceFinished,
+                    state.IsLapLimited,
+                    state.IsTimeLimited,
+                    state.TotalLaps,
+                    Results.NormalizedRaceStartPace,
+                    state.BestLapTimeSec,
+                    state.Metadata?.PlayerEstimatedPaceSec,
+                    state.Metadata?.EstimatedPaceFor(null, state.CarClassId),
+                    state.SessionStateStatus,
+                    state.SessionTimeLeftSec);
+            }
 
             // --- La riga che scatta quando il totale CAMBIA ------------------------------
             // Serve a rendere osservabile l'ingresso che ha fatto scattare il filtro. La
@@ -1294,12 +1322,12 @@ namespace SimRIG
                     if (overallLeader != null)
                     {
                         leaderName = overallLeader.Name;
-                        leaderTrackPos = overallLeader.TrackPositionPercent ?? 0.0;
+                        leaderTrackPos = leaderTrackPosPct;
 
-                        if (tracker.TrackedOpponents.TryGetValue(leaderName, out var leaderData))
+                        if (tracker != null && tracker.TrackedOpponents.TryGetValue(leaderName, out var leaderData))
                         {
                             leaderIsInPit = leaderData.IsInsideGeofence;
-                            double fuelPerLap = fuel.AverageFuelPerLap > 0 ? fuel.AverageFuelPerLap : 3.0;
+                            double fuelPerLap = (fuel != null && fuel.AverageFuelPerLap > 0) ? fuel.AverageFuelPerLap : 3.0;
                             leaderFuelToAdd = (Results.LeaderRaceLapsRemaining * fuelPerLap) + (0.3 * fuelPerLap) - leaderData.EstimatedFuel;
                             if (leaderFuelToAdd < 0.0) leaderFuelToAdd = 0.0;
                             leaderFuelToAdd = Math.Min(state.MaxFuelCapacity, leaderFuelToAdd);
@@ -2395,7 +2423,7 @@ namespace SimRIG
             _lastGoodLeaderAbsolutePos = -1.0;
             _lastGoodLeaderPosSessionTimeLeft = -1.0;
             _lastGoodLeaderLapsCompleted = -1;
-            _leaderRaceStartLap = 0;
+            _lastGoodLeaderTrackPct = 0.0;
 
             _lastEvaluatedLap = -1;
 

@@ -9,6 +9,41 @@
 
 ---
 
+## [2026-09-10 15:10] antigravity → chiunque entri dopo
+
+**Task:** Fallback rilevamento InPitStall per avversario fermo su pit road (Punto 1 dell'analisi Road Atlanta)
+**Piano:** —
+**Commit:** `626158d`
+
+### Fatto
+- `User.PluginSdkDemoEdit/OpponentTracker.cs`:
+  - Aggiunti campi `PitRoadStationaryStartSec` e `PitRoadStationaryPosPct` in `TrackedOpponent` (r. 196-198).
+  - Aggiunto fallback `state.IsInPitBox` per `PlayerData.TrackSurface` (r. 603-606).
+  - In `OpponentTracker.Update` (r. 1314-1355): quando `nativeTrackSurface != InPitStall` ma l'auto è su pit road (`IsOnPitRoad` o `nativeTrackSurface == AproachingPits`), se la vettura è ferma (`Speed < 0.5 km/h` e posizione stabile) per $\ge 1.0\text{s}$, promuove `effectiveInPitStall = true`, forza `TrackSurface = InPitStall`, e retrodata l'inizio sosta `InPitStallStartTimeSec` all'inizio dell'arresto.
+  - Al movimento (`Speed >= 0.5 km/h`), decade a `AproachingPits` e `WasInPitStall` salva `LastPitStationaryTimeSec`.
+  - In r. 1720, `statDuration` a fine sosta calcola `StationaryTimeSec > 0 ? StationaryTimeSec : LastPitStationaryTimeSec`.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs`:
+  - Aggiunti test `Test_InPitStall_Fallback_WhenApproachingPitsAndStationary` e `Test_InPitStall_NativeTakesPriorityImmediately`.
+- Build MSBuild e Test: **345 PASS** su 345 (100%).
+
+### Come verificare
+```bash
+& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: 345 PASS (100%).
+
+### Stato
+- ✅ Compila
+- ✅ 345 PASS (100%)
+
+### Per chi entra
+**Prossimo passo:** Procedere con i punti successivi dell'analisi Road Atlanta (Punti 2, 4, 5, 7, 8, 3).
+**NON toccare:** La priorità del segnale nativo iRacing (`CarIdxTrackSurface == InPitStall`).
+**Attenzione a:** Il fallback si disattiva istantaneamente quando la vettura riparte (`Speed >= 0.5 km/h`), consentendo al normale ciclo di pit stop di registrare la ripartenza.
+
+---
+
 ## [2026-09-10 12:10] antigravity → chiunque entri dopo
 
 **Task:** Formattazione diagnostica e log completi di superficie e pit per Player e Target
