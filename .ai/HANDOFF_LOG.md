@@ -47,6 +47,36 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-13 21:50] claude → chiunque entri dopo
+
+**Task:** Registrate le decisioni di Andreas sul piano correzioni Daytona (ordine 1 → 5, `SimRIG.Leader.TrackPct` = posizione stimata, esegue claude) e preparata la ripartenza in una nuova sessione. Nessun file di codice toccato, lock non preso.
+**Piano:** `.ai/plans/2026-09-13-daytona-piano-correzioni.md`
+**Commit:** `2f69778` (decisioni in piano, stato e roadmap), questo (handoff)
+
+### Fatto
+- `.ai/plans/2026-09-13-daytona-piano-correzioni.md` — stato "Approvato", esecutore claude, nuove sezioni "Decisioni prese" e "Come si riparte in una nuova sessione".
+- `.ai/PROJECT_STATE.md` — Y-58: decisione presa (posizione stimata); "Stato corrente": prossimo lavoro tecnico = piano correzioni Daytona, poi Y-52 Passo 3.
+- `.ai/plans/2026-08-24-roadmap.md` — lavoro attivo = piano correzioni Daytona; Y-52 in pausa, non chiusa.
+
+### Come verificare
+Nessuna build: turno di sola documentazione.
+```bash
+grep -n "Approvato\|Decisioni prese" .ai/plans/2026-09-13-daytona-piano-correzioni.md
+grep -n "correzioni Daytona" .ai/plans/2026-08-24-roadmap.md .ai/PROJECT_STATE.md
+```
+Atteso: il piano risulta approvato con le decisioni; roadmap e "Stato corrente" rimandano al piano come lavoro attivo.
+
+### Stato
+- ⏭️ Build e test non eseguiti (nessun file di codice modificato)
+- ✅ Codice invariato rispetto a `863c65c`
+
+### Per chi entra
+**Prossimo passo:** passo 1 del piano (consumo BoP del Target nel calcolo MergeGap/undercut), eseguito da claude. Lock con scope `User.PluginSdkDemoEdit/OpponentTracker.cs`, `User.PluginSdkDemoEdit/TargetStrategyManager.cs`, il nuovo file di test e `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/User.PluginSdkDemo.Tests.csproj`. Test prima del fix coi numeri del piano: consumo Target 3.60 L/giro, carburante da imbarcare ≈ 34.1 L, stazionario ≈ 15.7 s (oggi 12.79).
+**NON toccare:** `Hardware/`; `PitInOutAccDecTime` = 11.6 nel DB; i passi 2–5 nello stesso turno (un passo per turno).
+**Attenzione a:** chiudere SimHub prima della build (la build installa la DLL). Il criterio "sul replay" richiede che Andreas rigiri il replay Daytona con la DLL nuova e indichi il nome del log. Gli script di analisi della review erano nella cartella temporanea della sessione del 13/09: i numeri di riferimento sono nel piano e nella review.
+
+---
+
 ## [2026-09-13 21:21] claude → chiunque entri dopo
 
 **Task:** Piano delle correzioni per Y-58…Y-61 dopo il confronto con Andreas (regola BoP del consumo avversari, loop chiuso della pit road con `NotInWorld`, transito di corsa del Player) e dopo la revisione di Gemini. Nessun file di codice toccato, lock non preso.
@@ -448,52 +478,6 @@ Atteso: build pulita (0 errori) e test runner console a **354 PASS (100%)**.
 **Prossimo passo:** Test replay Road Atlanta per osservare che né auto lontane (Connor Spree) né vicine (Bruno Carneiro) subiscano falsi trigger, e che la sosta di Carneiro a Lap 20 riporti `Fuel Only` con gap e baselines intatti.
 **NON toccare:** `Hardware/` rimane territorio di Andreas.
 **Attenzione a:** Il conteggio test corrente del plugin C# è **354 PASS**.
-
----
-
----
-
----
-
-
----
-
----
-
----
-
-## [2026-09-11 12:35] antigravity → chiunque entri dopo
-
-**Task:** Fix deduzione StationaryTime avversari in NotInWorld e protezione da falsi trigger box sul rettilineo
-**Piano:** —
-**Commit:** `0d9ec82` (codice e test), questo (handoff e rilascio lock)
-
-### Fatto
-- `User.PluginSdkDemoEdit/OpponentTracker.cs`:
-  - **Bypass telemetria nativa OnTrack** (r. 1499-1504): se la telemetria nativa iRacing dichiara esplicitamente `!tData.IsOnPitRoad && tData.TrackSurface == IracingTrackSurface.OnTrack`, il fallback spaziale non scavalca il dato certo e `isInsideGeofence` viene forzato a `false`.
-  - **Protezione Criterio C a velocità di gara** (r. 1567-1589): Criterio C (paracadute di durata) vietato se l'auto viaggia a velocità di gara (`tData.LastValidSpeedKmh < (pitSpeedThreshold + 15.0) && tData.LastValidSpeedKmh < 100.0`). Inoltre, introdotto pavimento minimo di 15.0s (`Math.Max(15.0, ClassBestPitZoneRacingTime * 1.8)`), impedendo a transiti di 9.4s sul rettilineo (es. a 196.8 km/h a Road Atlanta su zona pit da 598.9m) di far scattare false soste.
-  - **Congelamento accumulo stazionario fittizio in NotInWorld** (r. 1640-1660): quando l'avversario viene culled in `NotInWorld (-1)`, iRacing congela le coordinate all'ultimo punto noto (`deltaPos = 0` => velocità calcolata 0.0 km/h). Escluso `NotInWorld` dall'accumulare artificialmente tempo stazionario in `StopStartTimeSec`.
-  - **Deduzione inversa StationaryTime garantita all'uscita** (r. 1690-1718): rimossa la condizione bloccante `StationaryTimeSec <= 0.5`. Se `NotInWorldDurationSec > 0.0`, all'uscita box viene sempre applicata la deduzione inversa $T_{\text{stationary}} = \max(0.0, T_{\text{NotInWorld}} - T_{\text{refTransit}})$ (per Carneiro $42.56 - 26.37 = 16.19\text{s}$ anziché $42.6\text{s}$), classificando la sosta correttamente come "Fuel Only" invece di "Danni/Riparazioni". Garantito l'incremento di `PitCount` anche se l'avversario è stato in NotInWorld durante tutta la sosta.
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs`:
-  - Aggiunto unit test `Test_SpatialGeofence_DoesNotTriggerPitStopAtRacingSpeedOnStraight` (r. 1008-1077) registrato in `RunAllTests()`.
-  - Allineato test `Test_Opponent_NotInWorld_LatchesPitRoadAndDeducesStationaryTime`.
-  - Suite test: **353 PASS (100%)**.
-
-### Come verificare
-```bash
-& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
-& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: build pulita (0 errori) e test runner console a **353 PASS (100%)**.
-
-### Stato
-- ✅ Compila (0 errori, 1 warning CS0219 noto)
-- ✅ 353 PASS (100%)
-
-### Per chi entra
-**Prossimo passo:** Test su replay reale in SimHub per osservare il comportamento su pista; chiarito con l'utente il motivo del FuelToAdd 33L vs 31L (proiezione giri 36 vs 35 latched al lap 1 per passo lento iniziale, nessuna formula modificata).
-**NON toccare:** `Hardware/` rimane territorio di Andreas.
-**Attenzione a:** Il conteggio test corrente del plugin C# è **353 PASS**.
 
 ---
 
