@@ -12,6 +12,10 @@
   `PitInOutAccDecTime` = 11.6 in `E:\SimHub\SimRIG_Data.json`, dire cosa è cambiato, e lasciare un
   report leggibile anche da Gemini/Antigravity.
 
+> ⚠️ **Aggiornamento del 13/09 sera.** Y-60 e Y-61 sono corretti nel §9 dopo il confronto con Andreas.
+> Il piano operativo, che sostituisce i loro "Fix proposto", è
+> `.ai/plans/2026-09-13-daytona-piano-correzioni.md`.
+
 ---
 
 ## Contesto e come leggere i numeri
@@ -431,3 +435,39 @@ grep -n "RaceProjectionsDiagnostics" "Logs/Daytona/SimRIG_DebugLog_20260913_1637
   `SimRIG_DebugLog_*.csv`).
 - La roadmap (aggiornata il 06/09) indica come lavoro attivo Y-52 Passo 3; i turni dell'11–12/09
   (tracking nativo, pit loss, MergeGap, leader) non vi compaiono.
+
+---
+
+## 9. Correzioni dopo il confronto con Andreas (13/09 sera)
+
+Le sezioni Y-60 e Y-61 qui sopra restano come erano state scritte; queste note le correggono. Il piano
+operativo, che sostituisce i loro "Fix proposto", è `.ai/plans/2026-09-13-daytona-piano-correzioni.md`.
+
+**Y-60 — il tempo in corsia non è sempre misurato da iRacing.** Con l'auto `NotInWorld`,
+`OpponentTracker.cs:1349-1360` forza la pit road a true, e il cronometro della corsia (`:1515-1519`,
+`:1687-1705`) si ferma quando l'auto ricompare. Se ricompare dentro la corsia il tempo è affidabile:
+è il caso del Target, tornato visibile a 8.48% con flag nativo true (`163743` DebugLog:6656) e uscito
+col flag nativo a 10.15% (:6682). Se ricompare già fuori, il tempo è gonfiato. Si distingue
+dall'AccDec: sul giro della sosta il Player impiega 5.1 s da 0.9086 a 0.9586 e 6.5 s da 0.1016 a
+0.1516 (misurato su entrambi i run). 24 soste avversarie hanno AccDec 11.0–12.3 s (uscita vista in
+tempo); 6 hanno 4.6–5.5 s, cioè la sola parte d'ingresso (uscita non osservata). La proposta
+`TotalTime − PitTransitTime` vale quindi solo quando l'uscita è osservata; per gli altri casi il piano
+(passo 5) ricostruisce l'uscita e mette una guardia sull'AccDec.
+
+**Y-61 — il consumo proporzionato al BoP esiste già.** È la regola indicata da Andreas, già in
+`OpponentTracker.cs:1093-1110`: `opponentMaxTank × consumo Player / playerMaxTankBoP`, per il Target
+60 × 3.0 / 50 = 3.60 L/giro (`GreenBurn: 3.60L/lap`). Il difetto non è la regola: è che
+`TargetStrategyManager.cs:952-977` non la usa, perché `classFuelBurn` è una variabile locale non
+salvata sull'avversario. Effetto: stazionario del Target 12.79 s invece di ~15.7–16.9 s, e autonomia
+del Target sovrastimata del 20% (`targetFuelLaps`, `targetNeedsPit`).
+
+**Y-61 — la sorgente giusta per `ExtZone` è già il Player.** `SectorTracker` salva tutti i transiti di
+corsa validi del Player (`RawNormalHistory`, `SectorTracker.cs:23, 173`), ma a `OpponentTracker.Update`
+arriva solo `PlayerExtendedPitZone.BestRawTime` (`DataPluginDemo.cs:1273`), poi mescolato col minimo
+di classe. Basta la mediana degli ultimi giri del Player (23.8 s).
+
+**Verifiche di Gemini sugli stessi file** (lette dai suoi output delle 19:23–19:25; le sue conclusioni
+scritte non sono nel repository): AccDec su 32 soste con mediana 11.39 s, 11.43 s sulle 24 pulite;
+Target Lamborghini Huracán GT3 EVO con BoP 0.5, 60 L, 3.60 L/giro; leader Ferrari 499P con BoP 0.65,
+78 L, 3.00 L/giro; suite di test **363 PASS, exit 0** (quindi il "347" di `PROJECT_STATE.md:69`,
+citato nel §8, è fuori sincrono); 41 punti chiusi. Tutto coerente con questa review.
