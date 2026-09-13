@@ -2,8 +2,9 @@
 
 - **Data:** 2026-09-13
 - **Autore:** claude
-- **Esecutore:** da decidere (Andreas) — un agente per passo, col lock, con revisione dell'altro
-- **Stato:** 📝 Proposto — ordine ed esecutori da confermare
+- **Esecutore:** claude (deciso da Andreas il 2026-09-13), un passo per turno col lock
+- **Stato:** ✅ Approvato da Andreas il 2026-09-13 — ordine 1 → 5, si parte dal passo 1 (vedi
+  "Decisioni prese" in fondo)
 - **Basato su:**
   - review `.ai/reviews/2026-09-13-daytona-leader-mergegap-pitloss.md`, incluse le correzioni del §9;
   - confronto con Andreas del 13/09 sera: regola BoP del consumo, loop chiuso della pit road con
@@ -136,8 +137,8 @@ registra e il latch alla sosta del Player (`:273-280`) congela −9.77 s.
 **Criterio sul replay.** `LapsComp=0` solo prima del primo valore valido; `Projection Validation` a
 −5 min con `vecchioP1` entro 0.5 giri dal vero (oggi `3.536`, errore −24 giri).
 
-**Decisione di Andreas prima di 4b.** `SimRIG.Leader.TrackPct` mostra la posizione stimata, o l'ultima
-reale con un flag "stimata"?
+**Deciso da Andreas (2026-09-13):** `SimRIG.Leader.TrackPct` mostra la posizione **stimata** (quella del
+punto 4 di 4b), non l'ultima reale.
 
 ## Passo 5 — Stazionario e AccDec degli avversari senza loop chiuso (Y-60, rivisto)
 
@@ -204,11 +205,19 @@ grep -n "FROZEN IN PIT\|LiveSignedGap" "Logs/Daytona/SimRIG_MergeGapLog_<run>.tx
 grep -n "Projection Validation\|Reverse-Engineered\|Opponent Pit AccDec Details" "Logs/Daytona/SimRIG_DebugLog_<run>.csv"
 ```
 
-## Domande aperte per Andreas
+## Decisioni prese (Andreas, 2026-09-13)
 
-1. **Ordine.** 1 → 2 → 3 → 4 → 5 va bene, o prima quello che si vede sul cruscotto (3 e 4)? E rispetto a
-   Y-52 Passo 3: prima o dopo? Se cambia l'ordine di lavoro, va aggiornata anche
-   `.ai/plans/2026-08-24-roadmap.md`.
-2. **Y-58.** Posizione del leader stimata, o reale con flag "stimata"?
-3. **Esecutori.** Chi fa quale passo? Proposta: i passi piccoli (1 e 2) a un agente, revisione
-   dell'altro prima di passare al 3.
+1. **Ordine:** passi 1 → 2 → 3 → 4 → 5, adesso, prima di Y-52 Passo 3 (roadmap aggiornata).
+2. **Y-58:** `SimRIG.Leader.TrackPct` mostra la posizione **stimata**.
+3. **Esecutore:** claude, un passo per turno col lock.
+
+## Come si riparte in una nuova sessione
+
+1. `/new-session esegui il passo N di .ai/plans/2026-09-13-daytona-piano-correzioni.md`, con N = primo
+   passo non ancora chiuso (lo dicono le voci in cima a `.ai/HANDOFF_LOG.md`).
+2. Prendere il lock con scope limitato ai file del passo (`[claude] chore: acquire lock — …`).
+3. Test ADR-004 prima del fix (deve fallire), poi fix, build + test, commit, handoff, rilascio lock.
+4. Il criterio "sul replay" richiede che Andreas rigiri il replay Daytona in SimHub con la DLL nuova e
+   indichi il nome del log. Senza, il passo si chiude come "test verdi, replay da verificare".
+5. Gli script di analisi usati per la review erano nella cartella temporanea della sessione del 13/09 e
+   non sono nel repository: i numeri di riferimento sono tutti in questo piano e nella review.
