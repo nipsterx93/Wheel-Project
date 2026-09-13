@@ -51,6 +51,7 @@ namespace User.PluginSdkDemo.Tests
                 FuelWeightAndPitLossUnitTests.RunAllTests();
                 PitZoneStopwatchAndOpponentCascadeUnitTests.RunAllTests();
                 NativeIracingOpponentTrackingUnitTests.RunAllTests();
+                TargetBopFuelForecastUnitTests.RunAllTests();
                 ReplayBacktestIntegrationTest.RunMisanoGt3Backtest();
                 MisanoHuracanGT3ReplayTest.RunFullReplayMergeGapValidation();
 

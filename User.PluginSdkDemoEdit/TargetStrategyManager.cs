@@ -231,6 +231,72 @@ namespace SimRIG
         }
 
         /// <summary>
+        /// Previsione della sosta del Target: consumo usato, autonomia, se deve fermarsi, carburante da
+        /// imbarcare e stazionario.
+        /// </summary>
+        public class TargetPitForecast
+        {
+            public double FuelPerLap { get; set; }
+
+            public double FuelLaps { get; set; }
+
+            /// <summary>Autonomia pubblicata in <c>SimRIG.Target.TankLapsRemaining</c>; 99 se il consumo non e' noto.</summary>
+            public double TankLapsRemaining { get; set; }
+
+            public bool NeedsPit { get; set; }
+
+            public double FuelToAdd { get; set; }
+
+            public double StationaryTime { get; set; }
+        }
+
+        /// <summary>
+        /// Una sola funzione per il calcolo MergeGap/undercut e per il blocco del MergeGapLog, che ne
+        /// avevano due copie (Y-61, passo 1 di .ai/plans/2026-09-13-daytona-piano-correzioni.md).
+        /// </summary>
+        public static TargetPitForecast ForecastTargetPit(
+            OpponentTelemetryData target,
+            int targetPitCount,
+            double playerFuelPerLap,
+            double playerMaxFuelCapacity,
+            double raceLapsRemaining,
+            double measuredFuelFillRate)
+        {
+            // Consumo del Target: quello proporzionato al BoP dal modello avversari. Quello del Player resta
+            // solo come ripiego: a Daytona (Target 60 L, Player 50 L) sottostimava lo stazionario del Target
+            // di ~3 s e ne gonfiava l'autonomia del 20%.
+            double knownFuelPerLap = target.BopFuelPerLap > 0.0 ? target.BopFuelPerLap : playerFuelPerLap;
+            double fuelPerLap = knownFuelPerLap > 0 ? knownFuelPerLap : 3.0;
+
+            var forecast = new TargetPitForecast();
+            forecast.FuelPerLap = fuelPerLap;
+            forecast.FuelLaps = target.EstimatedFuel / fuelPerLap;
+            forecast.TankLapsRemaining = knownFuelPerLap > 0 ? (target.EstimatedFuelTank / knownFuelPerLap) : 99.0;
+
+            // Regola d'Oro: il target DEVE pittare solo se il deficit supera la soglia di 0.8 giri.
+            // Se ha gia' effettuato almeno una sosta in gara (targetPitCount >= 1), non deve assolutamente
+            // effettuare una seconda sosta se ha carburante sufficiente per finire (deficit <= 0.8)!
+            double fuelDeficit = raceLapsRemaining - forecast.FuelLaps;
+            forecast.NeedsPit = targetPitCount >= 1
+                ? fuelDeficit > 0.8
+                : (target.NeedsPitStop || fuelDeficit > 0.8);
+
+            // Nel serbatoio del Target entra al massimo lo spazio libero. La capienza del Player resta solo
+            // come ripiego finche' il modello avversari non conosce quella del Target.
+            double tankCapacity = target.FuelTankCapacity > 0.0 ? target.FuelTankCapacity : playerMaxFuelCapacity;
+            double freeTankSpace = Math.Max(0.0, tankCapacity - target.EstimatedFuel);
+            double fuelToAdd = (raceLapsRemaining * fuelPerLap) + (0.3 * fuelPerLap) - target.EstimatedFuel;
+            if (fuelToAdd < 0.0) fuelToAdd = 0.0;
+            forecast.FuelToAdd = Math.Min(freeTankSpace, fuelToAdd);
+
+            forecast.StationaryTime = forecast.NeedsPit
+                ? CarPitData.CalculateStationaryTime(target.CarClass, forecast.FuelToAdd, measuredFuelFillRate, 0.0, jackBufferSec: 2.0)
+                : 0.0;
+
+            return forecast;
+        }
+
+        /// <summary>
         /// Aggiorna il ProjectedMergeGap gestendo il congelamento (latch) quando una delle due vetture
         /// entra in corsia box o nella piazzola di sosta. Mantiene il valore stimato pre-sosta
         /// come riferimento fisso durante l'intera sosta finché entrambe le vetture non sono tornate su pista.
@@ -884,7 +950,6 @@ namespace SimRIG
                     CurrentTarget.EstimatedPitWindow = oppData.EstimatedPitWindow;
                     CurrentTarget.EstimatedPitWindowTargetLap = oppData.EstimatedPitWindowTargetLap;
 
-                    CurrentTarget.TankLapsRemaining = fuel.AverageFuelPerLap > 0 ? (oppData.EstimatedFuelTank / fuel.AverageFuelPerLap) : 99.0;
 
                     CurrentTarget.CalculatedStationaryTime = oppData.LastPitStationaryTimeSec;
                     CurrentTarget.FuelToAddTime = oppData.FuelToAddTime;
@@ -948,49 +1013,34 @@ namespace SimRIG
                         accDecTime,
                         extendedRacingTime);
 
-                    // Previsione carburante da aggiungere e sosta stazionaria per il target
-                    double fuelPerLap = fuel.AverageFuelPerLap > 0 ? fuel.AverageFuelPerLap : 3.0;
-                    double targetFuelLaps = fuelPerLap > 0 ? (oppData.EstimatedFuel / fuelPerLap) : 99.0;
-                    double targetFuelDeficit = raceResult.RaceLapsRemaining - targetFuelLaps;
-
-                    // Regola d'Oro: Il target DEVE pittare solo se il deficit supera la soglia di 0.8 giri.
-                    // Se ha gia' effettuato almeno una sosta in gara (targetPitCount >= 1), non deve assolutamente
-                    // effettuare una seconda sosta se ha carburante sufficiente per finire (targetFuelDeficit <= 0.8)!
+                    // Previsione carburante da aggiungere e sosta stazionaria per il target: consumo BoP e
+                    // serbatoio del Target, stessa funzione del blocco del MergeGapLog (Y-61)
                     int targetPitCount = (CurrentTarget != null && CurrentTarget.PitCount > 0)
                         ? CurrentTarget.PitCount
                         : ((oppData != null && oppData.PitCount > 0)
                             ? oppData.PitCount
                             : (targetOpp.PitCount.HasValue ? targetOpp.PitCount.Value : 0));
 
-                    bool targetNeedsPit;
-                    if (targetPitCount >= 1)
-                    {
-                        targetNeedsPit = targetFuelDeficit > 0.8;
-                    }
-                    else
-                    {
-                        targetNeedsPit = oppData != null ? (oppData.NeedsPitStop || targetFuelDeficit > 0.8) : (targetFuelDeficit > 0.8);
-                    }
+                    TargetPitForecast targetForecast = ForecastTargetPit(
+                        oppData,
+                        targetPitCount,
+                        fuel.AverageFuelPerLap,
+                        state.MaxFuelCapacity,
+                        raceResult.RaceLapsRemaining,
+                        radar.MeasuredFuelFillRate);
 
-                    double targetFuelToAdd = (raceResult.RaceLapsRemaining * fuelPerLap) + (0.3 * fuelPerLap) - oppData.EstimatedFuel;
-                    if (targetFuelToAdd < 0.0) targetFuelToAdd = 0.0;
-                    targetFuelToAdd = Math.Min(state.MaxFuelCapacity, targetFuelToAdd);
+                    double targetFuelLaps = targetForecast.FuelLaps;
+                    bool targetNeedsPit = targetForecast.NeedsPit;
 
-                    CurrentTarget.EstimatedFuelToAdd = targetFuelToAdd;
+                    CurrentTarget.TankLapsRemaining = targetForecast.TankLapsRemaining;
+                    CurrentTarget.EstimatedFuelToAdd = targetForecast.FuelToAdd;
                     CurrentTarget.EstimatedFuelAdded = oppData.LastPitFuelAdded;
 
-                    double targetStationaryTime = 0.0;
+                    double targetStationaryTime = targetForecast.StationaryTime;
                     double targetTotalPitLoss = 0.0;
 
                     if (targetNeedsPit)
                     {
-                        targetStationaryTime = CarPitData.CalculateStationaryTime(
-                            oppData.CarClass,
-                            targetFuelToAdd,
-                            radar.MeasuredFuelFillRate,
-                            0.0,
-                            jackBufferSec: 2.0);
-
                         targetTotalPitLoss = CarPitData.CalculateTotalPitLoss(
                             targetStationaryTime,
                             radar.PitTransitTime,
@@ -1425,41 +1475,27 @@ namespace SimRIG
 
                             double logTargetSignedGap = logPosDiff < 0 ? logTargetFluidGap : -logTargetFluidGap;
 
-                            double logTargetFuelLaps = fuelPerLap > 0 ? (logOppData.EstimatedFuel / fuelPerLap) : 99.0;
-                            double logTargetFuelDeficit = raceResult.RaceLapsRemaining - logTargetFuelLaps;
-
                             int logTargetPitCount = (CurrentTarget != null && CurrentTarget.PitCount > 0)
                                 ? CurrentTarget.PitCount
                                 : ((logOppData != null && logOppData.PitCount > 0)
                                     ? logOppData.PitCount
                                     : (logTargetOpp.PitCount.HasValue ? logTargetOpp.PitCount.Value : 0));
 
-                            bool logTargetNeedsPit;
-                            if (logTargetPitCount >= 1)
-                            {
-                                logTargetNeedsPit = logTargetFuelDeficit > 0.8;
-                            }
-                            else
-                            {
-                                logTargetNeedsPit = logOppData != null ? (logOppData.NeedsPitStop || logTargetFuelDeficit > 0.8) : (logTargetFuelDeficit > 0.8);
-                            }
+                            TargetPitForecast logForecast = ForecastTargetPit(
+                                logOppData,
+                                logTargetPitCount,
+                                fuel.AverageFuelPerLap,
+                                state.MaxFuelCapacity,
+                                raceResult.RaceLapsRemaining,
+                                radar.MeasuredFuelFillRate);
 
-                            double logTargetFuelToAdd = (raceResult.RaceLapsRemaining * fuelPerLap) + (0.3 * fuelPerLap) - logOppData.EstimatedFuel;
-                            if (logTargetFuelToAdd < 0.0) logTargetFuelToAdd = 0.0;
-                            logTargetFuelToAdd = Math.Min(state.MaxFuelCapacity, logTargetFuelToAdd);
-
-                            double logTargetStationaryTime = 0.0;
+                            double logTargetFuelLaps = logForecast.FuelLaps;
+                            bool logTargetNeedsPit = logForecast.NeedsPit;
+                            double logTargetStationaryTime = logForecast.StationaryTime;
                             double logTargetTotalPitLoss = 0.0;
 
                             if (logTargetNeedsPit)
                             {
-                                logTargetStationaryTime = CarPitData.CalculateStationaryTime(
-                                    logOppData.CarClass,
-                                    logTargetFuelToAdd,
-                                    refuelRate,
-                                    0.0,
-                                    jackBufferSec: 2.0);
-
                                 logTargetTotalPitLoss = CarPitData.CalculateTotalPitLoss(
                                     logTargetStationaryTime,
                                     radar.PitTransitTime,

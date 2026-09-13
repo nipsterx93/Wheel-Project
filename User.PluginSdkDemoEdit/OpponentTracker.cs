@@ -155,6 +155,16 @@ namespace SimRIG
         public double EstimatedFuelTank { get; set; } = 0.0;
         public double FuelToAddTime { get; set; } = 0.0;
 
+        /// <summary>
+        /// Consumo verde proporzionato al BoP (L/giro), lo stesso con cui il modello avversari scala
+        /// <see cref="EstimatedFuel"/>. Zero quando il consumo non viene dalla regola BoP (altra classe,
+        /// nessun dato): chi lo legge usa il proprio ripiego invece di una costante (Y-61).
+        /// </summary>
+        public double BopFuelPerLap { get; set; } = 0.0;
+
+        /// <summary>Capienza del serbatoio usata dal modello avversari (L). Zero = non ancora nota (Y-61).</summary>
+        public double FuelTankCapacity { get; set; } = 0.0;
+
         public int LapCount { get; set; } = 0;
 
         public double EstimatedPitWindow { get; set; } = 0.0;
@@ -299,6 +309,70 @@ namespace SimRIG
         {
             if (!carRecognisedInDb && classRecordTank > 0.0) return classRecordTank;
             return perCarTank;
+        }
+
+        /// <summary>Consumi di un avversario stimati dal modello (L/giro).</summary>
+        public struct OpponentFuelBurn
+        {
+            public double GreenPerLap;
+
+            public double YellowPerLap;
+
+            /// <summary>
+            /// <see cref="GreenPerLap"/> quando viene dalla regola BoP, zero quando e' una costante: e' il
+            /// valore salvato in <see cref="OpponentTelemetryData.BopFuelPerLap"/> per la strategia (Y-61).
+            /// </summary>
+            public double BopScaledGreenPerLap;
+        }
+
+        /// <summary>
+        /// Consumo verde e giallo di un avversario. Per la classe del Player vale la regola BoP:
+        /// <c>capienza avversario x consumo di riferimento / capienza BoP del Player</c>, col consumo
+        /// medio del Player dopo 3 giri completati, o quello del database prima. Daytona 13/09:
+        /// Lamborghini 60 L, Player 3.0 L/giro su 50 L -> 3.60 L/giro. Per le altre classi, e senza
+        /// alcun dato, restano le costanti di sempre.
+        /// </summary>
+        public static OpponentFuelBurn ResolveOpponentFuelBurn(
+            string playerClassId,
+            string opponentClassId,
+            bool playerFuelLatchReady,
+            double playerFuelPerLap,
+            double formationLapBurn,
+            double dbFuelPerLap,
+            double opponentMaxTank,
+            double playerMaxTankBoP)
+        {
+            var burn = new OpponentFuelBurn();
+            if (string.IsNullOrEmpty(playerClassId) || playerClassId == "DEFAULT") return burn;
+
+            if (opponentClassId != playerClassId)
+            {
+                burn.GreenPerLap = 3.0;
+                burn.YellowPerLap = 1.8;
+                return burn;
+            }
+
+            if (playerFuelLatchReady && playerFuelPerLap > 0.0 && playerMaxTankBoP > 0.0)
+            {
+                burn.GreenPerLap = (opponentMaxTank * playerFuelPerLap) / playerMaxTankBoP;
+                burn.BopScaledGreenPerLap = burn.GreenPerLap;
+                burn.YellowPerLap = formationLapBurn > 0.0
+                    ? (opponentMaxTank * formationLapBurn) / playerMaxTankBoP
+                    : burn.GreenPerLap * 0.6;
+                return burn;
+            }
+
+            if (dbFuelPerLap > 0.0 && playerMaxTankBoP > 0.0)
+            {
+                burn.GreenPerLap = (opponentMaxTank * dbFuelPerLap) / playerMaxTankBoP;
+                burn.BopScaledGreenPerLap = burn.GreenPerLap;
+            }
+            else
+            {
+                burn.GreenPerLap = dbFuelPerLap > 0.0 ? dbFuelPerLap : 2.5;
+            }
+            burn.YellowPerLap = burn.GreenPerLap * 0.6;
+            return burn;
         }
 
         /// <summary>Sotto questa soglia non e' un giro: e' un contatore che e' saltato.</summary>
@@ -1086,42 +1160,22 @@ namespace SimRIG
                 // Vincolo User Step 4376: La mediana del Player richiede almeno 3 giri completati (giro corrente >= 4)
                 bool isPlayerFuelLatchReady = (data?.NewData?.CompletedLaps ?? 0) >= 3;
 
-                if (!string.IsNullOrEmpty(state.CarClassId) && state.CarClassId != "DEFAULT")
-                {
-                    if (tData.CarClass == state.CarClassId)
-                    {
-                        if (isPlayerFuelLatchReady && effectiveClassFuelBurn > 0.0 && playerMaxTankBoP > 0.0)
-                        {
-                            classFuelBurn = (opponentMaxTank * effectiveClassFuelBurn) / playerMaxTankBoP;
-                            if (formationLapBurn > 0.0)
-                            {
-                                yellowFuelBurn = (opponentMaxTank * formationLapBurn) / playerMaxTankBoP;
-                            }
-                            else
-                            {
-                                yellowFuelBurn = classFuelBurn * 0.6;
-                            }
-                        }
-                        else
-                        {
-                            double initialEstBurn = (dbRecord != null && dbRecord.FuelPerLap > 0.0) ? dbRecord.FuelPerLap : 0.0;
-                            if (initialEstBurn > 0.0 && playerMaxTankBoP > 0.0)
-                            {
-                                classFuelBurn = (opponentMaxTank * initialEstBurn) / playerMaxTankBoP;
-                            }
-                            else
-                            {
-                                classFuelBurn = initialEstBurn > 0.0 ? initialEstBurn : 2.5;
-                            }
-                            yellowFuelBurn = classFuelBurn * 0.6;
-                        }
-                    }
-                    else
-                    {
-                        classFuelBurn = 3.0;
-                        yellowFuelBurn = 1.8;
-                    }
-                }
+                OpponentFuelBurn fuelBurn = ResolveOpponentFuelBurn(
+                    state.CarClassId,
+                    tData.CarClass,
+                    isPlayerFuelLatchReady,
+                    effectiveClassFuelBurn,
+                    formationLapBurn,
+                    dbRecord != null ? dbRecord.FuelPerLap : 0.0,
+                    opponentMaxTank,
+                    playerMaxTankBoP);
+                classFuelBurn = fuelBurn.GreenPerLap;
+                yellowFuelBurn = fuelBurn.YellowPerLap;
+
+                // Consumo e capienza restano sull'avversario per la previsione della sua sosta nel calcolo
+                // MergeGap/undercut (Y-61): prima erano locali, e la strategia usava quelli del Player.
+                tData.BopFuelPerLap = fuelBurn.BopScaledGreenPerLap;
+                tData.FuelTankCapacity = classMaxTank;
 
                 // Logghiamo i dettagli dell'avversario e dei consumi
                 if (!string.IsNullOrEmpty(opp.Name))
