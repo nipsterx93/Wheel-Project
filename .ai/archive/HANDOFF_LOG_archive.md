@@ -9,6 +9,51 @@
 
 ---
 
+## [2026-09-10 16:05] antigravity → chiunque entri dopo
+
+**Task:** Prioritizzazione telemetria nativa CarIdxLapDistPct su SimHub opponent position e salvaguardia target lock su replay jump
+**Piano:** —
+**Commit:** `[antigravity] feat: prioritize native CarIdxLapDistPct over SimHub opponent position and safeguard target latch`
+
+### Fatto
+- `User.PluginSdkDemoEdit/OpponentTracker.cs`:
+  - Implementato `GetOpponentTrackPosition(opp, state)` (r. 574-618): priorità tassativa al canale nativo a 60 Hz `CarIdxLapDistPct[carIdx]` via `IracingBridge`. Solo se non disponibile (<= 0), fallback subordinato su `opp.TrackPositionPercent`, e infine continuità su `tData.LastPosPct`.
+  - In `activeOpponents` (r. 921): ammessi anche gli avversari con `GetOpponentTrackPosition(o, state) > 0.0` anche se SimHub ha `TrackPositionPercent` nullo o asincrono.
+  - In `sortedOpponents` (r. 965): ordinamento basato su `GetOpponentTrackPosition`.
+  - In r. 1037: `currentPos = GetOpponentTrackPosition(opp, state)` calcolato prima dell'inizializzazione di `_telemetry`, eliminando il bug per cui un valore SimHub nullo o a 0 saltava l'avversario prima ancora di poter leggere la telemetria nativa.
+  - In r. 1243: aggiornato calcolo distacco vettura davanti (`gapToFront`) con la posizione nativa di `ahead`.
+  - In r. 715: aggiornato ordinamento di classe per considerare la posizione nativa degli avversari e del player.
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs`:
+  - In `Update` (r. 429, 530, 781): aggiornati `myPos`, `oppPos` e `CurrentTarget.TrackPositionPercent` per utilizzare la posizione nativa.
+  - In r. 446-480: salvaguardato `LatchedTargetName` contro micro-drop di frame o salti nel replay. Se l'avversario manca temporaneamente in `state.Opponents`, viene sintetizzato da `TrackedOpponents` o dai metadati della sessione, preservando il lock impostato dall'utente senza azzerarlo.
+  - In r. 960-975 e 1024: ricalcolati i gap fisici e proiettati di overcut/undercut (`oppPosVal`) con la posizione nativa prioritaria.
+  - In `SelectTarget` (r. 1474-1590): tutte le modalità (`LEADER_CLASS`, `P1..Pn`, `AHEAD`, `BEHIND`) usano `tracker.GetOpponentTrackPosition(opp, state)`.
+  - In `ResetSession(bool preserveLatchedTarget = false)` (r. 1856): aggiunto parametro per preservare `LatchedTargetName` durante i salti nel replay.
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs:1140, 1159`:
+  - Aggiunta sincronizzazione `TargetStrategyManager.ResetSession(preserveLatchedTarget: true)` su rilevamento di salto temporale nel replay (`Replay Time Jump Detected`).
+  - Aggiunto `TargetStrategyManager.ResetSession()` su transizione reale di sessione.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs`:
+  - Aggiunti 2 unit test: `Test_OpponentPosition_NativeLapDistPct_TakesPriorityOverSimHubTrackPositionPercent` e `Test_LatchedTarget_PreservedOnTemporaryDropOrReplayJump`.
+  - Suite eseguita con successo: **347 PASS (100%)**.
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: 347 PASS (100%).
+
+### Stato
+- ✅ Compila (0 errori, 1 warning CS0219 noto)
+- ✅ 347 PASS (100%)
+
+### Per chi entra
+**Prossimo passo:** Rivedere i log del replay su Road Atlanta per confermare la fluidità della posizione di Bruno Carneiro e la persistenza del target lock durante i salti nel replay. Procedere poi con i restanti punti dell'analisi (Punto 2 sbalzi CurrentTank, Punto 7 GapStr vs MergeGap, Punto 3 ExtendedZoneRacingTime, ecc.).
+**NON toccare:** La priorità di `IracingBridge.GetLapDistPct` rispetto a `opp.TrackPositionPercent`.
+**Attenzione a:** `ResetSession(preserveLatchedTarget: true)` su replay jump resetta solo i buffer temporali/delta di calcolo, conservando il target bloccato dall'utente.
+
+---
+
 ## [2026-09-10 15:10] antigravity → chiunque entri dopo
 
 **Task:** Fallback rilevamento InPitStall per avversario fermo su pit road (Punto 1 dell'analisi Road Atlanta)
