@@ -47,6 +47,46 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-13 23:12] claude → chiunque entri dopo
+
+**Task:** Passo 1 del piano correzioni Daytona (Y-61): la previsione della sosta del Target nel calcolo MergeGap/undercut usa il consumo proporzionato al BoP e il serbatoio del Target, non quelli del Player. Scope allargato da Andreas a `SimRIG.Target.TankLapsRemaining` e al tetto del rifornimento.
+**Piano:** `.ai/plans/2026-09-13-daytona-piano-correzioni.md` (passo 1)
+**Commit:** `76a1d6e` (lock), `05f0002` (codice e test), questo (handoff, file di stato, rilascio lock)
+
+### Fatto
+- `User.PluginSdkDemoEdit/OpponentTracker.cs` — consumo verde/giallo degli avversari estratto in `ResolveOpponentFuelBurn`, comportamento e costanti invariati. Sull'avversario restano ora `BopFuelPerLap` (solo il consumo che viene dalla regola BoP, dal consumo del Player o dal database; 0 dove si usa una costante: 2.5 L/giro senza dati, 3.0 per le altre classi) e `FuelTankCapacity` (`classMaxTank`, la capienza che il modello avversari già usa). Assegnati a ogni tick dopo il `continue` per posizione ≤ 0: con l'auto `NotInWorld` resta l'ultimo valore visto.
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs` — `ForecastTargetPit` (+ `TargetPitForecast`): una sola funzione per il calcolo e per il blocco del MergeGapLog, che ne avevano due copie. Consumo BoP del Target con ripiego sul Player (e su 3.0 L/giro, come prima); tetto = spazio libero nel serbatoio del Target (prima la capienza del Player); `CurrentTarget.TankLapsRemaining` (ex riga 887, pubblicato come `SimRIG.Target.TankLapsRemaining`) col consumo del Target, 99 se nessun consumo è noto.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/TargetBopFuelForecastUnitTests.cs` (nuovo, registrato in `TestRunner.cs` e nel `.csproj`) — 4 test coi numeri del giro 15 di `163743`. La suite raccoglie i fallimenti invece di fermarsi al primo: una neutralizzazione mostra tutti i test rossi in un giro solo.
+- **Scostamenti dal piano:** (1) salvato solo il consumo verde, il giallo non ha consumatori nella strategia; (2) tetto sullo spazio libero (capienza − carburante a bordo), come già fa `smartFuelToAdd` nel modello avversari, invece della capienza intera; (3) il blocco del MergeGapLog usa ora lo stesso fill rate del calcolo (`radar.MeasuredFuelFillRate`, ripiego sul profilo di classe del Target) invece di `refuelRate` (ripiego sul profilo del Player): cambia qualcosa solo senza fill rate misurato.
+- File di stato, incoerenze del report d'ingresso e della review §8: `PROJECT_STATE.md` — 347 → 367 test misurati; tolti i conteggi a mano dei punti chiusi (dicevano 39 e 40, sono 41: il `grep` per contarli è già nel file); Y-13 tolto dalla frase sui punti che aspettano dati; "Fase attiva" allineata alla roadmap. `AGENTS.md` — tolto il "40". `STRATEGY_ENGINE_GUIDE.md` — i file di log sono quattro, aggiunto `SimRIG_DebugLog_*.csv` (nomi da `LogManager.cs:140-143`).
+- Voce del 2026-09-11 13:35 spostata in `.ai/archive/HANDOFF_LOG_archive.md`, di cui ho corretto l'intestazione (dichiarava solo 2026-08-24 → 2026-09-01).
+- Pushati su `origin` anche gli 8 commit che erano solo locali, su richiesta di Andreas.
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build 0 errori (1 warning CS già presente), exit 0, 367 righe `[PASS]`, 4 delle quali sotto `[TEST] Running Target BoP Fuel Forecast Tests (Y-61)...`. Neutralizzazione ADR-004 fatta prima del commit (consumo del Player, tetto del Player, nessun consumo esposto): exit 1 con tre fallimenti (`got 3,00`, `got 50,00`, `got 0,00`), test del ripiego verde.
+
+Sul replay Daytona `20260913_163743`, rigirato con la DLL nuova (la build l'ha già installata):
+```bash
+grep -n "Target (+\|ProjectedMergeGap" "Logs/Daytona/SimRIG_MergeGapLog_<run>.txt"
+```
+Atteso al giro 15: `Target (+≈37.3s) : Staz: ≈15.7s`, `ProjectedMergeGap` ≈ −2.5 s e `FuelLaps` del Target ≈ 1.9 (oggi +34.40 s, 12.79 s, +0.43 s, 2.3).
+
+### Stato
+- ✅ Compila (0 errori, 1 warning CS già presente)
+- ✅ Test passano: 367 PASS, exit 0 (363 prima). ⚠️ Il backtest sul replay Misano si salta anche su questa macchina (`No frames loaded from replay file`, Y-54)
+- ⏭️ Replay Daytona con la DLL nuova non ancora rigirato: passo chiuso come "test verdi, replay da verificare"
+
+### Per chi entra
+**Prossimo passo:** passo 2 del piano (`ExtZone` dalla mediana dei transiti del Player invece del minimo di classe), dopo il replay del passo 1 se Andreas lo rigira prima. Lock con scope sui file indicati nel passo 2 (`SectorTracker.cs`, `DataPluginDemo.cs:1273`, `OpponentTracker.cs`) e sui test.
+**NON toccare:** `Hardware/`; `PitInOutAccDecTime` = 11.6 nel DB; le soglie gomme sì/no senza il ricontrollo del passo 5; il consumo fisso delle altre classi (fuori piano).
+**Attenzione a:** i test chiamano le funzioni pure, non i due `Update` (servirebbe il `GameData` di SimHub): l'assegnazione di `BopFuelPerLap`/`FuelTankCapacity` in `OpponentTracker.Update` e le due chiamate a `ForecastTargetPit` le verifica solo il replay. Nei primi 3 giri, senza consumo nel database, il Target usa ancora il consumo del Player (la costante 2.5 non viene esposta). I criteri numerici dei passi 3 e 5 presuppongono questo passo.
+
+---
+
 ## [2026-09-13 21:50] claude → chiunque entri dopo
 
 **Task:** Registrate le decisioni di Andreas sul piano correzioni Daytona (ordine 1 → 5, `SimRIG.Leader.TrackPct` = posizione stimata, esegue claude) e preparata la ripartenza in una nuova sessione. Nessun file di codice toccato, lock non preso.
@@ -443,41 +483,6 @@ Atteso: build pulita (0 errori) e test runner console a **357 PASS (100%)**.
 
 ---
 
-## [2026-09-11 13:35] antigravity → chiunque entri dopo
-
-**Task:** Risoluzione falsi stop su auto culled in NotInWorld e correzione classificazione gomme in soste simultanee
-**Piano:** —
-**Commit:** `6c0c1a4` (codice e test), questo (handoff e rilascio lock)
-
-### Fatto
-- `User.PluginSdkDemoEdit/OpponentTracker.cs`:
-  - **Bypass universale telemetria nativa !IsOnPitRoad** (r. 1499-1504): se `isNativeAvailable` e `!tData.IsOnPitRoad`, `isInsideGeofence` viene forzato a `false` a prescindere da `TrackSurface` (`OnTrack`, `NotInWorld`, `OffTrack`). Elimina tutti i falsi trigger su auto lontane dal Player culled da iRacing a `NotInWorld (-1)`.
-  - **Protezione Speed < 0.5 km/h su NotInWorld** (r. 1517): anche nel fallback spaziale puro, `Speed < 0.5` non scatta se l'auto è `NotInWorld`, poiché le coordinate culled non si aggiornano e simulano artificiosamente velocità zero.
-  - **PredictedFuelToAdd da LastPitFuelAdded** (r. 1729-1731): all'uscita box, `predictedFuelToAdd` legge prioritariamente `tData.LastPitFuelAdded` precalcolato da Smart Refuel all'ingresso box (es. 36.3L) anziché `targetFuel - EstimatedFuel` (che era già stato ricaricato a 37.3L, stimando erroneamente solo 1.5L di carburante).
-  - **Classificazione sosta simultanea basata su durata carburante** (r. 1782-1825): in pitstop simultanei (GT3), se il tempo stazionario ($16.2\text{s}$) è coperto dalla durata necessaria al rifornimento ($T_{\text{refuel}} = 15.4\text{s}$) e inferiore al tempo minimo per 4 gomme ($< 18.0\text{s}$), la sosta viene classificata correttamente come "Fuel Only" (`TiresChanged = false`), prevenendo il reset errato delle baseline e l'attivazione della modalità provvisoria.
-  - **Protezione EstimatedFuel post-sosta** (r. 1806-1820): sincronizzazione coerente di `EstimatedFuel` senza doppio incremento né saturazione anticipata.
-- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:1375-1379`:
-  - In `MergeGapLog`, `targetPitCount` legge `CurrentTarget.PitCount` o `logOppData.PitCount`, riportando correttamente `Pits: 1` anziché `0` al target monitor.
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs`:
-  - Aggiunto unit test `Test_SimultaneousPitStop_IdentifiesFuelOnlyWhenTimeExplainedByFuel` (r. 1110-1175) registrato in `RunAllTests()`.
-  - Aggiornato `Test_SpatialGeofence_DoesNotTriggerPitStopAtRacingSpeedOnStraight` a verifica della protezione di auto culled in `NotInWorld`.
-  - Suite test: **354 PASS (100%)**.
-
-### Come verificare
-```bash
-& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
-& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: build pulita (0 errori) e test runner console a **354 PASS (100%)**.
-
-### Stato
-- ✅ Compila (0 errori, 1 warning CS0219 noto)
-- ✅ 354 PASS (100%)
-
-### Per chi entra
-**Prossimo passo:** Test replay Road Atlanta per osservare che né auto lontane (Connor Spree) né vicine (Bruno Carneiro) subiscano falsi trigger, e che la sosta di Carneiro a Lap 20 riporti `Fuel Only` con gap e baselines intatti.
-**NON toccare:** `Hardware/` rimane territorio di Andreas.
-**Attenzione a:** Il conteggio test corrente del plugin C# è **354 PASS**.
 
 ---
 

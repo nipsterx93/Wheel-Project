@@ -1,11 +1,49 @@
 # HANDOFF LOG — archivio
 
-> Handoff dal **2026-08-24 → 2026-09-01** (12 voci), tolti da `.ai/HANDOFF_LOG.md`
-> il 2026-09-05 per riportarlo agli ultimi 10 che dichiara di tenere.
+> Handoff più vecchi dei 10 tenuti in `.ai/HANDOFF_LOG.md`, in ordine cronologico inverso (il più
+> recente in cima). Il primo blocco, 2026-08-24 → 2026-09-01, è stato spostato qui il 2026-09-05.
 >
 > **Niente è andato perso:** le voci sono qui verbatim, e la storia completa
 > resta comunque in `git log`. Si legge questo file solo quando serve
 > ricostruire un turno vecchio, non a ogni ingresso di sessione.
+
+---
+
+## [2026-09-11 13:35] antigravity → chiunque entri dopo
+
+**Task:** Risoluzione falsi stop su auto culled in NotInWorld e correzione classificazione gomme in soste simultanee
+**Piano:** —
+**Commit:** `6c0c1a4` (codice e test), questo (handoff e rilascio lock)
+
+### Fatto
+- `User.PluginSdkDemoEdit/OpponentTracker.cs`:
+  - **Bypass universale telemetria nativa !IsOnPitRoad** (r. 1499-1504): se `isNativeAvailable` e `!tData.IsOnPitRoad`, `isInsideGeofence` viene forzato a `false` a prescindere da `TrackSurface` (`OnTrack`, `NotInWorld`, `OffTrack`). Elimina tutti i falsi trigger su auto lontane dal Player culled da iRacing a `NotInWorld (-1)`.
+  - **Protezione Speed < 0.5 km/h su NotInWorld** (r. 1517): anche nel fallback spaziale puro, `Speed < 0.5` non scatta se l'auto è `NotInWorld`, poiché le coordinate culled non si aggiornano e simulano artificiosamente velocità zero.
+  - **PredictedFuelToAdd da LastPitFuelAdded** (r. 1729-1731): all'uscita box, `predictedFuelToAdd` legge prioritariamente `tData.LastPitFuelAdded` precalcolato da Smart Refuel all'ingresso box (es. 36.3L) anziché `targetFuel - EstimatedFuel` (che era già stato ricaricato a 37.3L, stimando erroneamente solo 1.5L di carburante).
+  - **Classificazione sosta simultanea basata su durata carburante** (r. 1782-1825): in pitstop simultanei (GT3), se il tempo stazionario ($16.2\text{s}$) è coperto dalla durata necessaria al rifornimento ($T_{\text{refuel}} = 15.4\text{s}$) e inferiore al tempo minimo per 4 gomme ($< 18.0\text{s}$), la sosta viene classificata correttamente come "Fuel Only" (`TiresChanged = false`), prevenendo il reset errato delle baseline e l'attivazione della modalità provvisoria.
+  - **Protezione EstimatedFuel post-sosta** (r. 1806-1820): sincronizzazione coerente di `EstimatedFuel` senza doppio incremento né saturazione anticipata.
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:1375-1379`:
+  - In `MergeGapLog`, `targetPitCount` legge `CurrentTarget.PitCount` o `logOppData.PitCount`, riportando correttamente `Pits: 1` anziché `0` al target monitor.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs`:
+  - Aggiunto unit test `Test_SimultaneousPitStop_IdentifiesFuelOnlyWhenTimeExplainedByFuel` (r. 1110-1175) registrato in `RunAllTests()`.
+  - Aggiornato `Test_SpatialGeofence_DoesNotTriggerPitStopAtRacingSpeedOnStraight` a verifica della protezione di auto culled in `NotInWorld`.
+  - Suite test: **354 PASS (100%)**.
+
+### Come verificare
+```bash
+& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build pulita (0 errori) e test runner console a **354 PASS (100%)**.
+
+### Stato
+- ✅ Compila (0 errori, 1 warning CS0219 noto)
+- ✅ 354 PASS (100%)
+
+### Per chi entra
+**Prossimo passo:** Test replay Road Atlanta per osservare che né auto lontane (Connor Spree) né vicine (Bruno Carneiro) subiscano falsi trigger, e che la sosta di Carneiro a Lap 20 riporti `Fuel Only` con gap e baselines intatti.
+**NON toccare:** `Hardware/` rimane territorio di Andreas.
+**Attenzione a:** Il conteggio test corrente del plugin C# è **354 PASS**.
 
 ---
 

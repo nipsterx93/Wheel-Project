@@ -3,8 +3,8 @@
 - **Data:** 2026-09-13
 - **Autore:** claude
 - **Esecutore:** claude (deciso da Andreas il 2026-09-13), un passo per turno col lock
-- **Stato:** ✅ Approvato da Andreas il 2026-09-13 — ordine 1 → 5, si parte dal passo 1 (vedi
-  "Decisioni prese" in fondo)
+- **Stato:** ✅ Approvato da Andreas il 2026-09-13 — ordine 1 → 5 (vedi "Decisioni prese" in fondo).
+  Passo 1 fatto il 2026-09-13 (`05f0002`, replay da verificare); prossimo il passo 2.
 - **Basato su:**
   - review `.ai/reviews/2026-09-13-daytona-leader-mergegap-pitloss.md`, incluse le correzioni del §9;
   - confronto con Andreas del 13/09 sera: regola BoP del consumo, loop chiuso della pit road con
@@ -41,6 +41,11 @@ queste cose:
 ---
 
 ## Passo 1 — Consumo BoP del Target nel calcolo MergeGap/undercut (Y-61)
+
+> ✅ **Fatto il 2026-09-13** (`05f0002`, claude): 367 PASS, replay Daytona da verificare. Allargato da
+> Andreas a `SimRIG.Target.TankLapsRemaining` e al tetto del rifornimento (spazio libero nel serbatoio del
+> Target invece della capienza del Player). Salvato solo il consumo verde: il giallo non ha consumatori.
+> Dettagli e scostamenti: voce del 2026-09-13 23:12 in `.ai/HANDOFF_LOG.md`.
 
 **Problema.** La regola esiste già: `OpponentTracker.cs:1093-1110` calcola
 `opponentMaxTank × consumo Player / playerMaxTankBoP`, per il Target 60 × 3.0 / 50 = **3.60 L/giro**

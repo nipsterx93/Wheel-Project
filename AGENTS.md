@@ -217,7 +217,7 @@ applicate. Ora sono ~95 KB. **Mantenerli così fa parte del lavoro:**
 - `.ai/plans/` — piani di implementazione
 - `.ai/reviews/` — revisioni con verdetto e riferimenti
 - `.ai/archive/` — **storia consultabile a richiesta, non da caricare a ogni sessione.**
-  `CLOSED_POINTS.md` (il ragionamento completo dei 40 punti chiusi, con numeri e commit) e
+  `CLOSED_POINTS.md` (il ragionamento completo dei punti chiusi, con numeri e commit) e
   `HANDOFF_LOG_archive.md` (gli handoff oltre i 10 tenuti). Ci si va quando serve contestare una
   conclusione o ricostruire un turno vecchio — non all'apertura.
 - **Skill di dominio `motorsport-telemetry-engineering`** — formule di fisica carburante,

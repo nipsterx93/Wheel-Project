@@ -70,13 +70,14 @@ l'uscita la vettura sta ancora rientrando e accelerando.
 
 ## Cosa scrivono i log
 
-Tre file in `E:\SimHub\Logs\SimRig Logs\`, uno per sessione:
+Quattro file in `E:\SimHub\Logs\SimRig Logs\`, uno per sessione:
 
 | File | Cosa contiene |
 |------|---------------|
 | `SimRIG_StrategySnapshot_*.csv` | Fotografia completa ogni ~0.5 s. 63 colonne. Serve per i grafici |
 | `SimRIG_StrategyEvent_*.txt` | Solo i momenti in cui **cambia qualcosa**. Serve per capire il perché |
 | `SimRIG_MergeGapLog_*.txt` | Riepilogo leggibile ogni 10 s |
+| `SimRIG_DebugLog_*.csv` | Eventi e diagnostica di tutti i moduli: soste, avversari, leader, proiezioni, calibrazioni |
 
 Entrambi i file strategy iniziano con i **parametri del modello** (`# RelativePaceAlpha=0.3`, ecc.),
 così un log vecchio resta interpretabile anche se le costanti cambiano.

@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      claude
-since:      2026-09-13 22:42
-task:       passo 1 piano correzioni Daytona — consumo BoP e serbatoio del Target nel calcolo MergeGap/undercut (Y-61)
-scope:      User.PluginSdkDemoEdit/OpponentTracker.cs, User.PluginSdkDemoEdit/TargetStrategyManager.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/
-expires:    2026-09-14 00:45
+owner:      NONE
+since:      null
+task:       null
+scope:      null
+expires:    null
 ```
 
 **Regole del lock**
@@ -59,17 +59,17 @@ poteva più correggere). Il rimedio comune è in ADR-005.
 >
 > | Serve… | Sta in |
 > |---|---|
-> | il ragionamento completo di un punto **chiuso**, i numeri misurati, il commit | `.ai/archive/CLOSED_POINTS.md` (40 punti) |
+> | il ragionamento completo di un punto **chiuso**, i numeri misurati, il commit | `.ai/archive/CLOSED_POINTS.md` |
 > | un handoff più vecchio dei 10 tenuti | `.ai/archive/HANDOFF_LOG_archive.md` (12 voci, 24/08 → 01/09) |
 > | qualsiasi altra cosa | `git log` — nulla è stato perso |
 >
 > L'indice dei punti chiusi resta più in basso in questo file: serve a sapere **che** un punto esiste
 > ed è chiuso, senza caricarne il testo. Quando ti serve il *perché*, apri l'archivio a quell'ID.
 
-**Come è stato verificato tutto:** build 0 errori, **347 test PASS** (erano 111 al setup, 186 al
+**Come è stato verificato tutto:** build 0 errori, **367 test PASS al 2026-09-13**, da rileggere nell'output del runner e non da qui (erano 111 al setup, 186 al
 24 agosto, 295 dopo Y-52 passo 1, 311 dopo Y-52 passo 2, 314 dopo sblocco dump `SessionDataReader`,
 321 dopo allineamento CarClassID/suffissi, 322 dopo sincronizzazione start line crossing latch,
-324 dopo stima consumo robusta con mediana mobile e validazione su Road Atlanta e Misano, 332 dopo cronometro reale PitZone SectorTracker, 340 dopo fix pit detection replay e class position ranking, 342 dopo esposizione proprietà Player/Target TrackSurface, 343 dopo esposizione Player/Target TrackPositionPercent, 345 dopo fallback InPitStall per avversario fermo su pit road, 347 dopo priorità nativa CarIdxLapDistPct per posizione avversari e salvaguardia latch bersaglio su drop replay; ⚠️ vedi Y-54: il backtest sul replay
+324 dopo stima consumo robusta con mediana mobile e validazione su Road Atlanta e Misano, 332 dopo cronometro reale PitZone SectorTracker, 340 dopo fix pit detection replay e class position ranking, 342 dopo esposizione proprietà Player/Target TrackSurface, 343 dopo esposizione Player/Target TrackPositionPercent, 345 dopo fallback InPitStall per avversario fermo su pit road, 347 dopo priorità nativa CarIdxLapDistPct per posizione avversari e salvaguardia latch bersaglio su drop replay, 363 al 2026-09-13 prima del piano correzioni Daytona, 367 dopo il suo passo 1; ⚠️ vedi Y-54: il backtest sul replay
 reale si salta in silenzio se il file non c'è, quindi il numero da solo non dice quanta copertura
 sia davvero girata), e per ogni
 correzione la **regressione neutralizzata** — si disattiva il fix e si controlla che il test diventi
@@ -87,9 +87,8 @@ presenti in locale). `Logs/3 Run Test/` contiene le tre riproduzioni di Misano c
 ripetibilità della geofence; `Logs/Daytona Run/` le tre di Daytona che hanno chiuso Y-17b, Y-23, Y-24
 e Y-25. Gli snapshot del database di calibrazione sono in `.ai/db-snapshots/`.
 
-**I punti ancora aperti** (Y-13, Y-14, Y-15, e la Fase 6 del piano calibrazioni) sono aperti per
-mancanza di **dati**, non di tempo: servono replay con caratteristiche precise, indicate in ciascuna
-voce.
+**Alcuni punti aperti aspettano dati, non tempo** (Y-14, Y-15, e la Fase 6 del piano calibrazioni):
+servono replay con caratteristiche precise, indicate in ciascuna voce.
 
 ---
 
@@ -115,11 +114,11 @@ implementazione. Chi decide, aggiorni questa tabella prima di far partire il lav
 | Y-58 | Leader: buchi di dati, `LeaderRaceLapsCompleted` di nuovo a 0, dead reckoning mai attivato | Trovato il 2026-09-13 (claude, replay Daytona `20260913_140133` e `_163743`). Regressione di Y-25 introdotta da `863c65c`: il hold della posizione (`RaceAnalyzer.cs:599-621`) disinnesca `HoldLeaderLapsCompleted` (`:669-670`) e il dead reckoning (`:848-859`, `:1622-1625`). Giri a 0 nel 24.4% delle righe, posizione congelata fino a ~152 s, 0.0 per ~530 s dal via (il replay manda `NotInWorld` le vetture lontane dal Player). Backtest: posizione congelata errore mediano 0.11-0.12 giri (max 1.76), dead reckoning 0.02-0.04 (buco più lungo −0.01). **Deciso da Andreas (2026-09-13):** `SimRIG.Leader.TrackPct` mostra la posizione stimata. Piano: passo 4 di `.ai/plans/2026-09-13-daytona-piano-correzioni.md`. Dettagli, fix e test: `.ai/reviews/2026-09-13-daytona-leader-mergegap-pitloss.md` §3. |
 | Y-59 | MergeGap: il latch della sosta Player congela un gap calcolato su Target `NotInWorld` | Trovato il 2026-09-13 (claude), stesso replay. Congelato −9.8 s contro −2.7 s reali (errore −7.1 s, ottimista). Nei 20 s prima dell'ingresso il Target è `NotInWorld` con posizione ferma: il gap per microsettori (`TargetStrategyManager.cs:713-731`) cresce ~1 s/s e `_lastOnTrackProjectedMergeGap` (`:242-250`) lo registra. Con l'ultimo gap fresco il latch avrebbe tenuto −1.79 s. Il latch di `722a9d6` era validato solo su Road Atlanta. Dettagli e test: review §3. |
 | Y-60 | Stazionario avversari dedotto dalla finestra `NotInWorld` invece che dal tempo in corsia | Trovato il 2026-09-13 (claude). Vincolo confermato da Andreas: lo stazionario avversario si può solo stimare dal nostro `PitTransitTime`. `OpponentTracker.cs:1722` però sottrae il transito a `NotInWorldDuration`, che esclude i secondi in cui la vettura è visibile in corsia (fino a 5.9 s): sottostima. Proposta iniziale `TotalTime − PitTransitTime` (su 12 soste senza gomme lo scarto dal carburante atteso passa da +2.40 s a −0.25 s), **rivista dopo il confronto con Andreas**: con l'auto `NotInWorld` la pit road la forziamo noi (`OpponentTracker.cs:1349-1360`), quindi il tempo in corsia è affidabile solo se l'uscita è osservata; AccDec avversario ~5 s (6 soste su 32) = uscita non osservata. Piano: passo 5 di `.ai/plans/2026-09-13-daytona-piano-correzioni.md`. Collaterale: `Pit Loss Dissection` legge il transito di corsa invece di quello della sosta (solo log). Dettagli: review §3. |
-| Y-61 | Perdita ai box: `ExtZone` "best" e stazionario Target col consumo del Player | Trovato il 2026-09-13 (claude). Il MergeGap pre-sosta resta +3.1 s pessimista anche con `PitInOutAccDecTime` 11.6 (l'AccDec era un errore di modo comune). Cause (**precisate dopo il confronto con Andreas**): il calcolo MergeGap/undercut (`TargetStrategyManager.cs:952-977`) non usa il consumo proporzionato al BoP che `OpponentTracker.cs:1093-1110` calcola già (Target 3.60 L/giro contro i 3.0 del Player: stazionario 12.79 s contro ~16 s, autonomia +20%); `ExtZone` = minimo di classe (`OpponentTracker.cs:890-907`: 21.93 s) invece della mediana dei transiti del Player, già salvati in `SectorTracker.RawNormalHistory` (23.8 s: perdita +1.9 s per tutti); AccDec per avversario senza banda di plausibilità (4.6-17.9 s, un caso a −454 s). Scomposizione: review §3 e §9. Piano: passi 1, 2 e 5 di `.ai/plans/2026-09-13-daytona-piano-correzioni.md`. |
+| Y-61 | Perdita ai box: `ExtZone` "best" e stazionario Target col consumo del Player | Trovato il 2026-09-13 (claude). Il MergeGap pre-sosta resta +3.1 s pessimista anche con `PitInOutAccDecTime` 11.6 (l'AccDec era un errore di modo comune). Cause (**precisate dopo il confronto con Andreas**): il calcolo MergeGap/undercut (`TargetStrategyManager.cs:952-977`) non usa il consumo proporzionato al BoP che `OpponentTracker.cs:1093-1110` calcola già (Target 3.60 L/giro contro i 3.0 del Player: stazionario 12.79 s contro ~16 s, autonomia +20%); `ExtZone` = minimo di classe (`OpponentTracker.cs:890-907`: 21.93 s) invece della mediana dei transiti del Player, già salvati in `SectorTracker.RawNormalHistory` (23.8 s: perdita +1.9 s per tutti); AccDec per avversario senza banda di plausibilità (4.6-17.9 s, un caso a −454 s). Scomposizione: review §3 e §9. Piano: passi 1, 2 e 5 di `.ai/plans/2026-09-13-daytona-piano-correzioni.md`. **Passo 1 fatto il 2026-09-13** (`05f0002`): la previsione della sosta del Target usa il suo consumo BoP e il suo serbatoio, anche per `SimRIG.Target.TankLapsRemaining`; replay da verificare. Restano i passi 2 (`ExtZone`) e 5 (AccDec avversari). |
 
 ### Punti già chiusi — indice
 
-Il testo completo di questi 39 punti (ragionamento, numeri misurati, regressione
+Il testo completo di questi punti (ragionamento, numeri misurati, regressione
 neutralizzata) è in **`.ai/archive/CLOSED_POINTS.md`**. Qui resta solo l'indice: serve a
 sapere che un punto esiste ed è chiuso, senza caricarne 47 KB a ogni sessione.
 
@@ -173,10 +172,10 @@ sapere che un punto esiste ed è chiuso, senza caricarne 47 KB a ogni sessione.
 
 ## 📍 Stato corrente
 
-**Fase attiva della Roadmap:** **Fase Y-52 (Metadati di Sessione da iRacing / irdashies)** — vedi [roadmap.md](.ai/plans/2026-08-24-roadmap.md).
+**Fase attiva della Roadmap:** **piano correzioni Daytona** (Y-58…Y-61, `.ai/plans/2026-09-13-daytona-piano-correzioni.md`), prima di riprendere Y-52 (Metadati di Sessione da iRacing / irdashies), in pausa — vedi [roadmap.md](.ai/plans/2026-08-24-roadmap.md). Le due righe qui sotto sono lo stato di Y-52.
 - **Passi 1 e 2:** Completati e testati (contenitore agnostico `SessionMetadata`, seeding passo stimato e validità `IsLapsPredictionValid`).
 - **Stabilizzazione Fuel al via e Start Line Crossing Latch (2026-09-07):** Sincronizzato con precisione il latch di `RaceStartingFuel` e l'avanzamento dei giri al primo attraversamento effettivo della linea del traguardo sotto bandiera verde (`RaceStartLineCrossed`). Lo sprint pre-traguardo della rolling start viene escluso dal calcolo dei litri; al completamento del primo giro di gara (Giro 1 -> 2 di gara) entra il consumo pulito e reale (2.21 L a Road Atlanta) nella finestra a 5 giri di `AverageFuelPerLap`, garantendo allineamento immediato con irdashies e con la realtà (322 test PASS).
-- **Prossimo lavoro tecnico (deciso da Andreas il 2026-09-13):** piano `.ai/plans/2026-09-13-daytona-piano-correzioni.md`, passi 1 → 5 in ordine, eseguiti da claude, un passo per turno col lock. Y-52 Passo 3 (`DriverPitTrkPct` → coordinata metrica piazzola box) e Passo 4 (densità carburante reale, opzioni gara) riprendono dopo.
+- **Prossimo lavoro tecnico (deciso da Andreas il 2026-09-13):** piano `.ai/plans/2026-09-13-daytona-piano-correzioni.md`, passi 1 → 5 in ordine, eseguiti da claude, un passo per turno col lock. Y-52 Passo 3 (`DriverPitTrkPct` → coordinata metrica piazzola box) e Passo 4 (densità carburante reale, opzioni gara) riprendono dopo. **Passo 1 fatto il 2026-09-13** (`05f0002`, test verdi, replay Daytona da verificare): prossimo il passo 2.
 - **Prossima fase strategica:** Fase B (Verifica consigli undercut/overcut contro esito reale di gara su replay idoneo fornito dall'utente).
 
 ### Contesto del progetto
