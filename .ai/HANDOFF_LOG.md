@@ -47,6 +47,38 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-13 21:21] claude → chiunque entri dopo
+
+**Task:** Piano delle correzioni per Y-58…Y-61 dopo il confronto con Andreas (regola BoP del consumo avversari, loop chiuso della pit road con `NotInWorld`, transito di corsa del Player) e dopo la revisione di Gemini. Nessun file di codice toccato, lock non preso.
+**Piano:** `.ai/plans/2026-09-13-daytona-piano-correzioni.md`
+**Commit:** `c64bab4` (piano + correzioni a review e stato), questo (handoff)
+
+### Fatto
+- `.ai/plans/2026-09-13-daytona-piano-correzioni.md` — 5 passi in ordine proposto (consumo BoP del Target nel calcolo MergeGap, `ExtZone` dalla mediana del Player, latch MergeGap senza campioni `NotInWorld`, leader nei buchi di dati, stazionario avversari senza loop chiuso), ognuno con `file:riga`, modifica, test coi numeri dei log e criterio sul replay.
+- `.ai/reviews/2026-09-13-daytona-leader-mergegap-pitloss.md` — avviso in testa e nuovo §9: corretti Y-60 (il tempo in corsia è nostro quando l'auto ricompare fuori dalla corsia; AccDec avversario ~5 s = uscita non osservata) e Y-61 (la regola BoP esiste già in `OpponentTracker.cs:1093-1110`, è il calcolo MergeGap a non usarla; lo storico dei transiti del Player è già in `SectorTracker.RawNormalHistory`).
+- `.ai/PROJECT_STATE.md` — righe Y-60 e Y-61 aggiornate con le correzioni e il rimando al piano.
+- Misurato: parti d'ingresso e d'uscita dell'AccDec del Player sul giro della sosta, 5.1 s (0.9086→0.9586) e 6.5 s (0.1016→0.1516), su entrambi i run Daytona.
+- Letti gli output di verifica di Gemini (19:23–19:25): coerenti con la review; test 363 PASS, exit 0. Le sue conclusioni scritte non sono nel repository.
+
+### Come verificare
+Nessuna build: turno di sola documentazione.
+```bash
+grep -n "^## Passo" .ai/plans/2026-09-13-daytona-piano-correzioni.md
+grep -n "^## 9\." .ai/reviews/2026-09-13-daytona-leader-mergegap-pitloss.md
+```
+Atteso: 5 righe `## Passo 1…5` nel piano; una riga `## 9. Correzioni dopo il confronto con Andreas` nella review.
+
+### Stato
+- ⏭️ Build e test non eseguiti da claude (nessun file di codice modificato); Gemini li ha eseguiti alle 19:24: 363 PASS, exit 0
+- ✅ Codice invariato rispetto a `863c65c`
+
+### Per chi entra
+**Prossimo passo:** Andreas risponde alle tre domande in fondo al piano (ordine, `Leader.TrackPct` stimata o reale con flag, esecutori); poi passo 1 col lock.
+**NON toccare:** `Hardware/`; `PitInOutAccDecTime` = 11.6 nel DB; le soglie gomme sì/no senza il ricontrollo previsto al passo 5.
+**Attenzione a:** i criteri numerici del piano valgono per l'ordine proposto (i passi 1 e 2 cambiano i valori attesi dei passi 3 e 5). Se Gemini ha conclusioni diverse da quanto scritto nel piano, vanno aggiunte al piano prima di iniziare.
+
+---
+
 ## [2026-09-13 17:45] claude → chiunque entri dopo
 
 **Task:** Review dei replay Daytona `20260913_140133` e `20260913_163743` (il secondo dopo `PitInOutAccDecTime` 17.90 → 11.6 nel DB, modificato a mano da Andreas): leader, MergeGap, stazionario avversari. Nessun file di codice toccato, lock non preso.
@@ -471,74 +503,6 @@ Atteso: build pulita (0 errori) e test runner console a **353 PASS (100%)**.
 
 
 ---
-
----
-
----
-
-## [2026-09-11 11:00] antigravity → chiunque entri dopo
-
-**Task:** Calibrazione pit stop, persistenza PitTransitTime Player e deduzione StationaryTime avversari via NotInWorld
-**Piano:** —
-**Commit:** `e66a591` (codice e test), questo (handoff e rilascio lock)
-
-### Fatto
-- `User.PluginSdkDemoEdit/PitRadar.cs`:
-  - Aggiunto metodo `GetTheoreticalTransitTimeSec(double trackLengthMeters)` (r. 290-305): calcola il tempo di transito teorico al limite YAML della pitlane $(d / v)$ con fallback a velocità media.
-  - In `SetCurrentTrackForTesting` (r. 525-533): registra e sincronizza il record di test in `_database.Tracks`, garantendo l'isolamento dei test dai file di stato su disco.
-  - In `Update` (r. 1320-1327): comparazione case-insensitive (`StringComparison.OrdinalIgnoreCase`) per `TrackClassID` e `lookupKey`.
-  - In `Update` (r. 1569, 1617, 1646): salvataggio `_currentTrack.PlayerRecordSet = true` ogni volta che `PitTransitTime` viene calibrato da procedure guidate.
-  - In `Update` (r. 1682-1703): introdotto apprendimento automatico di `PitTransitTime` e `PlayerRecordSet = true` per soste naturali del Player in cui c'è arresto in piazzola (`_pitBoxTimeCache > 0.5s`), distinguendolo dal Drive-Through naturale (`PitDriveThroughTime`).
-  - Salvaguardato `log?.Log(...)` in tutti i rami di `PitRadar` contro `NullReferenceException` con logger nullo.
-- `User.PluginSdkDemoEdit/OpponentTracker.cs`:
-  - Gestione `NotInWorld` (r. 1333-1375): latching di `effectiveOnPitRoad = true` se un avversario era già in pit road ed entra in `NotInWorld` (culling di rete iRacing). Accumulo preciso del tempo trascorso in `NotInWorldDurationSec`.
-  - Protezione geofence: impedita la registrazione di false uscite su culling (`RecordPitExitSample` a 0.958 ignorato durante `NotInWorld`).
-  - Reverse-engineering StationaryTime (r. 1689-1706): all'uscita dalla pit lane, deduzione inversa $T_{\text{stationary}} = \max(0.0, T_{\text{NotInWorld}} - T_{\text{refTransit}})$, con $T_{\text{refTransit}}$ ricavato da `radar.PitTransitTime` (Player) o dal transito teorico da YAML.
-  - Rimozione arrotondamenti artificiali sul pit speed limit appreso (r. 1838-1845): salvata la velocità reale esatta senza forzare multipli di 10.
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs`:
-  - Aggiunti 5 nuovi unit test registrati in `RunAllTests()`:
-    1. `Test_RecordPitExitSample_RejectsSampleTooCloseToEntry`: valida il rifiuto di uscite fittizie a 0.9582.
-    2. `Test_TheoreticalTransitTime_CalculatesFromYamlSpeedAndTrackLength`: verifica il calcolo teorico su distanza e limite YAML (Road Atlanta 26.40s).
-    3. `Test_Player_NaturalPitStop_SavesPitTransitTime`: verifica la sosta naturale di Sara Tolotti con rifornimento (41.12s totali, 13.83s fermo -> 27.29s transito persistito e `PlayerRecordSet = true`).
-    4. `Test_Player_NaturalDriveThrough_SavesPitDriveThroughTime`: verifica che un passaggio senza fermarsi aggiorni `PitDriveThroughTime` senza toccare `PitTransitTime`.
-    5. `Test_Opponent_NotInWorld_LatchesPitRoadAndDeducesStationaryTime`: simula la sosta di Bruno Carneiro con culling `NotInWorld` (42.56s) deducendo 15.27s di sosta e classificando correttamente "Fuel Only" (nessun cambio gomme).
-  - Suite eseguita con successo: **352 PASS (100%)**.
-
-### Come verificare
-```bash
-"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
-"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: build pulita (0 errori) e test runner console a **352 PASS (100%)**.
-
-### Stato
-- ✅ Compila (0 errori, 1 warning CS0219 noto)
-- ✅ 352 PASS (100%)
-
-### Per chi entra
-**Prossimo passo:** Test sui replay completi (es. Road Atlanta) per validare la visualizzazione live delle soste degli avversari con tempi in piazzola dedotti e persistenza su `SimRIG.Pit.TransitTime`.
-**NON toccare:** `Hardware/` rimane territorio di Andreas.
-**Attenzione a:** Il conteggio test corrente del plugin C# è **352 PASS**. Se si aggiornano altri file di documentazione, mantenere allineato il numero reale.
-
----
-
----
-
----
-
-
----
-
----
-
----
-
-
-
----
-
----
-
 
 ---
 

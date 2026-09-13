@@ -9,6 +9,52 @@
 
 ---
 
+## [2026-09-11 11:00] antigravity → chiunque entri dopo
+
+**Task:** Calibrazione pit stop, persistenza PitTransitTime Player e deduzione StationaryTime avversari via NotInWorld
+**Piano:** —
+**Commit:** `e66a591` (codice e test), questo (handoff e rilascio lock)
+
+### Fatto
+- `User.PluginSdkDemoEdit/PitRadar.cs`:
+  - Aggiunto metodo `GetTheoreticalTransitTimeSec(double trackLengthMeters)` (r. 290-305): calcola il tempo di transito teorico al limite YAML della pitlane $(d / v)$ con fallback a velocità media.
+  - In `SetCurrentTrackForTesting` (r. 525-533): registra e sincronizza il record di test in `_database.Tracks`, garantendo l'isolamento dei test dai file di stato su disco.
+  - In `Update` (r. 1320-1327): comparazione case-insensitive (`StringComparison.OrdinalIgnoreCase`) per `TrackClassID` e `lookupKey`.
+  - In `Update` (r. 1569, 1617, 1646): salvataggio `_currentTrack.PlayerRecordSet = true` ogni volta che `PitTransitTime` viene calibrato da procedure guidate.
+  - In `Update` (r. 1682-1703): introdotto apprendimento automatico di `PitTransitTime` e `PlayerRecordSet = true` per soste naturali del Player in cui c'è arresto in piazzola (`_pitBoxTimeCache > 0.5s`), distinguendolo dal Drive-Through naturale (`PitDriveThroughTime`).
+  - Salvaguardato `log?.Log(...)` in tutti i rami di `PitRadar` contro `NullReferenceException` con logger nullo.
+- `User.PluginSdkDemoEdit/OpponentTracker.cs`:
+  - Gestione `NotInWorld` (r. 1333-1375): latching di `effectiveOnPitRoad = true` se un avversario era già in pit road ed entra in `NotInWorld` (culling di rete iRacing). Accumulo preciso del tempo trascorso in `NotInWorldDurationSec`.
+  - Protezione geofence: impedita la registrazione di false uscite su culling (`RecordPitExitSample` a 0.958 ignorato durante `NotInWorld`).
+  - Reverse-engineering StationaryTime (r. 1689-1706): all'uscita dalla pit lane, deduzione inversa $T_{\text{stationary}} = \max(0.0, T_{\text{NotInWorld}} - T_{\text{refTransit}})$, con $T_{\text{refTransit}}$ ricavato da `radar.PitTransitTime` (Player) o dal transito teorico da YAML.
+  - Rimozione arrotondamenti artificiali sul pit speed limit appreso (r. 1838-1845): salvata la velocità reale esatta senza forzare multipli di 10.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs`:
+  - Aggiunti 5 nuovi unit test registrati in `RunAllTests()`:
+    1. `Test_RecordPitExitSample_RejectsSampleTooCloseToEntry`: valida il rifiuto di uscite fittizie a 0.9582.
+    2. `Test_TheoreticalTransitTime_CalculatesFromYamlSpeedAndTrackLength`: verifica il calcolo teorico su distanza e limite YAML (Road Atlanta 26.40s).
+    3. `Test_Player_NaturalPitStop_SavesPitTransitTime`: verifica la sosta naturale di Sara Tolotti con rifornimento (41.12s totali, 13.83s fermo -> 27.29s transito persistito e `PlayerRecordSet = true`).
+    4. `Test_Player_NaturalDriveThrough_SavesPitDriveThroughTime`: verifica che un passaggio senza fermarsi aggiorni `PitDriveThroughTime` senza toccare `PitTransitTime`.
+    5. `Test_Opponent_NotInWorld_LatchesPitRoadAndDeducesStationaryTime`: simula la sosta di Bruno Carneiro con culling `NotInWorld` (42.56s) deducendo 15.27s di sosta e classificando correttamente "Fuel Only" (nessun cambio gomme).
+  - Suite eseguita con successo: **352 PASS (100%)**.
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build pulita (0 errori) e test runner console a **352 PASS (100%)**.
+
+### Stato
+- ✅ Compila (0 errori, 1 warning CS0219 noto)
+- ✅ 352 PASS (100%)
+
+### Per chi entra
+**Prossimo passo:** Test sui replay completi (es. Road Atlanta) per validare la visualizzazione live delle soste degli avversari con tempi in piazzola dedotti e persistenza su `SimRIG.Pit.TransitTime`.
+**NON toccare:** `Hardware/` rimane territorio di Andreas.
+**Attenzione a:** Il conteggio test corrente del plugin C# è **352 PASS**. Se si aggiornano altri file di documentazione, mantenere allineato il numero reale.
+
+---
+
 ## [2026-09-10 16:05] antigravity → chiunque entri dopo
 
 **Task:** Prioritizzazione telemetria nativa CarIdxLapDistPct su SimHub opponent position e salvaguardia target lock su replay jump
