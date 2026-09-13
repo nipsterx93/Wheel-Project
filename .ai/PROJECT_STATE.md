@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      null
-task:       null
-scope:      null
-expires:    null
+owner:      claude
+since:      2026-09-13 22:42
+task:       passo 1 piano correzioni Daytona — consumo BoP e serbatoio del Target nel calcolo MergeGap/undercut (Y-61)
+scope:      User.PluginSdkDemoEdit/OpponentTracker.cs, User.PluginSdkDemoEdit/TargetStrategyManager.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/
+expires:    2026-09-14 00:45
 ```
 
 **Regole del lock**
