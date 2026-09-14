@@ -675,6 +675,25 @@ namespace SimRIG
         /// </summary>
         public double GetOpponentTrackPosition(GameReaderCommon.Opponent opp, SessionState state)
         {
+            return GetOpponentTrackPosition(opp, state, out _);
+        }
+
+        /// <summary>Da dove arriva la posizione restituita da GetOpponentTrackPosition (Y-62, diagnostica del traffico al rientro).</summary>
+        public enum PositionSource
+        {
+            None,
+            /// <summary>CarIdxLapDistPct nativo, aggiornato a ogni tick.</summary>
+            Native,
+            /// <summary>TrackPositionPercent di SimHub.</summary>
+            SimHub,
+            /// <summary>Ultima posizione memorizzata: con l'auto NotInWorld resta ferma.</summary>
+            Memory
+        }
+
+        /// <summary>Come sopra, piu' la sorgente della posizione restituita.</summary>
+        public double GetOpponentTrackPosition(GameReaderCommon.Opponent opp, SessionState state, out PositionSource source)
+        {
+            source = PositionSource.None;
             if (opp == null) return 0.0;
 
             int carIdx = -1;
@@ -693,6 +712,7 @@ namespace SimRIG
                 float nativeDist = IracingBridge.GetLapDistPct(carIdx);
                 if (nativeDist > 0.0f && nativeDist <= 1.0f)
                 {
+                    source = PositionSource.Native;
                     return (double)nativeDist;
                 }
             }
@@ -700,12 +720,14 @@ namespace SimRIG
             // 2. Fallback subordinato: posizione SimHub
             if (opp.TrackPositionPercent.HasValue && opp.TrackPositionPercent.Value > 0.0)
             {
+                source = PositionSource.SimHub;
                 return opp.TrackPositionPercent.Value;
             }
 
             // 3. Fallback di continuità: ultimo valore valido tracciato
             if (!string.IsNullOrEmpty(opp.Name) && TrackedOpponents.TryGetValue(opp.Name, out var tData) && tData.LastPosPct > 0.0)
             {
+                source = PositionSource.Memory;
                 return tData.LastPosPct;
             }
 

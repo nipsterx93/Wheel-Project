@@ -53,6 +53,7 @@ namespace User.PluginSdkDemo.Tests
                 NativeIracingOpponentTrackingUnitTests.RunAllTests();
                 TargetBopFuelForecastUnitTests.RunAllTests();
                 ExtendedRacingReferenceUnitTests.RunAllTests();
+                PitExitTrafficDiagnosticsUnitTests.RunAllTests();
                 ReplayBacktestIntegrationTest.RunMisanoGt3Backtest();
                 MisanoHuracanGT3ReplayTest.RunFullReplayMergeGapValidation();
 

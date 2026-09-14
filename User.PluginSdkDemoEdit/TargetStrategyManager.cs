@@ -519,6 +519,99 @@ namespace SimRIG
             return physicalGap < 0.0 && physicalGap >= -windowSeconds;
         }
 
+        /// <summary>
+        /// Y-62 (diagnostica del traffico al rientro): da quanti secondi il Player e' passato dalla
+        /// posizione in cui si trova adesso un avversario, letto dai timestamp del Player (400 per giro).
+        /// E' il distacco vero dietro al Player: non dipende dal profilo di velocita' fra le due vetture,
+        /// come invece differenza di posizione x passo. NaN se il Player non ha timestamp validi in quel
+        /// punto. Con la posizione dell'avversario ferma (NotInWorld) cresce di un secondo al secondo.
+        /// </summary>
+        public static double TimestampGapBehindSeconds(double[] playerTimestamps, double opponentPos, double nowClock, double refLapTime)
+        {
+            if (playerTimestamps == null || playerTimestamps.Length != OpponentTracker.TimestampBucketCount) return double.NaN;
+            if (opponentPos <= 0.0 || opponentPos > 1.0) return double.NaN;
+
+            // Stessa interpolazione e stesse soglie del gap del Target, ramo "Target dietro"
+            double scaled = opponentPos * OpponentTracker.TimestampBucketCount;
+            int s1 = OpponentTracker.TimestampBucketOf(opponentPos);
+            int s2 = (s1 + 1) % OpponentTracker.TimestampBucketCount;
+            double t1 = playerTimestamps[s1];
+            double t2 = playerTimestamps[s2];
+            if (t1 <= 0.0 || t2 <= 0.0 || Math.Abs(t2 - t1) >= 10.0) return double.NaN;
+
+            double playerClockAtPos = t1 + (scaled - s1) * (t2 - t1);
+            double gap = Math.Abs(nowClock - playerClockAtPos);
+            if (refLapTime > 0.0 && gap >= refLapTime * 1.5) return double.NaN;
+            return gap;
+        }
+
+        /// <summary>
+        /// Y-62 (diagnostica): se scrivere la riga di una vettura vicina alla bolla di rientro. Si scrive
+        /// quando entra, quando esce, quando cambia il suo contributo al conflitto, e al massimo una volta
+        /// ogni <paramref name="minIntervalSec"/> mentre resta dentro.
+        /// </summary>
+        public static bool ShouldLogTrafficCandidate(bool wasInside, bool wasConflict, double lastLogClock,
+                                                     bool isInside, bool isConflict, double nowClock, double minIntervalSec)
+        {
+            if (isInside != wasInside || isConflict != wasConflict) return true;
+            if (!isInside) return false;
+            return double.IsNaN(lastLogClock) || Math.Abs(nowClock - lastLogClock) >= minIntervalSec;
+        }
+
+        // Y-62 (diagnostica): stato per vettura delle righe "Pit Exit Traffic Candidate"
+        private sealed class TrafficCandidateLogState
+        {
+            public bool Inside;
+            public bool Conflict;
+            public double LastLogClock = double.NaN;
+        }
+
+        private const double TrafficCandidateLogIntervalSec = 1.0;
+        private readonly System.Collections.Generic.Dictionary<string, TrafficCandidateLogState> _trafficCandidateLog =
+            new System.Collections.Generic.Dictionary<string, TrafficCandidateLogState>();
+        private readonly System.Collections.Generic.List<string> _trafficConflictCars = new System.Collections.Generic.List<string>();
+        private bool _lastLoggedPitExitTrafficConflict = false;
+
+        /// <summary>
+        /// Y-62 (diagnostica, non entra nella decisione): una riga "Pit Exit Traffic Candidate" per ogni
+        /// vettura vicina alla bolla di rientro, secondo la stima di oggi (posizione x passo) o secondo il
+        /// distacco vero dai timestamp del Player. Dice quale vettura fa scattare il traffico a meta' giro e
+        /// con quale posizione: nativa, SimHub o memorizzata (ferma, se l'auto e' NotInWorld).
+        /// </summary>
+        private void LogTrafficCandidate(LogManager log, GameReaderCommon.Opponent opp, OpponentTelemetryData oData,
+                                         double posPct, OpponentTracker.PositionSource source, bool isThreat,
+                                         double mergeGapEstimated, double deltaExitPct, double trueGapBehind, double trueMergeGap,
+                                         bool inside, bool causesConflict, double playerPos, double playerPitLoss,
+                                         double refLapTime, double clock)
+        {
+            if (log == null || opp == null || string.IsNullOrEmpty(opp.Name)) return;
+
+            _trafficCandidateLog.TryGetValue(opp.Name, out var last);
+            bool wasInside = last != null && last.Inside;
+            bool wasConflict = last != null && last.Conflict;
+            double lastClock = last != null ? last.LastLogClock : double.NaN;
+            if (!ShouldLogTrafficCandidate(wasInside, wasConflict, lastClock, inside, causesConflict, clock, TrafficCandidateLogIntervalSec))
+            {
+                return;
+            }
+
+            if (last == null)
+            {
+                last = new TrafficCandidateLogState();
+                _trafficCandidateLog[opp.Name] = last;
+            }
+            last.Inside = inside;
+            last.Conflict = causesConflict;
+            last.LastLogClock = clock;
+
+            string phase = inside ? (wasInside ? "dentro" : "entra") : "esce";
+            string surface = oData != null ? oData.TrackSurface.ToString() : "?";
+            log.Log(LogModule.STRATEGY, LogType.FLOW, "Pit Exit Traffic Candidate",
+                $"{opp.Name} | classe={opp.CarClass} | minaccia={isThreat} | {phase} | pos={posPct:F4} src={source} surf={surface} | " +
+                $"mergeStimato={mergeGapEstimated:F2} dUscita={deltaExitPct:F3} conflitto={causesConflict} | " +
+                $"gapVero={trueGapBehind:F2} mergeVero={trueMergeGap:F2} | PlayerPos={playerPos:F4} perdita={playerPitLoss:F2} passo={refLapTime:F2}");
+        }
+
         /// <summary>Un nome pilota con la virgola ("Rossi, Mario") sfonderebbe le colonne del CSV.</summary>
         private static string Csv(string text)
         {
@@ -1092,10 +1185,15 @@ namespace SimRIG
                     bool overcutTrafficConflict = false;
                     double nearestAheadGap = 999.0;
 
+                    // Y-62 (diagnostica): vetture che fanno scattare il conflitto in questo tick
+                    _trafficConflictCars.Clear();
+                    double trafficClock = state.SessionTimeLeftSec;
+
                     foreach (var opp in state.Opponents)
                     {
                         if (opp.IsPlayer) continue;
-                        double oppPosVal = (tracker != null) ? tracker.GetOpponentTrackPosition(opp, state) : (opp.TrackPositionPercent ?? 0.0);
+                        OpponentTracker.PositionSource oppPosSource = OpponentTracker.PositionSource.SimHub;
+                        double oppPosVal = (tracker != null) ? tracker.GetOpponentTrackPosition(opp, state, out oppPosSource) : (opp.TrackPositionPercent ?? 0.0);
                         if (oppPosVal <= 0.0) continue;
 
                         // Escludiamo vetture già nei box (IsInsideGeofence == true)
@@ -1134,37 +1232,60 @@ namespace SimRIG
                         // Applicazione del modulo per il distacco fisico reale in pista
                         double physicalMergeGap = PhysicalGapSeconds(projectedExitGap, refLapTime);
 
+                        // Minaccia e distanza dall'uscita per ogni vettura, non solo dentro la bolla: la
+                        // diagnostica di Y-62 le scrive anche per chi e' nella bolla del distacco vero.
+                        bool isThreat = (opp.CarClass == state.CarClassId);
+                        if (!isThreat && oData != null)
+                        {
+                            double oppPace = oData.NormalizedTimes.SectorBaseline * 3.0;
+                            double playerNewPace = raceResult.NormalizedRaceStartPace + RaceTimeProjection.FuelWeightPenaltySec(fuel.FuelToAdd, fuelWeightCoef);
+                            if (oppPace > playerNewPace + 1.5)
+                            {
+                                isThreat = true;
+                            }
+                        }
+
+                        // Sanity check spaziale: coordinata dell'avversario vicina a ExtendedPitExitPct
+                        double exitPct = radar.GetExtendedPitExitPct();
+                        double tolerancePct = 0.05;
+                        double deltaPct = oppPosVal - exitPct;
+                        if (deltaPct < -0.5) deltaPct += 1.0;
+                        else if (deltaPct > 0.5) deltaPct -= 1.0;
+
+                        bool inMergeBubble = physicalMergeGap >= -3.0 && physicalMergeGap <= 3.0;
+                        bool carCausesConflict = false;
+
                         // Se l'avversario si trova nella bolla di merge di ±3 secondi
-                        if (physicalMergeGap >= -3.0 && physicalMergeGap <= 3.0)
+                        if (inMergeBubble)
                         {
                             if (Math.Abs(physicalMergeGap) < Math.Abs(minMergeGap))
                             {
                                 minMergeGap = physicalMergeGap;
                             }
 
-                            bool isThreat = (opp.CarClass == state.CarClassId);
-                            if (!isThreat && oData != null)
-                            {
-                                double oppPace = oData.NormalizedTimes.SectorBaseline * 3.0;
-                                double playerNewPace = raceResult.NormalizedRaceStartPace + RaceTimeProjection.FuelWeightPenaltySec(fuel.FuelToAdd, fuelWeightCoef);
-                                if (oppPace > playerNewPace + 1.5)
-                                {
-                                    isThreat = true;
-                                }
-                            }
-
-                            // Sanity check spaziale: coordinata dell'avversario vicina a ExtendedPitExitPct
-                            double exitPct = radar.GetExtendedPitExitPct();
-                            double tolerancePct = 0.05;
-                            double deltaPct = oppPosVal - exitPct;
-                            if (deltaPct < -0.5) deltaPct += 1.0;
-                            else if (deltaPct > 0.5) deltaPct -= 1.0;
-
                             if (isThreat && Math.Abs(deltaPct) < tolerancePct)
                             {
                                 pitExitTrafficConflict = true;
+                                carCausesConflict = true;
+                                _trafficConflictCars.Add(opp.Name);
                             }
                         }
+
+                        // Y-62 (diagnostica, non entra nella decisione): distacco vero dai timestamp del Player
+                        double trueGapBehind = TimestampGapBehindSeconds(tracker.PlayerMicrosectorTimestamps, oppPosVal, trafficClock, refLapTime);
+                        double trueMergeGap = double.IsNaN(trueGapBehind) ? double.NaN : PhysicalGapSeconds(trueGapBehind - playerTotalPitLoss, refLapTime);
+                        bool inTrueBubble = !double.IsNaN(trueMergeGap) && trueMergeGap >= -3.0 && trueMergeGap <= 3.0;
+                        LogTrafficCandidate(log, opp, oData, oppPosVal, oppPosSource, isThreat, physicalMergeGap, deltaPct,
+                                            trueGapBehind, trueMergeGap, inMergeBubble || inTrueBubble, carCausesConflict,
+                                            myPos, playerTotalPitLoss, refLapTime, trafficClock);
+                    }
+
+                    // Y-62 (diagnostica): cambio del conflitto complessivo, con le vetture che lo causano
+                    if (pitExitTrafficConflict != _lastLoggedPitExitTrafficConflict)
+                    {
+                        log?.Log(LogModule.STRATEGY, LogType.EVENT, "Pit Exit Traffic Conflict",
+                            $"conflitto={pitExitTrafficConflict} | vetture={string.Join(",", _trafficConflictCars)} | PlayerPos={myPos:F4} | perdita={playerTotalPitLoss:F2} | passo={refLapTime:F2} | uscitaEstesa={radar.GetExtendedPitExitPct():F3}");
+                        _lastLoggedPitExitTrafficConflict = pitExitTrafficConflict;
                     }
 
                     CurrentTarget.TrafficAlert = pitExitTrafficConflict;                    bool canFinishWithoutPitting = fuel.IsPredictionValid && (fuel.TankLapsRemaining > raceResult.RaceLapsRemaining);
@@ -2027,6 +2148,9 @@ namespace SimRIG
             _lastLoggedTargetPitRoad = false;
             _lastLoggedPlayerSurface = IracingTrackSurface.NotInWorld;
             _lastLoggedPlayerPitRoad = false;
+            _trafficCandidateLog.Clear();
+            _trafficConflictCars.Clear();
+            _lastLoggedPitExitTrafficConflict = false;
         }
 
     }
