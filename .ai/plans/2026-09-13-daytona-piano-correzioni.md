@@ -4,7 +4,8 @@
 - **Autore:** claude
 - **Esecutore:** claude (deciso da Andreas il 2026-09-13), un passo per turno col lock
 - **Stato:** ✅ Approvato da Andreas il 2026-09-13 — ordine 1 → 5 (vedi "Decisioni prese" in fondo).
-  Passo 1 fatto il 2026-09-13 (`05f0002`, replay da verificare); prossimo il passo 2.
+  Passo 1 fatto il 2026-09-13 (`05f0002`) e corretto il 2026-09-14 dopo il replay `070557` (tetto =
+  capienza del Target); replay da rifare; prossimo il passo 2.
 - **Basato su:**
   - review `.ai/reviews/2026-09-13-daytona-leader-mergegap-pitloss.md`, incluse le correzioni del §9;
   - confronto con Andreas del 13/09 sera: regola BoP del consumo, loop chiuso della pit road con
@@ -46,6 +47,11 @@ queste cose:
 > Andreas a `SimRIG.Target.TankLapsRemaining` e al tetto del rifornimento (spazio libero nel serbatoio del
 > Target invece della capienza del Player). Salvato solo il consumo verde: il giallo non ha consumatori.
 > Dettagli e scostamenti: voce del 2026-09-13 23:12 in `.ai/HANDOFF_LOG.md`.
+>
+> ⚠️ **Corretto il 2026-09-14** (`c18a1b0`) dopo il replay `070557`. Nei giri 11-15 il passo funziona (errore
+> medio del MergeGap prima delle soste da +3.74 a +0.37 s), ma il tetto sullo spazio libero attuale abbassava
+> la sosta prevista del Target a inizio stint (2.7 s al giro 1 invece di ~17.4) e l'errore medio nei giri 2-7
+> saliva da +5.95 a +9.50 s. Ora il tetto è la capienza del Target, come nel testo del passo. Replay da rifare.
 
 **Problema.** La regola esiste già: `OpponentTracker.cs:1093-1110` calcola
 `opponentMaxTank × consumo Player / playerMaxTankBoP`, per il Target 60 × 3.0 / 50 = **3.60 L/giro**
@@ -110,6 +116,15 @@ registra e il latch alla sosta del Player (`:273-280`) congela −9.77 s.
    non aggiornare `_lastOnTrackProjectedMergeGap`.
 3. Se il campione resta stantio a lungo: far invecchiare il gap tenuto col delta di passo, oppure
    dichiararlo non valido dopo un timeout.
+4. **Congelare già quando il Target passa ad `ApproachingPits`**, non solo al flag di corsia box (aggiunto il
+   2026-09-14 dopo il replay `070557`, deciso con Andreas). Da `ApproachingPits` (TL 1092.7, PosPct 92.98%)
+   il Target frena: il gap live scende da −0.81 a circa −2.1 prima del flag di corsia box (TL 1089.2),
+   mentre il MergeGap continua a sottrarre tutto l'AccDec, quindi la frenata entra nel conto due volte.
+   Valore congelato alla sosta del Target: −3.62 s, contro −2.31 s ad `ApproachingPits` (reale −2.7:
+   errore −0.9 invece di +0.4). Stessa deriva nel run `163743` (−0.92 contro +0.43). `ApproachingPits`
+   compare solo alla sosta vera: 3 eventi per run, a TL 1092.7, 1089.2 e 1044.6. Da verificare anche
+   per la sosta del Player. **Test:** gap −0.808 al primo tick dopo `ApproachingPits` (Snapshot `070557`:1749,
+   TL 1092.617), perdite Player 35.713 e Target 37.212 → congelato −2.31, non −3.62.
 
 **Test.** Gap fresco −37.50 (`140133` Snapshot:3840), gap stantio −45.23 (:3858), perdita Player
 35.71: valore congelato −1.79, non −9.52. Il test deve fallire togliendo il fix.

@@ -47,6 +47,54 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-14 08:18] claude → chiunque entri dopo
+
+**Task:** Verifica del passo 1 del piano correzioni Daytona sul replay `20260914_070557` (rigirato da Andreas con `05f0002`) e correzione della regressione trovata: il tetto sul carburante previsto del Target torna la capienza del serbatoio, non lo spazio libero attuale.
+**Piano:** `.ai/plans/2026-09-13-daytona-piano-correzioni.md` (stato del passo 1; nuovo punto 4 nel passo 3)
+**Commit:** `56e65a1` (lock), `c18a1b0` (correzione e test), questo (handoff, piano, stato, rilascio lock)
+
+### Fatto
+- Confronto fra `070557` (dopo il passo 1) e `163743` (prima): stesso replay, stessi eventi agli stessi TL (sosta del Target a TL 1089.2, `Projection Validation` identica). Errore medio del MergeGap prima delle soste rispetto ai −2.7 s reali, sui blocchi del MergeGapLog in cui entrambe devono ancora fermarsi:
+
+| Giri | Prima (`163743`) | Passo 1 (`070557`) | Tetto = capienza (ricalcolato) |
+|---|---|---|---|
+| 1 | −8.31 | −0.14 | −14.50 |
+| 2–7 | +5.95 | +9.50 (max +15.51) | +0.75 |
+| 8–10 | +4.45 | +2.07 | +0.34 |
+| 11–15 | +3.74 | +0.37 | +0.48 |
+
+- Giri 11–15 come da piano: stazionario del Target 12.8 → 15.5 s, perdita 34.4 → 37.2 s, `FuelLaps` 2.3 → 1.9; ultimo blocco prima della sosta −2.78 s (prima +0.43). Congelato durante la sosta del Target −3.62 s (prima −0.92). Invariati: congelato durante la sosta del Player −9.70 s (Y-59), gap dopo le due soste, `TargetNeedsPit` mai vero dopo la sosta del Target. Il −0.14 del giro 1 è una compensazione di due errori: lo stazionario del Player vale 0 al giro 1 (annotato fuori piano).
+- **Regressione corretta** in `User.PluginSdkDemoEdit/TargetStrategyManager.cs` (`ForecastTargetPit`): il tetto sullo spazio libero attuale, variante mia rispetto al piano, vale per il rifornimento all'ingresso box, non per una sosta prevista giri prima. Al giro 1 (MergeGapLog `070557`, TL 2652.5) il Target ha 58.19 L a bordo: 1.81 L e 2.67 s invece di 38.56 L e 17.42 s. Ora il tetto è la capienza del Target, con ripiego su quella del Player se non è nota.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/TargetBopFuelForecastUnitTests.cs` — il test del tetto (ora `Test_Regression_FuelToAddCappedByTargetTankCapacity`) usa i numeri del giro 1 di `070557`, più un secondo caso (4 L a bordo, 20 giri alla fine: 60 L, non i 50 del Player).
+- Strategia: i cambi passano da 6 a 22. I 6 dei giri 1–4 sono identici nei due run; i 16 nuovi sono nei giri 10–15, dove l'undercut sul Target diventa viable (margine +0.15…+1.08 s) e oscilla sul filtro traffico (6 volte `UNDERCUT_NONVIABLE reason=Traffic`, di nuovo viable 3–6 s dopo). Se il consiglio sia giusto lo dirà la Fase B.
+- **Nuovo punto 4 nel passo 3 del piano** (deciso con Andreas): congelare il MergeGap già quando il Target passa ad `ApproachingPits`. Da TL 1092.7 il Target frena e il gap live scende da −0.81 a circa −2.1 prima del flag di corsia box (TL 1089.2): la frenata entra due volte nel conto. Congelato −3.62 s contro −2.31 ad `ApproachingPits` (reale −2.7); stessa deriva in `163743`. `ApproachingPits` compare solo alla sosta vera (3 eventi per run).
+- Voce del 2026-09-11 14:25 spostata in `.ai/archive/HANDOFF_LOG_archive.md`.
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build 0 errori (1 warning CS già presente), exit 0, 367 righe `[PASS]`. Prima della correzione lo stesso test falliva con `got 1,81` (exit 1, 365 PASS): è la neutralizzazione ADR-004 di questa correzione.
+
+Sul replay Daytona `20260913_163743` rigirato con la DLL nuova (la build l'ha già installata):
+```bash
+grep -n "Target (+" "Logs/Daytona/SimRIG_MergeGapLog_<run>.txt"
+```
+Atteso: `Staz` del Target fra ~15.4 e ~17.9 s già dal giro 2 (in `070557` 3.7 s al giro 2 e 15.9 al giro 10); errore medio del MergeGap prima delle soste entro ~1 s dal giro 2 al 15; giri 11–15 come in `070557`.
+
+### Stato
+- ✅ Compila (0 errori, 1 warning CS già presente)
+- ✅ Test passano: 367 PASS, exit 0. ⚠️ Il backtest sul replay Misano si salta ancora (Y-54)
+- ⏭️ Replay Daytona con la correzione non ancora rigirato
+
+### Per chi entra
+**Prossimo passo:** Andreas rigira il replay Daytona con `c18a1b0` per confermare i giri 1–10; poi il passo 2 del piano.
+**NON toccare:** `Hardware/`; `PitInOutAccDecTime` = 11.6 nel DB; il giro 1 del MergeGap (stazionario del Player a 0, fuori piano) senza discuterne; le soglie gomme sì/no senza il ricontrollo del passo 5.
+**Attenzione a:** la colonna "tetto = capienza" della tabella è ricalcolata dai valori loggati (consumo costante 3.57 L/giro, `FuelLaps` arrotondato a 0.1), non misurata: la conferma è il replay. L'oscillazione del filtro traffico (Y-2) ora si vede nei giri 10–15. Il punto 4 del passo 3 va verificato anche sulla sosta del Player.
+
+---
+
 ## [2026-09-13 23:12] claude → chiunque entri dopo
 
 **Task:** Passo 1 del piano correzioni Daytona (Y-61): la previsione della sosta del Target nel calcolo MergeGap/undercut usa il consumo proporzionato al BoP e il serbatoio del Target, non quelli del Player. Scope allargato da Andreas a `SimRIG.Target.TankLapsRemaining` e al tetto del rifornimento.
@@ -432,45 +480,6 @@ Atteso: build pulita (0 errori) e test runner console a **359 PASS (100%)**.
 
 ---
 
-## [2026-09-11 14:25] antigravity -> chiunque entri dopo
-
-**Task:** Blindaggio fallback retroattivo spaziale contro falsi pit a 250 km/h e correzione TargetNeedsPit post-sosta
-**Piano:** —
-**Commit:** questo
-
-### Fatto
-- `User.PluginSdkDemoEdit/OpponentTracker.cs`:
-  - **Filtro gate d'ingresso `IsSpatiallyInsideStrict`** (r. 1478-1490): l'avvio del cronometro di settore spaziale scatta solo se la vettura entra vicino alla coordinata `pitEntryPct` (`entryDistFromGate <= 0.04`), evitando che auto un-culled a metà rettilineo (es. Habib a `0.0238`) inizializzino transiti brevi spuri.
-  - **Blindaggio del fallback retroattivo `Opponent Spatial Transit Retroactively Validated`** (r. 1997-2015):
-    1. Se la telemetria nativa conferma l'auto su pista (`isNativeAvailable && !tData.IsOnPitRoad && tData.TrackSurface == IracingTrackSurface.OnTrack`), il transito viene scartato come normale passaggio sul rettilineo.
-    2. Se la vettura viaggia a velocità da rettilineo (`MaxSpeedInPitThisTransit > 120.0` o `Speed > 120.0` su `OnTrack`), il transito viene scartato.
-    3. `spatialAdaptiveThreshold` ha ora un pavimento fisico minimo assoluto: `Math.Max(minPhysicalPitTime, ...)` con `minPhysicalPitTime >= 18.0s` (o 75% di `PitDriveThroughTime`), eliminando per sempre soglie implausibili come 9.3s sul rettilineo.
-  - **Eliminata doppia sottrazione `inlapFuelDeduction`** (r. 2098-2102): in `Opponent Lap Fuel Sync`, `inlapFuelDeduction` viene sottratta solo se `tData.FuelAfterLastPit <= 0.0` (primo stint pre-sosta). Evita di sottrarre 2.17L dal carburante post-rifornimento quando l'auto taglia il traguardo ancora dentro la pit lane.
-  - **Margine di sicurezza `NeedsPitStop` post-sosta** (r. 1173): se l'avversario ha già effettuato un pit stop (`PitCount >= 1`), il controllo non aggiunge più il buffer artificiale `+ 0.3` giri sul fabbisogno, prevenendo falsi allarmi quando si opera con smart refuel a filo traguardo.
-- `User.PluginSdkDemoEdit/TargetStrategyManager.cs`:
-  - **Logica `targetNeedsPit` e `logTargetNeedsPit` post-sosta** (r. 891-905 e r. 1364-1375): se il Target ha già completato la sosta (`targetPitCount >= 1`), `targetNeedsPit` è `true` SOLO se c'è un reale deficit di carburante a fine gara (`targetFuelDeficit > 0.8`). Se il Target ha carburante a sufficienza (es. 16 giri di fuel per 14.5 giri di gara), `targetNeedsPit = false` e non viene applicata alcuna pit loss artificiale (+24.90s), mantenendo stabile il `ProjectedMergeGap`.
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs`:
-  - Aggiunti 3 nuovi unit test:
-    - `Test_NativeConfirmedOnTrack_RejectsRetroactiveSpatialValidation`: verifica che un'auto a 245 km/h su `OnTrack` con `!IsOnPitRoad` non convalidi mai una sosta retroattiva e che la soglia minima sia >= 18s.
-    - `Test_TargetAlreadyPitted_WithFuelToFinish_DoesNotNeedPitStop`: verifica che un Target con 1 sosta e carburante a finire non attivi una seconda sosta fantasma e mantenga `ProjectedMergeGap` a -5.21s anziché -30.11s.
-    - `Test_LapFuelSync_DoesNotDoubleDeductInlapFuelAfterPit`: verifica che il passaggio sul traguardo in pit lane dopo il pit stop non sottragga due volte il consumo dell'inlap.
-  - Suite test: passata a **357 PASS (100%)**.
-
-### Come verificare
-```bash
-& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
-& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: build pulita (0 errori) e test runner console a **357 PASS (100%)**.
-
-### Stato
-- [x] Compila
-- [x] Test passano (357 PASS, 100%)
-
-### Per chi entra
-**Prossimo passo:** Riprodurre il replay Road Atlanta per confermare che dal giro 29 in poi nessun'auto scatti a `Opponent Stopped` sul dritto e che `ProjectedMergeGap` rimanga incollato a -5.2s dopo il pit stop di Carneiro.
-**NON toccare:** `Hardware/`, file `*_LEGACY.cs`.
-**Attenzione a:** Se un'auto esce dai box e taglia il traguardo dentro la corsia box, il calcolo carburante ora preserva fedelmente `FuelAfterLastPit`.
 
 ---
 

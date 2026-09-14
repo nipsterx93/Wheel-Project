@@ -9,6 +9,48 @@
 
 ---
 
+## [2026-09-11 14:25] antigravity -> chiunque entri dopo
+
+**Task:** Blindaggio fallback retroattivo spaziale contro falsi pit a 250 km/h e correzione TargetNeedsPit post-sosta
+**Piano:** —
+**Commit:** questo
+
+### Fatto
+- `User.PluginSdkDemoEdit/OpponentTracker.cs`:
+  - **Filtro gate d'ingresso `IsSpatiallyInsideStrict`** (r. 1478-1490): l'avvio del cronometro di settore spaziale scatta solo se la vettura entra vicino alla coordinata `pitEntryPct` (`entryDistFromGate <= 0.04`), evitando che auto un-culled a metà rettilineo (es. Habib a `0.0238`) inizializzino transiti brevi spuri.
+  - **Blindaggio del fallback retroattivo `Opponent Spatial Transit Retroactively Validated`** (r. 1997-2015):
+    1. Se la telemetria nativa conferma l'auto su pista (`isNativeAvailable && !tData.IsOnPitRoad && tData.TrackSurface == IracingTrackSurface.OnTrack`), il transito viene scartato come normale passaggio sul rettilineo.
+    2. Se la vettura viaggia a velocità da rettilineo (`MaxSpeedInPitThisTransit > 120.0` o `Speed > 120.0` su `OnTrack`), il transito viene scartato.
+    3. `spatialAdaptiveThreshold` ha ora un pavimento fisico minimo assoluto: `Math.Max(minPhysicalPitTime, ...)` con `minPhysicalPitTime >= 18.0s` (o 75% di `PitDriveThroughTime`), eliminando per sempre soglie implausibili come 9.3s sul rettilineo.
+  - **Eliminata doppia sottrazione `inlapFuelDeduction`** (r. 2098-2102): in `Opponent Lap Fuel Sync`, `inlapFuelDeduction` viene sottratta solo se `tData.FuelAfterLastPit <= 0.0` (primo stint pre-sosta). Evita di sottrarre 2.17L dal carburante post-rifornimento quando l'auto taglia il traguardo ancora dentro la pit lane.
+  - **Margine di sicurezza `NeedsPitStop` post-sosta** (r. 1173): se l'avversario ha già effettuato un pit stop (`PitCount >= 1`), il controllo non aggiunge più il buffer artificiale `+ 0.3` giri sul fabbisogno, prevenendo falsi allarmi quando si opera con smart refuel a filo traguardo.
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs`:
+  - **Logica `targetNeedsPit` e `logTargetNeedsPit` post-sosta** (r. 891-905 e r. 1364-1375): se il Target ha già completato la sosta (`targetPitCount >= 1`), `targetNeedsPit` è `true` SOLO se c'è un reale deficit di carburante a fine gara (`targetFuelDeficit > 0.8`). Se il Target ha carburante a sufficienza (es. 16 giri di fuel per 14.5 giri di gara), `targetNeedsPit = false` e non viene applicata alcuna pit loss artificiale (+24.90s), mantenendo stabile il `ProjectedMergeGap`.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs`:
+  - Aggiunti 3 nuovi unit test:
+    - `Test_NativeConfirmedOnTrack_RejectsRetroactiveSpatialValidation`: verifica che un'auto a 245 km/h su `OnTrack` con `!IsOnPitRoad` non convalidi mai una sosta retroattiva e che la soglia minima sia >= 18s.
+    - `Test_TargetAlreadyPitted_WithFuelToFinish_DoesNotNeedPitStop`: verifica che un Target con 1 sosta e carburante a finire non attivi una seconda sosta fantasma e mantenga `ProjectedMergeGap` a -5.21s anziché -30.11s.
+    - `Test_LapFuelSync_DoesNotDoubleDeductInlapFuelAfterPit`: verifica che il passaggio sul traguardo in pit lane dopo il pit stop non sottragga due volte il consumo dell'inlap.
+  - Suite test: passata a **357 PASS (100%)**.
+
+### Come verificare
+```bash
+& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build pulita (0 errori) e test runner console a **357 PASS (100%)**.
+
+### Stato
+- [x] Compila
+- [x] Test passano (357 PASS, 100%)
+
+### Per chi entra
+**Prossimo passo:** Riprodurre il replay Road Atlanta per confermare che dal giro 29 in poi nessun'auto scatti a `Opponent Stopped` sul dritto e che `ProjectedMergeGap` rimanga incollato a -5.2s dopo il pit stop di Carneiro.
+**NON toccare:** `Hardware/`, file `*_LEGACY.cs`.
+**Attenzione a:** Se un'auto esce dai box e taglia il traguardo dentro la corsia box, il calcolo carburante ora preserva fedelmente `FuelAfterLastPit`.
+
+---
+
 ## [2026-09-11 13:35] antigravity → chiunque entri dopo
 
 **Task:** Risoluzione falsi stop su auto culled in NotInWorld e correzione classificazione gomme in soste simultanee
