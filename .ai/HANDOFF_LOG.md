@@ -47,6 +47,46 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-14 09:34] claude → chiunque entri dopo
+
+**Task:** Passo 2 del piano correzioni Daytona (Y-61): il tempo di corsa nella zona estesa sottratto alla perdita ai box è la mediana dei transiti recenti del Player, non il minimo di classe. Scope deciso con Andreas: calcolo MergeGap/undercut e `SimRIG.Pit.TotalPitLoss`.
+**Piano:** `.ai/plans/2026-09-13-daytona-piano-correzioni.md` (passo 2)
+**Commit:** `d4d0f96` (lock), `3e9d4ae` (codice e test), questo (handoff, stato, piano, rilascio lock)
+
+### Fatto
+- `User.PluginSdkDemoEdit/SectorTracker.cs` — `RecentRawTimeMedian(window = 7, minSamples = 3)`: mediana degli ultimi 7 transiti validi di `RawNormalHistory`, 0 se sono meno di 3. Nello storico entrano solo i transiti di corsa: il giro della sosta e i passaggi oltre il 115% del migliore restano fuori (lo verifica il test che guida il vero `Update`).
+- `User.PluginSdkDemoEdit/OpponentTracker.cs` — nuovo parametro `playerTypicalExtendedPitZoneTime` di `Update` e nuova proprietà `ExtendedRacingReferenceTime` = `ResolveExtendedRacingReference(mediana, minimo di classe, pavimento fisico)`: la mediana se è > 0 e sopra il pavimento, altrimenti il minimo di classe. `ClassBestExtendedPitZoneTime` è invariato: lo usano ancora le soglie di rilevamento soste (`ClassBest + 5`), il ripiego della perdita del leader (`ClassBest + 25`) e la proprietà di dashboard omonima.
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs` — `extendedRacingTime` del MergeGap/undercut dal nuovo riferimento.
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs` — passa `PlayerExtendedPitZone.RecentRawTimeMedian()` a `OpponentTracker.Update`; `SimRIG.Pit.TotalPitLoss` usa il nuovo riferimento.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/ExtendedRacingReferenceUnitTests.cs` (nuovo, registrato in `TestRunner.cs` e nel `.csproj`) — 4 test: mediana dei 14 transiti del Player di `140133` (23.69 s, stabile col giro fuori pista da 28.12 s); stesso risultato guidando il vero `SectorTracker.Update`; scelta del riferimento con ricaduta sul blocco `163743`:1117-1120 (perdita del Player 35.73 → 33.97 s, MergeGap dopo la sosta del Target −1.45 → −3.21 s, reale −2.7); ripiego sotto i 3 transiti.
+- **Fuori scope, annotato:** `RaceAnalyzer.cs:1186` (perdita del Player nella proiezione del totale giri) usa ancora il minimo di classe. Toccarlo sposterebbe la proiezione di ~0.02 giri, in un'area sensibile (Y-36, Y-45).
+- Voce del 2026-09-11 22:50 spostata in `.ai/archive/HANDOFF_LOG_archive.md`.
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build 0 errori (1 warning CS già presente), exit 0, 371 righe `[PASS]`, 4 delle quali sotto `[TEST] Running Extended Racing Reference Tests (Y-61, passo 2)...`. Con gli stub (nessuna mediana, minimo di classe) gli stessi 4 test fallivano: exit 1, 366 PASS. È la neutralizzazione ADR-004 di questo passo.
+
+Sul replay Daytona `20260913_163743` rigirato con la DLL nuova (la build l'ha già installata):
+```bash
+grep -n "ExtZone" "Logs/Daytona/SimRIG_MergeGapLog_<run>.txt"
+```
+Atteso: `ExtZone` 21.93 s nei primi giri (meno di 3 transiti), poi ~23.7–23.8 s; perdita prevista del Player ~33.8–34.2 s (reale 34.7); MergeGap nel primo blocco dopo la sosta del Target ~−3.1…−3.3 s (oggi −1.30…−1.45, reale −2.7); MergeGap prima delle soste invariato (errore medio +0.33 s nei giri 2-15), perché lì l'effetto vale per entrambe le vetture.
+
+### Stato
+- ✅ Compila (0 errori, 1 warning CS già presente)
+- ✅ Test passano: 371 PASS, exit 0. ⚠️ Il backtest sul replay Misano si salta ancora (Y-54)
+- ⏭️ Replay Daytona con il passo 2 non ancora rigirato
+
+### Per chi entra
+**Prossimo passo:** Andreas rigira il replay Daytona per verificare il passo 2; poi Y-62 (traffico a metà giro, prima del passo 3), coi riferimenti presi da quel replay.
+**NON toccare:** `Hardware/`; `PitInOutAccDecTime` = 11.6 nel DB; `ClassBestExtendedPitZoneTime` e le soglie di rilevamento soste che lo usano; `RaceAnalyzer.cs:1186` senza discuterne (proiezione del totale giri).
+**Attenzione a:** il riferimento cambia quando il Player ha 3 transiti validi (dal giro ~4): da lì tutte le perdite ai box scendono di ~1.8 s. Prima delle soste l'effetto vale per entrambe le vetture, dopo la prima sosta no. Si sposta di ~1.8 s anche la bolla del traffico di Y-62 (`timeGap − playerTotalPitLoss`), quindi gli istanti degli spegnimenti possono cambiare. Il piano chiede di ricontrollare le raccomandazioni undercut/overcut anche sul replay Road Atlanta `20260911_231106`.
+
+---
+
 ## [2026-09-14 08:54] claude → chiunque entri dopo
 
 **Task:** Verifica, sul replay Daytona `20260914_082515` rigirato da Andreas con `c18a1b0`, della correzione del passo 1. Nessun file di codice toccato, lock non preso.
@@ -420,53 +460,6 @@ Atteso: build 0 errori, 360 test PASS (100%), exit code 0.
 
 ---
 
-## [2026-09-11 22:50] antigravity → chiunque entri dopo
-
-**Task:** Congelamento (latch) del ProjectedMergeGap durante la fase attiva di pit stop di Target e Player
-**Piano:** —
-**Commit:** `722a9d6` (latch e test), questo (handoff e rilascio lock)
-
-### Fatto
-- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:115, 165, 875-925, 1835-1845, 1895-1910`:
-  - **Latch ProjectedMergeGap durante i box:** implementato `UpdateProjectedMergeGap(double rawMergeGap, bool isTargetInPit, bool isPlayerInPit, string targetName)` e introdotte proprietà `IsMergeGapLatched` in `TargetState` e `TargetStrategyManager`.
-  - Quando il Target o il Player è in corsia box (`isTargetInPit`: `IsOnPitRoad || IsInPitStall || IsInsideGeofence || TrackSurface == InPitStall`; `isPlayerInPit`: `PlayerData.IsOnPitRoad || TrackSurface == InPitStall || state.IsInPitLane`), il valore di `CurrentTarget.ProjectedMergeGap` viene congelato all'ultima stima on-track stabile prima dell'ingresso (`_lastOnTrackProjectedMergeGap`).
-  - Questo impedisce a `ProjectedMergeGap` di collassare temporaneamente sul `LiveSignedGap` mentre l'auto è ferma in piazzola o percorre la pitlane a limitatore, mantenendo sulla dashboard/HUD il gap di ricongiungimento previsto.
-  - Al rientro effettivo di entrambe le vetture in pista a regime di gara (`!isTargetInPit && !isPlayerInPit`), il latch si rilascia istantaneamente e il valore converge sul gap on-track reale.
-  - Aggiunti guard di sicurezza: timeout di 120s (in caso di ritiro/tow) e reset immediato in caso di cambio target o `ResetSession()` / `SetNoTarget()`.
-  - Monitor log `SimRIG_MergeGapLog` aggiornato con tag `[FROZEN IN PIT]` durante la fase di blocco.
-- `User.PluginSdkDemoEdit/DataPluginDemo.cs:468, 612, 1840, 2055`:
-  - Registrata ed esposta la nuova proprietà SimHub: `SimRIG.Target.IsMergeGapLatched` (bool).
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs:59, 1368-1428`:
-  - Aggiunto unit test esaustivo: `Test_ProjectedMergeGap_LatchesDuringPitStopAndUnlatchesOnTrackExit` che copre:
-    1. Fase pre-pit in pista (unlatched, -1.90s).
-    2. Ingresso pit road Target (latched, resta -1.90s anche se il raw gap crolla a +20s).
-    3. Fermata in piazzola e sfilamento Player (latched, resta -1.90s con raw gap a +5.0s e -3.5s).
-    4. Rientro Target in pista (unlatch immediato, gap reale -5.25s).
-    5. Test simmetrico per Player in pit lane (latch a +12.40s, unlatch all'uscita).
-    6. Safety guard per cambio target durante il pit.
-  - Suite di test: **360 PASS (100% success)**.
-
-### Come verificare
-```bash
-& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
-& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: build 0 errori, 360 test PASS (100%), exit code 0.
-
-### Stato
-- ✅ Compila senza errori
-- ✅ Test passano (360 PASS, 100%)
-- ✅ Verificato su replay reale Road Atlanta (`Logs/Road Atlanta/*20260911_231106*`):
-  - **Sosta Player (giro 15, TLeft 1561.8s)**: Player in box (`InPitStall`, `InPitRoad: True`), `LiveSignedGap` schizza a +17.05s, `ProjectedMergeGap` congelato a `-0.35s [FROZEN IN PIT]`. Rientro in pista: unlatch pulito, gap reale +33.77s / stima +0.94s.
-  - **Sosta Target (giri 20-21, TLeft 1111.4s - 1081.3s)**: Bruno Carneiro entra ai box (`InPitRoad: True`), `LiveSignedGap` passa da +27.94s a -3.77s quando il Player lo supera sfilandogli a fianco sul rettilineo mentre è fermo in piazzola: `ProjectedMergeGap` rimane perfettamente congelato a `-1.38s [FROZEN IN PIT]` senza alcuna fluttuazione!
-  - **Rientro Target in pista (giro 21, TLeft 1051.2s)**: unlatch immediato, `ProjectedMergeGap: -5.25s` identico a `LiveSignedGap: -5.25s` on-track.
-  - Sosta Bruno: 16.30s stazionari reali contro 16.50s previsti (delta di appena 0.20s!), classificata correttamente `Simultaneous (No Tires)`.
-  - Transiti sul rettilineo dei box a 250–264 km/h scartati al 100% come `Confirmed on track` per tutti i 20 giri precedenti.
-
-### Per chi entra
-**Prossimo passo:** Motore di tracciamento soste e proiezione ricongiungimento (`ProjectedMergeGap` + Latching) empiricamente validati e stabilizzati al 100% su Road Atlanta sia per sosta Player che Target. Procedere con le feature successive della roadmap.
-**NON toccare:** `Hardware/`, file `*_LEGACY.cs`.
-**Attenzione a:** Se si gestiscono multiclassi con sorpassi in pit lane da vetture di classi diverse, il latch isola specificamente il delta fra Player e Target corrente.
 
 ---
 

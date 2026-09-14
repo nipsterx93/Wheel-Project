@@ -9,6 +9,56 @@
 
 ---
 
+## [2026-09-11 22:50] antigravity → chiunque entri dopo
+
+**Task:** Congelamento (latch) del ProjectedMergeGap durante la fase attiva di pit stop di Target e Player
+**Piano:** —
+**Commit:** `722a9d6` (latch e test), questo (handoff e rilascio lock)
+
+### Fatto
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:115, 165, 875-925, 1835-1845, 1895-1910`:
+  - **Latch ProjectedMergeGap durante i box:** implementato `UpdateProjectedMergeGap(double rawMergeGap, bool isTargetInPit, bool isPlayerInPit, string targetName)` e introdotte proprietà `IsMergeGapLatched` in `TargetState` e `TargetStrategyManager`.
+  - Quando il Target o il Player è in corsia box (`isTargetInPit`: `IsOnPitRoad || IsInPitStall || IsInsideGeofence || TrackSurface == InPitStall`; `isPlayerInPit`: `PlayerData.IsOnPitRoad || TrackSurface == InPitStall || state.IsInPitLane`), il valore di `CurrentTarget.ProjectedMergeGap` viene congelato all'ultima stima on-track stabile prima dell'ingresso (`_lastOnTrackProjectedMergeGap`).
+  - Questo impedisce a `ProjectedMergeGap` di collassare temporaneamente sul `LiveSignedGap` mentre l'auto è ferma in piazzola o percorre la pitlane a limitatore, mantenendo sulla dashboard/HUD il gap di ricongiungimento previsto.
+  - Al rientro effettivo di entrambe le vetture in pista a regime di gara (`!isTargetInPit && !isPlayerInPit`), il latch si rilascia istantaneamente e il valore converge sul gap on-track reale.
+  - Aggiunti guard di sicurezza: timeout di 120s (in caso di ritiro/tow) e reset immediato in caso di cambio target o `ResetSession()` / `SetNoTarget()`.
+  - Monitor log `SimRIG_MergeGapLog` aggiornato con tag `[FROZEN IN PIT]` durante la fase di blocco.
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs:468, 612, 1840, 2055`:
+  - Registrata ed esposta la nuova proprietà SimHub: `SimRIG.Target.IsMergeGapLatched` (bool).
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs:59, 1368-1428`:
+  - Aggiunto unit test esaustivo: `Test_ProjectedMergeGap_LatchesDuringPitStopAndUnlatchesOnTrackExit` che copre:
+    1. Fase pre-pit in pista (unlatched, -1.90s).
+    2. Ingresso pit road Target (latched, resta -1.90s anche se il raw gap crolla a +20s).
+    3. Fermata in piazzola e sfilamento Player (latched, resta -1.90s con raw gap a +5.0s e -3.5s).
+    4. Rientro Target in pista (unlatch immediato, gap reale -5.25s).
+    5. Test simmetrico per Player in pit lane (latch a +12.40s, unlatch all'uscita).
+    6. Safety guard per cambio target durante il pit.
+  - Suite di test: **360 PASS (100% success)**.
+
+### Come verificare
+```bash
+& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build 0 errori, 360 test PASS (100%), exit code 0.
+
+### Stato
+- ✅ Compila senza errori
+- ✅ Test passano (360 PASS, 100%)
+- ✅ Verificato su replay reale Road Atlanta (`Logs/Road Atlanta/*20260911_231106*`):
+  - **Sosta Player (giro 15, TLeft 1561.8s)**: Player in box (`InPitStall`, `InPitRoad: True`), `LiveSignedGap` schizza a +17.05s, `ProjectedMergeGap` congelato a `-0.35s [FROZEN IN PIT]`. Rientro in pista: unlatch pulito, gap reale +33.77s / stima +0.94s.
+  - **Sosta Target (giri 20-21, TLeft 1111.4s - 1081.3s)**: Bruno Carneiro entra ai box (`InPitRoad: True`), `LiveSignedGap` passa da +27.94s a -3.77s quando il Player lo supera sfilandogli a fianco sul rettilineo mentre è fermo in piazzola: `ProjectedMergeGap` rimane perfettamente congelato a `-1.38s [FROZEN IN PIT]` senza alcuna fluttuazione!
+  - **Rientro Target in pista (giro 21, TLeft 1051.2s)**: unlatch immediato, `ProjectedMergeGap: -5.25s` identico a `LiveSignedGap: -5.25s` on-track.
+  - Sosta Bruno: 16.30s stazionari reali contro 16.50s previsti (delta di appena 0.20s!), classificata correttamente `Simultaneous (No Tires)`.
+  - Transiti sul rettilineo dei box a 250–264 km/h scartati al 100% come `Confirmed on track` per tutti i 20 giri precedenti.
+
+### Per chi entra
+**Prossimo passo:** Motore di tracciamento soste e proiezione ricongiungimento (`ProjectedMergeGap` + Latching) empiricamente validati e stabilizzati al 100% su Road Atlanta sia per sosta Player che Target. Procedere con le feature successive della roadmap.
+**NON toccare:** `Hardware/`, file `*_LEGACY.cs`.
+**Attenzione a:** Se si gestiscono multiclassi con sorpassi in pit lane da vetture di classi diverse, il latch isola specificamente il delta fra Player e Target corrente.
+
+---
+
 ## [2026-09-11 15:35] antigravity -> chiunque entri dopo
 
 **Task:** Risoluzione FuelFillRate errato (20L hardcoded Splash&Dash) e distorsione ClassBestExtendedPitZoneTime (outlier 10.4s)

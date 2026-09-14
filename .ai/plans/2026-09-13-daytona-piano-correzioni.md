@@ -5,7 +5,8 @@
 - **Esecutore:** claude (deciso da Andreas il 2026-09-13), un passo per turno col lock
 - **Stato:** ✅ Approvato da Andreas il 2026-09-13 — ordine 1 → 5 (vedi "Decisioni prese" in fondo).
   Passo 1 fatto il 2026-09-13 (`05f0002`), corretto (`c18a1b0`) e verificato sul replay `082515` il
-  2026-09-14; prossimo il passo 2, poi Y-62 (fuori piano, vedi "Decisioni prese"), poi il passo 3.
+  2026-09-14. Passo 2 fatto il 2026-09-14 (`3e9d4ae`, replay da verificare); prossimo Y-62 (fuori piano, vedi
+  "Decisioni prese"), poi il passo 3.
 - **Basato su:**
   - review `.ai/reviews/2026-09-13-daytona-leader-mergegap-pitloss.md`, incluse le correzioni del §9;
   - confronto con Andreas del 13/09 sera: regola BoP del consumo, loop chiuso della pit road con
@@ -82,6 +83,12 @@ carburante da imbarcare ≈ 34.1 L, stazionario ≈ 15.7 s (oggi 12.79), autonom
 (`OpponentTracker.cs:1119-1123`; il leader GTP ha `GreenBurn: 3.00L/lap`).
 
 ## Passo 2 — Tempo di corsa nella zona estesa: mediana del Player, non minimo di classe (Y-61)
+
+> ✅ **Fatto il 2026-09-14** (`3e9d4ae`, claude): 371 PASS, replay Daytona da verificare. Mediana degli ultimi 7
+> transiti validi del Player (`SectorTracker.RecentRawTimeMedian`), con ripiego sul minimo di classe sotto i 3
+> transiti o sotto il pavimento fisico (`OpponentTracker.ExtendedRacingReferenceTime`). La usano il calcolo
+> MergeGap/undercut e, deciso con Andreas, `SimRIG.Pit.TotalPitLoss`. Restano sul minimo di classe le soglie di
+> rilevamento soste, il ripiego del leader e la proiezione del totale giri (`RaceAnalyzer.cs:1186`).
 
 **Problema.** `ExtendedRacingTime` (`TargetStrategyManager.cs:932-934` → `CarPitData.cs:165-170`) usa
 `ClassBestExtendedPitZoneTime`: il **minimo** fra `PlayerExtendedPitZone.BestRawTime` (passato a
