@@ -47,6 +47,43 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-14 13:19] claude → chiunque entri dopo
+
+**Task:** Analisi del replay Daytona `20260914_124637`, rigirato da Andreas con la diagnostica di Y-62 (`32a8682`). Nessun file di codice toccato, lock non preso.
+**Piano:** — (Y-62, fuori dal piano Daytona)
+**Commit:** questo (analisi)
+
+### Fatto
+- DLL nuova attiva: 62 righe `Pit Exit Traffic Conflict` (31 finestre) e 6241 `Pit Exit Traffic Candidate`. Decisione invariata rispetto a `094551`: 29 finestre `UndercutTrafOK=False` contro 27, stessi TL a pochi decimi (una finestra di un tick in più nel giro 14, una del giro 17 spezzata in due); 12 `reason=Traffic` in entrambi.
+- Chi fa scattare il conflitto nei giri 2–15, dove l'undercut è in gioco: 16 finestre, **13 H2**, 1 H1, 2 traffico reale.
+  - **H2, posizione ferma:** `src=Memory surf=NotInWorld`, posizione immobile nella finestra dell'uscita box, `gapVero` che cresce di ~1 s/s mentre `mergeStimato` attraversa la bolla. Leon van Elewout (Dallara P217) fermo a **0.1883** nei giri 2–9, 12 e 13 (e 19–21); Sheppard (giro 11, 0.1721), Daughtrey (13, 0.1266), Arteaga (15, 0.1810). Giro 6: TL 2081.9→2077.2, PlayerPos 0.4728→0.5415, perdita 33.89, `mergeStimato` −4.15→+3.03, `gapVero` 36.02→41.72, `mergeVero` +2.13→+7.83.
+  - **H1, stima posizione × passo:** Jan Hilden (giro 10), in pista con posizione nativa: `mergeStimato` −2.98→+0.69, `mergeVero` +4.70→+4.48. Stesso caso per Abdu Yilmaz nel giro 16 (`mergeVero` +7.7…+8.7).
+  - **traffico reale:** Skadhauge e Martens (IMSA23, giro 14, `mergeVero` +1.7…+2.5).
+  - Dopo la sosta del Player (perdita ~20 s): traffico reale (Loveridge, Kichiku, Wei-Ting Lo) e ancora posizioni ferme (van Elewout, Boillot fermo a 0.1384 nei giri 22–26).
+- **Secondo difetto nello stesso controllo:** la minaccia delle altre classi confronta `oData.NormalizedTimes.SectorBaseline * 3.0` col passo del Player + 1.5 (`TargetStrategyManager.cs:1240`), ma `SectorBaseline` è il tempo nella zona di corsa fuori dalla zona box estesa (`OpponentTracker.cs:2501`), circa il 75% del giro: Michal Zajac2 76.29 s su un giro di 98.19, Wei-Ting Lo 66.13 s. Per 3 fanno 229 e 198 s: ogni vettura di un'altra classe con una baseline risulta minaccia, anche le più veloci. Righe `Candidate`: Dallara P217 minaccia in 2112 su 2352, GTP in 656 su 1799.
+- **Controllo corretto simulato** sulle righe `Candidate` (solo posizione nativa, |`mergeVero`| ≤ 3, nessun controllo spaziale, solo la classe del Player): nessun conflitto nei giri 2–13; nel giro 14 un conflitto reale di ~20 s (Skadhauge, Martens); dal giro 16 i gruppi attorno alle soste, quando l'undercut non è più in gioco. Col filtro minaccia di oggi si aggiungerebbero i Dallara P217: Zajac2 giro 10 (19 s), Hilden giro 11 (18 s), Kharitonov e Sheppard giro 12 (9 s), Daughtrey e Peralta giro 14 (~20 s).
+- Voce del 2026-09-12 22:45 spostata in `.ai/archive/HANDOFF_LOG_archive.md`.
+
+### Come verificare
+Nessuna build: turno di sola analisi.
+```bash
+grep -n "Pit Exit Traffic Conflict" "Logs/Daytona/SimRIG_DebugLog_20260914_124637.csv"
+grep -n "Leon van Elewout | classe" "Logs/Daytona/SimRIG_DebugLog_20260914_124637.csv"
+grep -n "Baseline: 76.286s\|Baseline: 66.130s" "Logs/Daytona/SimRIG_DebugLog_20260914_124637.csv"
+```
+Atteso: 62 righe `Conflict`; le righe di van Elewout con `pos=0.1883 src=Memory surf=NotInWorld`; le baseline di settore di Zajac2 (76.286 s) e Wei-Ting Lo (66.130 s).
+
+### Stato
+- ⏭️ Build e test non eseguiti (nessun file di codice modificato)
+- ✅ Codice invariato rispetto a `32a8682`
+
+### Per chi entra
+**Prossimo passo:** fix di Y-62 col lock, dopo la conferma di Andreas sul perimetro: (1) scartare le vetture con posizione non viva (`PositionSource.Memory` o `NotInWorld`); (2) bolla sul distacco vero (`TimestampGapBehindSeconds`) invece che su posizione × passo; (3) togliere la condizione "vicina all'uscita adesso"; (4) minaccia delle altre classi sul passo sul giro invece che su `SectorBaseline × 3`. Test ADR-004 coi casi di `124637`: van Elewout (H2, giro 6), Hilden (H1, giro 10), Skadhauge (reale, giro 14, col Player lontano dall'uscita), Zajac2 (baseline di settore 76.29 s, giro 98.19).
+**NON toccare:** `Hardware/`; `PitInOutAccDecTime` = 11.6 nel DB; `RaceAnalyzer.cs:1186` senza discuterne; la diagnostica di `32a8682` finché il fix non è verificato sul replay (serve al confronto).
+**Attenzione a:** scartando le posizioni `NotInWorld` il controllo, nei replay, non vede le vetture lontane: è corretto, ma va detto. Il distacco vero usa i timestamp del Player: nel giro dopo la sua sosta, nella zona della corsia box, vale il transito lento. Col Player fermo ai box (giro 17, PlayerPos 0.032) la simulazione trova conflitti spuri: valutare se sospendere il controllo in corsia box. Restano rimandati il margine undercut ≈ 105 s nel giro 3 e i disallineamenti di `PROJECT_STATE.md`.
+
+---
+
 ## [2026-09-14 12:33] claude → chiunque entri dopo
 
 **Task:** Y-62 (traffico a metà giro): capire quale vettura fa scattare il controllo traffico dell'undercut. I log di `094551` non bastano, quindi (deciso con Andreas) prima una diagnostica, solo log e decisione invariata; il fix dopo il replay.
@@ -395,54 +432,6 @@ Atteso: congelati −0.92 (righe 1094, 1107) e −9.77 (righe 1159, 1172); `giri
 **Prossimo passo:** Andreas decide ordine e assegnazione di Y-58…Y-61 rispetto a Y-52 Passo 3. Più visibili in dashboard: Y-59 e Y-58. Più piccolo: Y-60 (una riga a `OpponentTracker.cs:1722` + test, ricontrollando le soglie gomme sì/no). Per Y-58, prima di scrivere il fix, loggare `CarIdxLapCompleted` del leader durante un buco.
 **NON toccare:** `Hardware/`; il valore 11.6 di `PitInOutAccDecTime` nel DB (verificato); le soglie di classificazione gomme (`OpponentTracker.cs:1790-1850`) senza ricontrollarle coi nuovi stazionari, se si fa Y-60.
 **Attenzione a:** i replay Daytona mandano `NotInWorld` le vetture lontane dal Player: ogni fix su leader, gap e soste va validato anche lì, non solo su Road Atlanta. Non "tenere" valori al posto di stimarli: una posizione tenuta è una posizione ferma (Y-35). A replay 2x i log periodici hanno metà righe ma gli stessi valori.
-
----
-
-## [2026-09-12 22:45] antigravity → chiunque entri dopo
-
-**Task:** Fix Leader.TrackPct (telemetria nativa e hold), Leader.RaceLapsCompleted (sync CurrentLap senza offset _leaderRaceStartLap), e rimozione freeze proiezioni all'ultimo giro
-**Piano:** —
-**Commit:** questo (fix RaceAnalyzer, test e rilascio lock)
-
-### Fatto
-- `User.PluginSdkDemoEdit/RaceAnalyzer.cs`:
-  - **Punto 1 (`Leader.TrackPct` non va più a zero)**:
-    * `r. 588-630`: Per `state.Position != 1`, `leaderTrackPosPct` ora interroga in via prioritaria `tracker.GetOpponentTrackPosition(overallLeader, state)` (telemetria nativa 60 Hz `CarIdxLapDistPct` via IracingBridge, poi SimHub `TrackPositionPercent`, poi memoria del tracker).
-    * Aggiunto campo `_lastGoodLeaderTrackPct` che mantiene l'ultimo valore valido in caso di drop temporaneo di pacchetti SimHub, evitando che la proprietà `SimRIG.Leader.TrackPct` lampeggi a `0.0`.
-    * In `r. 834` (`ResolveLeaderAbsolutePos`) e `r. 1325` (diagnostica), unificato l'uso di `leaderTrackPosPct` invece di rileggere il dato grezzo non filtrato.
-  - **Punto 2 (`Leader.RaceLapsCompleted` sincronizzato)**:
-    * `r. 630-650`: Rimosso l'erroneo latch `_leaderRaceStartLap` (che nel replay Daytona aveva agganciato 6 congelando la differenza a `10 - 6 = 4` al giro 9).
-    * I giri completati del leader per gli avversari sono ora semplicemente `Math.Max(0, leaderCurrentLap - 1)` (in iRacing `CurrentLap` è 1-indicizzato), perfettamente allineato a `FlagMoment` (linea 1836).
-    * Rimosso il campo `_leaderRaceStartLap` e il suo azzeramento da `ResetSession()`.
-  - **Punto 5 (Nessun freeze proiezioni all'ultimo giro)**:
-    * `r. 774`: La guardia di uscita anticipata `state.IsTimeLimited && state.SessionTimeLeftSec < 0.0` azzerava immediatamente tutte le proiezioni appena il timer di sessione raggiungeva 0:00, mentre il Player stava ancora correndo l'in-lap finale. Ora la condizione richiede `!_hasSeenPositiveCountdown` (evita l'uscita a gara avviata).
-    * `r. 896-908`: Quando `_leaderHasFinished == true`, se il Player non ha ancora tagliato il traguardo (`!_isRaceFinished`), il sistema aggiorna attivamente `RaceLifeTimeLeftSec = remainingLapFraction * activePlayerPace`, mantiene `RaceTotalLaps = _latchedPlayerTotalReality`, e `RaceLapsRemaining` scala dolcemente la frazione residua (`1.0 - effTrackPos`) fino alla linea del traguardo.
-    * `r. 1268-1286`: `IsLapsPredictionValid` rimane `true` durante l'in-lap finale.
-    * `r. 776-785`: Quando la gara è formalmente conclusa (`_isRaceFinished == true`), `RaceTotalLaps` preserva il totale latchato invece di azzerarsi a 0.
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/LeaderSampleUnitTests.cs`:
-  - Aggiunti test mirati:
-    * `Test_OpponentLeaderLapsCompleted_MatchesCurrentLapMinusOne`
-    * `Test_LeaderTrackPct_HoldsLastGoodWhenTelemetryDrops`
-    * `Test_LastLapInLapProjections_ActiveAfterTimeExpiry`
-- Build e Test:
-  - MSBuild VS2022: 0 errori, installazione DLL in SimHub completata.
-  - Test runner: **363 PASS (100% success)**, exit code 0.
-
-### Come verificare
-```bash
-& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
-& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: build 0 errori, 363 test PASS (100%), exit code 0.
-
-### Stato
-- ✅ Compila senza errori
-- ✅ 363 PASS (100%)
-
-### Per chi entra
-**Prossimo passo:** Continuare l'analisi con Andreas sulle metriche di gara e backtest Daytona.
-**NON toccare:** `Hardware/` (territorio di Andreas).
-**Attenzione a:** `PitDistanceMeters: 813.35m` a Daytona è strettamente la distanza fisica tra `PitEntryPct` e `PitExitPct` (`PitRadar.cs:1740-1745`). La formula di pit loss è `TotalPitLoss = Stationary + (PitTransitTime + InOutAccDecTime - ExtendedPitZoneRacingTime)`.
 
 ---
 
