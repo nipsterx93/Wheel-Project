@@ -4,8 +4,8 @@
 - **Autore:** claude
 - **Esecutore:** claude (deciso da Andreas il 2026-09-13), un passo per turno col lock
 - **Stato:** ✅ Approvato da Andreas il 2026-09-13 — ordine 1 → 5 (vedi "Decisioni prese" in fondo).
-  Passo 1 fatto il 2026-09-13 (`05f0002`) e corretto il 2026-09-14 dopo il replay `070557` (tetto =
-  capienza del Target); replay da rifare; prossimo il passo 2.
+  Passo 1 fatto il 2026-09-13 (`05f0002`), corretto (`c18a1b0`) e verificato sul replay `082515` il
+  2026-09-14; prossimo il passo 2.
 - **Basato su:**
   - review `.ai/reviews/2026-09-13-daytona-leader-mergegap-pitloss.md`, incluse le correzioni del §9;
   - confronto con Andreas del 13/09 sera: regola BoP del consumo, loop chiuso della pit road con
@@ -51,7 +51,11 @@ queste cose:
 > ⚠️ **Corretto il 2026-09-14** (`c18a1b0`) dopo il replay `070557`. Nei giri 11-15 il passo funziona (errore
 > medio del MergeGap prima delle soste da +3.74 a +0.37 s), ma il tetto sullo spazio libero attuale abbassava
 > la sosta prevista del Target a inizio stint (2.7 s al giro 1 invece di ~17.4) e l'errore medio nei giri 2-7
-> saliva da +5.95 a +9.50 s. Ora il tetto è la capienza del Target, come nel testo del passo. Replay da rifare.
+> saliva da +5.95 a +9.50 s. Ora il tetto è la capienza del Target, come nel testo del passo.
+>
+> ✅ **Verificato il 2026-09-14** sul replay `082515`: errore medio del MergeGap prima delle soste +0.33 s nei
+> giri 2-15, tutti i blocchi fra −0.43 e +0.87 s (prima del passo 1: +4.84). Il giro 1 resta a −14.8 s per lo
+> stazionario del Player a 0 (fuori piano). Con l'undercut ora viable si vede Y-62 (traffico a metà giro).
 
 **Problema.** La regola esiste già: `OpponentTracker.cs:1093-1110` calcola
 `opponentMaxTank × consumo Player / playerMaxTankBoP`, per il Target 60 × 3.0 / 50 = **3.60 L/giro**

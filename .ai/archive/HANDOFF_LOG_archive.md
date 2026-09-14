@@ -9,6 +9,47 @@
 
 ---
 
+## [2026-09-11 15:35] antigravity -> chiunque entri dopo
+
+**Task:** Risoluzione FuelFillRate errato (20L hardcoded Splash&Dash) e distorsione ClassBestExtendedPitZoneTime (outlier 10.4s)
+**Piano:** —
+**Commit:** `31f6b3c` (codice e test), questo (handoff e rilascio lock)
+
+### Fatto
+- `User.PluginSdkDemoEdit/PitRadar.cs:1551-1572`:
+  - **Calibrazione FuelFillRate dinamica**: eliminato `20.0 / num3` hardcoded. Il tasso di rifornimento ora usa i litri effettivi imbarcati `litresAdded = state.CurrentFuelLevel - _fuelLevelAtStopStart`, misurati dal cronometro interno tra il primo e l'ultimo incremento di benzina (`_lastFuelIncreaseTime - _fuelStartTime`).
+  - Sanity check su `measuredRate`: accettato solo se compreso nell'intervallo fisico [0.5, 10.0] L/s prima di salvare come `Confirmed`.
+  - Log dettagliato: `litres={effectiveLitres:F1} | seconds={fuelingSeconds:F2}s`.
+- `E:/SimHub/SimRIG_Data.json`:
+  - Ripristinato `IMSA23.FuelFillRate` a 2.60 L/s (era stato corrotto a 1.6129 L/s da Sara Tolotti al giro 15).
+- `User.PluginSdkDemoEdit/OpponentTracker.cs:876-905`:
+  - **Pavimento fisico plausibilità ExtendedPitZone**: aggiunto `minPhysicalExtendedTime = Math.Max(12.0, pitFraction * refPace * 0.70)` sul class-best transit. Previene che tagli pista o glitch di coordinata (es. 10.40s, 4.78s) riducano artificialmente `ExtendedPitZoneRacingTime` gonfiando la pit loss avversari di oltre 6.6 secondi.
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:862-870`:
+  - Calcolo `extendedRacingTime`: introdotto fallback su frazione di giro e passo (`extZoneFraction * refPaceForZone`) in assenza di passaggi pista validi.
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs`:
+  - Aggiunti 2 nuovi unit test:
+    - `Test_SplashAndDash_CalculatesDynamicFuelRateFromActualLitres`: verifica che 30.9L in 12.4s producano il corretto tasso di ~2.49 L/s invece di 1.61 L/s.
+    - `Test_ExtendedPitZone_AppliesPhysicalFloorToRejectTrackCutOutliers`: verifica il rigetto di outlier (10.40s, 4.78s) preservando 16.95s.
+  - Suite test: passata a **359 PASS (100%)**.
+
+### Come verificare
+```bash
+& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build pulita (0 errori) e test runner console a **359 PASS (100%)**.
+
+### Stato
+- [x] Compila
+- [x] Test passano (359 PASS, 100%)
+
+### Per chi entra
+**Prossimo passo:** Riprodurre il replay Road Atlanta per osservare `EstimatedStationaryTime` di Bruno Carneiro scendere da ~22s a ~11.8s e `ProjectedMergeGap` prima della sosta convergere a ~ -5.2s (in perfetto accordo con i -5.25s misurati su pista all'uscita).
+**NON toccare:** `Hardware/`, file `*_LEGACY.cs`.
+**Attenzione a:** `SimRIG_Data.json` ha ora `IMSA23.FuelFillRate` calibrato a 2.60 L/s; con la nuova logica dinamica, future soste Splash&Dash calcoleranno il rate corretto basandosi sui litri realmente imbarcati.
+
+---
+
 ## [2026-09-11 14:25] antigravity -> chiunque entri dopo
 
 **Task:** Blindaggio fallback retroattivo spaziale contro falsi pit a 250 km/h e correzione TargetNeedsPit post-sosta

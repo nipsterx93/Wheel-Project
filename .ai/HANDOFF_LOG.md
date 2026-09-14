@@ -47,6 +47,48 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-14 08:54] claude → chiunque entri dopo
+
+**Task:** Verifica, sul replay Daytona `20260914_082515` rigirato da Andreas con `c18a1b0`, della correzione del passo 1. Nessun file di codice toccato, lock non preso.
+**Piano:** `.ai/plans/2026-09-13-daytona-piano-correzioni.md` (passo 1)
+**Commit:** questo (verifica, registrato Y-62)
+
+### Fatto
+- Stesso replay di `163743` e `070557`: sosta del Target a TL 1089.2 con la stessa `Opponent Smart Refuel Projection` (37.3 L), `Pit Complete` del Player a TL 938.5, `Projection Validation` con vero=27.742.
+- Errore del MergeGap prima delle soste rispetto ai −2.7 s reali, sui blocchi del MergeGapLog in cui entrambe le vetture devono ancora fermarsi:
+
+| Giri | `163743` (prima del passo 1) | `070557` (tetto sullo spazio libero) | `082515` (tetto sulla capienza) |
+|---|---|---|---|
+| 1 | −8.31 | −0.14 | −14.81 |
+| 2–7 | +5.95 | +9.50 | +0.37 |
+| 8–10 | +4.45 | +2.07 | +0.15 |
+| 11–15 | +3.74 | +0.37 | +0.41 |
+| 2–15 | +4.84 | +4.56 | **+0.33** (tutti i blocchi fra −0.43 e +0.87) |
+
+- Stazionario previsto del Target: 17.7 / 18.9 / 18.1 / 16.2 s nei giri 1-4 (in `070557` 2.4–6.9 s), 15.35–15.53 s nei giri 13-15; il reale è ~16.2–16.5 s. A inizio gara il consumo BoP del Target preso dal database vale ora 3.60 L/giro (3.57 in `070557`): il database del plugin si è aggiornato fra i due run.
+- Invariati, come previsto: giro 1 a −14.8 s (stazionario del Player a 0, fuori piano); congelato durante la sosta del Target −3.62 s (passo 3, punto 4); congelato durante la sosta del Player −9.60 s (Y-59); gap dopo le soste fra −2.64 e −2.76 s; `TargetNeedsPit` mai vero dopo la sosta del Target (0 blocchi su 53).
+- **Registrato Y-62** in `.ai/PROJECT_STATE.md`. Con l'undercut viable quasi tutta la gara i `STRATEGY_CHANGED` passano a 32 (22 in `070557`, 6 in `163743`): 11 sono spegnimenti per "traffico", uno per giro, sempre col Player fra i macrosettori 8 e 10, per ~5 s. Causa: il controllo spaziale di `TargetStrategyManager.cs:1129-1164` chiede che la vettura nella bolla di rientro sia *adesso* vicina all'uscita box.
+- Voce del 2026-09-11 15:35 spostata in `.ai/archive/HANDOFF_LOG_archive.md`.
+
+### Come verificare
+Nessuna build: turno di sola analisi.
+```bash
+grep -n "FROZEN IN PIT" "Logs/Daytona/SimRIG_MergeGapLog_20260914_082515.txt"
+grep -n "reason=Traffic" "Logs/Daytona/SimRIG_StrategyEvent_20260914_082515.txt"
+```
+Atteso: congelati −3.62 e −9.60; 12 righe `reason=Traffic` (11 con cambio di strategia), a TL 2501.9, 2394.9, 2185.9, 2080.6, 1974.8, 1868.5, 1659.2, 1553.3, 1446.8, 1347.2, 1341.5 e 1237.3.
+
+### Stato
+- ⏭️ Build e test non eseguiti (nessun file di codice modificato)
+- ✅ Codice invariato rispetto a `c18a1b0`; passo 1 verificato sul replay
+
+### Per chi entra
+**Prossimo passo:** passo 2 del piano (`ExtZone` dalla mediana dei transiti del Player). Y-62 è fuori piano: quando affrontarlo lo decide Andreas.
+**NON toccare:** `Hardware/`; `PitInOutAccDecTime` = 11.6 nel DB; il giro 1 del MergeGap (stazionario del Player a 0, fuori piano) senza discuterne; le soglie gomme sì/no senza il ricontrollo del passo 5.
+**Attenzione a:** il passo 2 abbassa di ~1.9 s la perdita ai box di tutte le vetture. Prima delle soste è un errore di modo comune e il MergeGap non cambia; cambia dopo la prima sosta. Sposta anche la bolla del traffico di Y-62 (`timeGap − playerTotalPitLoss`), quindi i TL degli spegnimenti possono cambiare: confrontare con i numeri qui sopra.
+
+---
+
 ## [2026-09-14 08:18] claude → chiunque entri dopo
 
 **Task:** Verifica del passo 1 del piano correzioni Daytona sul replay `20260914_070557` (rigirato da Andreas con `05f0002`) e correzione della regressione trovata: il tetto sul carburante previsto del Target torna la capienza del serbatoio, non lo spazio libero attuale.
@@ -432,44 +474,6 @@ Atteso: build 0 errori, 360 test PASS (100%), exit code 0.
 
 ---
 
-## [2026-09-11 15:35] antigravity -> chiunque entri dopo
-
-**Task:** Risoluzione FuelFillRate errato (20L hardcoded Splash&Dash) e distorsione ClassBestExtendedPitZoneTime (outlier 10.4s)
-**Piano:** —
-**Commit:** `31f6b3c` (codice e test), questo (handoff e rilascio lock)
-
-### Fatto
-- `User.PluginSdkDemoEdit/PitRadar.cs:1551-1572`:
-  - **Calibrazione FuelFillRate dinamica**: eliminato `20.0 / num3` hardcoded. Il tasso di rifornimento ora usa i litri effettivi imbarcati `litresAdded = state.CurrentFuelLevel - _fuelLevelAtStopStart`, misurati dal cronometro interno tra il primo e l'ultimo incremento di benzina (`_lastFuelIncreaseTime - _fuelStartTime`).
-  - Sanity check su `measuredRate`: accettato solo se compreso nell'intervallo fisico [0.5, 10.0] L/s prima di salvare come `Confirmed`.
-  - Log dettagliato: `litres={effectiveLitres:F1} | seconds={fuelingSeconds:F2}s`.
-- `E:/SimHub/SimRIG_Data.json`:
-  - Ripristinato `IMSA23.FuelFillRate` a 2.60 L/s (era stato corrotto a 1.6129 L/s da Sara Tolotti al giro 15).
-- `User.PluginSdkDemoEdit/OpponentTracker.cs:876-905`:
-  - **Pavimento fisico plausibilità ExtendedPitZone**: aggiunto `minPhysicalExtendedTime = Math.Max(12.0, pitFraction * refPace * 0.70)` sul class-best transit. Previene che tagli pista o glitch di coordinata (es. 10.40s, 4.78s) riducano artificialmente `ExtendedPitZoneRacingTime` gonfiando la pit loss avversari di oltre 6.6 secondi.
-- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:862-870`:
-  - Calcolo `extendedRacingTime`: introdotto fallback su frazione di giro e passo (`extZoneFraction * refPaceForZone`) in assenza di passaggi pista validi.
-- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/NativeIracingOpponentTrackingUnitTests.cs`:
-  - Aggiunti 2 nuovi unit test:
-    - `Test_SplashAndDash_CalculatesDynamicFuelRateFromActualLitres`: verifica che 30.9L in 12.4s producano il corretto tasso di ~2.49 L/s invece di 1.61 L/s.
-    - `Test_ExtendedPitZone_AppliesPhysicalFloorToRejectTrackCutOutliers`: verifica il rigetto di outlier (10.40s, 4.78s) preservando 16.95s.
-  - Suite test: passata a **359 PASS (100%)**.
-
-### Come verificare
-```bash
-& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
-& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: build pulita (0 errori) e test runner console a **359 PASS (100%)**.
-
-### Stato
-- [x] Compila
-- [x] Test passano (359 PASS, 100%)
-
-### Per chi entra
-**Prossimo passo:** Riprodurre il replay Road Atlanta per osservare `EstimatedStationaryTime` di Bruno Carneiro scendere da ~22s a ~11.8s e `ProjectedMergeGap` prima della sosta convergere a ~ -5.2s (in perfetto accordo con i -5.25s misurati su pista all'uscita).
-**NON toccare:** `Hardware/`, file `*_LEGACY.cs`.
-**Attenzione a:** `SimRIG_Data.json` ha ora `IMSA23.FuelFillRate` calibrato a 2.60 L/s; con la nuova logica dinamica, future soste Splash&Dash calcoleranno il rate corretto basandosi sui litri realmente imbarcati.
 
 ---
 
