@@ -995,9 +995,11 @@ namespace SimRIG
                     // Calcolo unificato basato sulla Extended Pit Zone
                     double extZoneFraction = (radar != null) ? (1.0 - radar.GetExtendedSectorRacingZoneWeight()) : 0.0;
                     double refPaceForZone = oppData.NormalizedRaceStartPace > 0.0 ? oppData.NormalizedRaceStartPace : (state.BestLapTimeSec > 0.0 ? state.BestLapTimeSec : (radar?.CurrentTrack != null && radar.CurrentTrack.AverageLapPace > 0.0 ? radar.CurrentTrack.AverageLapPace : 80.0));
+                    // Y-61 passo 2: tempo di corsa tipico del Player nella zona (mediana dei transiti recenti), non il
+                    // minimo di classe; ripiego sul minimo finche' il Player non ha 3 transiti validi.
                     double extendedRacingTime = (extZoneFraction > 0.05 && refPaceForZone > 30.0)
-                        ? CarPitData.CalculateExtendedRacingTime(tracker.ClassBestExtendedPitZoneTime, extZoneFraction, refPaceForZone)
-                        : CarPitData.CalculateExtendedRacingTime(tracker.ClassBestExtendedPitZoneTime, pitDistance, trackLen, tracker.ClassTopSpeed);
+                        ? CarPitData.CalculateExtendedRacingTime(tracker.ExtendedRacingReferenceTime, extZoneFraction, refPaceForZone)
+                        : CarPitData.CalculateExtendedRacingTime(tracker.ExtendedRacingReferenceTime, pitDistance, trackLen, tracker.ClassTopSpeed);
 
                     double accDecTime = CurrentTarget.InOutPitAccDecTime;
 

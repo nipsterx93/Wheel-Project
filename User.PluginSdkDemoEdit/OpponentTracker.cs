@@ -375,6 +375,17 @@ namespace SimRIG
             return burn;
         }
 
+        /// <summary>
+        /// Tempo di corsa nella zona estesa da sottrarre alla perdita ai box (MergeGap/undercut, dashboard):
+        /// la mediana dei transiti recenti del Player se c'e' e rispetta il pavimento fisico, altrimenti il
+        /// minimo di classe di sempre (Y-61, passo 2). Il minimo resta per le soglie di rilevamento soste.
+        /// </summary>
+        public static double ResolveExtendedRacingReference(double playerTypicalTime, double classBestTime, double minPhysicalTime)
+        {
+            if (playerTypicalTime > 0.0 && playerTypicalTime >= minPhysicalTime) return playerTypicalTime;
+            return classBestTime;
+        }
+
         /// <summary>Sotto questa soglia non e' un giro: e' un contatore che e' saltato.</summary>
         public const double MinCredibleOpponentLapSec = 20.0;
 
@@ -635,6 +646,14 @@ namespace SimRIG
         public double ClassAverageSectorPaceDropRaw { get; private set; } = 0.0;
 
         public double ClassBestExtendedPitZoneTime { get; private set; } = 0.0;
+
+        /// <summary>
+        /// Tempo di corsa nella zona estesa da sottrarre alla perdita ai box (MergeGap/undercut e
+        /// <c>SimRIG.Pit.TotalPitLoss</c>): la mediana dei transiti recenti del Player, o il minimo di classe
+        /// finche' il Player non ne ha 3 validi (Y-61, passo 2). <see cref="ClassBestExtendedPitZoneTime"/>
+        /// resta per le soglie di rilevamento delle soste.
+        /// </summary>
+        public double ExtendedRacingReferenceTime { get; private set; } = 0.0;
         public double ClassBestPitZoneRacingTime { get; private set; } = 0.0;
 
         public bool OpponentPittedInWet { get; set; } = false;
@@ -709,6 +728,7 @@ namespace SimRIG
             double effectiveClassFuelBurn,
             double playerBestStrictPitZoneTime,
             double playerBestExtendedPitZoneTime,
+            double playerTypicalExtendedPitZoneTime,
             double raceLapsRemaining,
             LogManager log,
             double fuelWeightCoef = 0.03,
@@ -979,6 +999,7 @@ namespace SimRIG
             }
             ClassBestPitZoneRacingTime = classBestStrictPitTime < 999.0 ? classBestStrictPitTime : 0.0;
             ClassBestExtendedPitZoneTime = classBestExtendedPitTime < 999.0 ? classBestExtendedPitTime : 0.0;
+            ExtendedRacingReferenceTime = ResolveExtendedRacingReference(playerTypicalExtendedPitZoneTime, ClassBestExtendedPitZoneTime, minPhysicalExtendedTime);
 
 
 

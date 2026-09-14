@@ -1270,7 +1270,7 @@ namespace SimRIG
                         $"Rain10m: {CurrentState.RainIntensity10Min:F2} | Rain30m: {CurrentState.RainIntensity30Min:F2}");
                 }
 
-                OpponentTracker.Update(data, Settings, TyreManager.CurrentScope, CurrentState, PitRadar, data.NewData.SessionTimeLeft.TotalSeconds, CurrentState.RaceStartingFuel, CurrentState.MaxFuelCapacity, FuelManager.Calculations.AverageFuelPerLap, RaceAnalyzer.PlayerPitZone.BestRawTime, RaceAnalyzer.PlayerExtendedPitZone.BestRawTime, RaceAnalyzer.Results.RaceLapsRemaining, LogManager, Settings.FuelWeightCoef, Settings.TempCoef, PluginManager);
+                OpponentTracker.Update(data, Settings, TyreManager.CurrentScope, CurrentState, PitRadar, data.NewData.SessionTimeLeft.TotalSeconds, CurrentState.RaceStartingFuel, CurrentState.MaxFuelCapacity, FuelManager.Calculations.AverageFuelPerLap, RaceAnalyzer.PlayerPitZone.BestRawTime, RaceAnalyzer.PlayerExtendedPitZone.BestRawTime, RaceAnalyzer.PlayerExtendedPitZone.RecentRawTimeMedian(), RaceAnalyzer.Results.RaceLapsRemaining, LogManager, Settings.FuelWeightCoef, Settings.TempCoef, PluginManager);
                 CurrentState.CrossoverAlertState = OpponentTracker.CrossoverAlertState;
                 CurrentState.CrossoverDeltaSeconds = OpponentTracker.CrossoverDeltaSeconds;
 
@@ -2055,8 +2055,9 @@ namespace SimRIG
                 projectedTireTime,
                 jackBufferSec: 2.0);
 
-            double extRacingTimeVal = OpponentTracker.ClassBestExtendedPitZoneTime > 0.0
-                ? OpponentTracker.ClassBestExtendedPitZoneTime
+            // Y-61 passo 2: stesso riferimento del MergeGap (mediana dei transiti del Player, ripiego sul minimo di classe)
+            double extRacingTimeVal = OpponentTracker.ExtendedRacingReferenceTime > 0.0
+                ? OpponentTracker.ExtendedRacingReferenceTime
                 : (tgt.PitLaneZoneRacingTime > 0.0 ? tgt.PitLaneZoneRacingTime : PitRadar.PitTransitTime);
 
             double totalPitLossVal = CarPitData.CalculateTotalPitLoss(

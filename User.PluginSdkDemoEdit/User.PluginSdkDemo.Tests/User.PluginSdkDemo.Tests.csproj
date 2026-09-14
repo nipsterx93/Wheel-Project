@@ -97,6 +97,7 @@
     <Compile Include="UnitTests\PitZoneStopwatchAndOpponentCascadeUnitTests.cs" />
     <Compile Include="UnitTests\NativeIracingOpponentTrackingUnitTests.cs" />
     <Compile Include="UnitTests\TargetBopFuelForecastUnitTests.cs" />
+    <Compile Include="UnitTests\ExtendedRacingReferenceUnitTests.cs" />
     <Compile Include="IntegrationTests\ReplayBacktestIntegrationTest.cs" />
     <Compile Include="IntegrationTests\MisanoHuracanGT3ReplayTest.cs" />
     <Compile Include="Replay\SimHubReplayRAMReader.cs" />

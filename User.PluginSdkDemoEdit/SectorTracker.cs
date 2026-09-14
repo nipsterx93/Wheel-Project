@@ -191,5 +191,20 @@ namespace SimRIG
             }
             return LastNormalTime;
         }
+
+        /// <summary>
+        /// Mediana degli ultimi <paramref name="window"/> transiti validi (<see cref="RawNormalHistory"/>),
+        /// zero se ce ne sono meno di <paramref name="minSamples"/>. E' il tempo tipico della zona, non il
+        /// migliore: il minimo pesca un passaggio eccezionale (Daytona: 21.93 s contro ~23.7 s tipici, Y-61).
+        /// </summary>
+        public double RecentRawTimeMedian(int window = 7, int minSamples = 3)
+        {
+            int count = Math.Min(window, RawNormalHistory.Count);
+            if (count < Math.Max(1, minSamples)) return 0.0;
+
+            var recent = RawNormalHistory.Skip(RawNormalHistory.Count - count).OrderBy(t => t).ToList();
+            int mid = count / 2;
+            return (count % 2 == 1) ? recent[mid] : (recent[mid - 1] + recent[mid]) / 2.0;
+        }
     }
 }
