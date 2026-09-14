@@ -83,7 +83,7 @@ Atteso: congelati −3.62 e −9.60; 12 righe `reason=Traffic` (11 con cambio di
 - ✅ Codice invariato rispetto a `c18a1b0`; passo 1 verificato sul replay
 
 ### Per chi entra
-**Prossimo passo:** passo 2 del piano (`ExtZone` dalla mediana dei transiti del Player). Y-62 è fuori piano: quando affrontarlo lo decide Andreas.
+**Prossimo passo:** passo 2 del piano (`ExtZone` dalla mediana dei transiti del Player); poi Y-62, prima del passo 3 (deciso da Andreas il 2026-09-14).
 **NON toccare:** `Hardware/`; `PitInOutAccDecTime` = 11.6 nel DB; il giro 1 del MergeGap (stazionario del Player a 0, fuori piano) senza discuterne; le soglie gomme sì/no senza il ricontrollo del passo 5.
 **Attenzione a:** il passo 2 abbassa di ~1.9 s la perdita ai box di tutte le vetture. Prima delle soste è un errore di modo comune e il MergeGap non cambia; cambia dopo la prima sosta. Sposta anche la bolla del traffico di Y-62 (`timeGap − playerTotalPitLoss`), quindi i TL degli spegnimenti possono cambiare: confrontare con i numeri qui sopra.
 

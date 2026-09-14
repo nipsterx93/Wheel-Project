@@ -5,7 +5,7 @@
 - **Esecutore:** claude (deciso da Andreas il 2026-09-13), un passo per turno col lock
 - **Stato:** ✅ Approvato da Andreas il 2026-09-13 — ordine 1 → 5 (vedi "Decisioni prese" in fondo).
   Passo 1 fatto il 2026-09-13 (`05f0002`), corretto (`c18a1b0`) e verificato sul replay `082515` il
-  2026-09-14; prossimo il passo 2.
+  2026-09-14; prossimo il passo 2, poi Y-62 (fuori piano, vedi "Decisioni prese"), poi il passo 3.
 - **Basato su:**
   - review `.ai/reviews/2026-09-13-daytona-leader-mergegap-pitloss.md`, incluse le correzioni del §9;
   - confronto con Andreas del 13/09 sera: regola BoP del consumo, loop chiuso della pit road con
@@ -234,6 +234,11 @@ grep -n "Projection Validation\|Reverse-Engineered\|Opponent Pit AccDec Details"
 1. **Ordine:** passi 1 → 2 → 3 → 4 → 5, adesso, prima di Y-52 Passo 3 (roadmap aggiornata).
 2. **Y-58:** `SimRIG.Leader.TrackPct` mostra la posizione **stimata**.
 3. **Esecutore:** claude, un passo per turno col lock.
+4. **Passo 3, punto 4** (2026-09-14): congelare il MergeGap già su `ApproachingPits` del Target, oltre che su
+   `NotInWorld` (numeri nel passo 3).
+5. **Y-62** (2026-09-14, undercut che si spegne per "traffico" a metà giro, trovato sul replay `082515`):
+   si corregge dopo il passo 2 e prima del passo 3, fuori da questo piano. Il passo 2 sposta la bolla del
+   traffico (`timeGap − playerTotalPitLoss`), quindi i riferimenti di Y-62 vanno ripresi dal replay del passo 2.
 
 ## Come si riparte in una nuova sessione
 
