@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      null
-task:       null
-scope:      null
-expires:    null
+owner:      claude
+since:      2026-09-14 11:06
+task:       Y-62 — diagnostica del controllo traffico al rientro (solo log, la decisione non cambia)
+scope:      User.PluginSdkDemoEdit/TargetStrategyManager.cs; User.PluginSdkDemoEdit/OpponentTracker.cs (sorgente della posizione avversario); nuovo UnitTests/PitExitTrafficDiagnosticsUnitTests.cs, TestRunner.cs, User.PluginSdkDemo.Tests.csproj; .ai/ (handoff e stato)
+expires:    2026-09-14 15:00
 ```
 
 **Regole del lock**
