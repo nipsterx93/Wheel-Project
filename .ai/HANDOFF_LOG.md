@@ -47,6 +47,47 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-14 10:14] claude → chiunque entri dopo
+
+**Task:** Verifica, sul replay Daytona `20260914_094551` rigirato da Andreas con `3e9d4ae`, del passo 2 (tempo di corsa nella zona estesa dalla mediana dei transiti del Player). Nessun file di codice toccato, lock non preso.
+**Piano:** `.ai/plans/2026-09-13-daytona-piano-correzioni.md` (passo 2)
+**Commit:** questo (verifica)
+
+### Fatto
+- Stesso replay dei run precedenti: `Opponent Smart Refuel Projection` del Target a TL 1089.2, `Pit Complete` del Player a TL 938.6, `Projection Validation` con vero=27.742.
+- Confronto con `082515` (passo 1 già corretto, passo 2 non ancora), dal MergeGapLog:
+
+| Misura | `082515` | `094551` | Atteso / reale |
+|---|---|---|---|
+| `ExtZone` dal giro 7 | 22.18 s (21.90–22.27) | **23.73 s** (23.67–23.77) | ≈ 23.8 |
+| Perdita prevista del Player, giri 11-15 | 35.41 s | **33.84 s** | reale 34.7 |
+| MergeGap nei primi blocchi dopo la sosta del Target | −1.30 / −1.72 | **−2.93 / −3.18** | reale −2.7 |
+| Errore medio del MergeGap prima delle soste, giri 2-15 | +0.33 | +0.37 | invariato: vale per entrambe |
+
+- `ExtZone` resta sul minimo di classe fino al giro 3 (25.40 / 23.47 / 23.47 s); dal giro 4 usa la mediana del Player.
+- L'errore sulla perdita del Player passa da +0.7 a −0.9 s: è il residuo di transito e stazionario del Player che il piano dà già fuori piano.
+- Congelato durante la sosta del Player −11.29 s (era −9.60): è il gap stantio di Y-59 con una perdita più bassa, lo corregge il passo 3. Congelato durante la sosta del Target −3.62 s (passo 3, punto 4). Gap dopo le soste −2.57 s; `TargetNeedsPit` mai vero dopo la sosta del Target.
+- Y-62, riferimenti nuovi: 12 `UNDERCUT_NONVIABLE reason=Traffic`, spostati di ~1–1.5 s come previsto, a TL 2501.9, 2396.3, 2187.1, 2081.7, 1976.0, 1869.7, 1659.7, 1554.5, 1447.9, 1348.7, 1342.7 e 1238.8; `STRATEGY_CHANGED` 34 (32 in `082515`).
+- Voce del 2026-09-12 12:45 spostata in `.ai/archive/HANDOFF_LOG_archive.md`.
+
+### Come verificare
+Nessuna build: turno di sola analisi.
+```bash
+grep -n "ExtZone" "Logs/Daytona/SimRIG_MergeGapLog_20260914_094551.txt"
+grep -n "reason=Traffic" "Logs/Daytona/SimRIG_StrategyEvent_20260914_094551.txt"
+```
+
+### Stato
+- ⏭️ Build e test non eseguiti (nessun file di codice modificato)
+- ✅ Passo 2 verificato sul replay; codice invariato rispetto a `3e9d4ae`
+
+### Per chi entra
+**Prossimo passo:** Y-62 (traffico a metà giro) coi riferimenti di `094551` qui sopra; poi il passo 3.
+**NON toccare:** `Hardware/`; `PitInOutAccDecTime` = 11.6 nel DB; `RaceAnalyzer.cs:1186` senza discuterne.
+**Attenzione a:** il piano chiede ancora di ricontrollare le raccomandazioni undercut/overcut sul replay Road Atlanta `20260911_231106`, ora che le perdite ai box sono più basse di ~1.6 s.
+
+---
+
 ## [2026-09-14 09:34] claude → chiunque entri dopo
 
 **Task:** Passo 2 del piano correzioni Daytona (Y-61): il tempo di corsa nella zona estesa sottratto alla perdita ai box è la mediana dei transiti recenti del Player, non il minimo di classe. Scope deciso con Andreas: calcolo MergeGap/undercut e `SimRIG.Pit.TotalPitLoss`.
@@ -404,57 +445,6 @@ Atteso: build 0 errori, 360 test PASS (100%), exit code 0.
 
 ---
 
-## [2026-09-12 12:45] antigravity → chiunque entri dopo
-
-**Task:** Pulizia e rimozione proprietà SimHub obsolete/morte, deduplica e consolidamento namespace Leader
-**Piano:** —
-**Commit:** `dc1a53d` (refactor proprietà), questo (handoff e rilascio lock)
-
-### Fatto
-- `User.PluginSdkDemoEdit/DataPluginDemo.cs:214-223`:
-  - Rimosse le registrazioni delegate ridondanti `Enc_TopLeft_Label`, `Enc_TopRight_Label`, `Enc_BotLeft_Label`, `Enc_BotRight_Label` (già coperte da `SimRIG.Input.Enc_*_Label`) e `LeftWidgetPage`, `BottomLeftWidgetPage`, `BottomRightWidgetPage` (già coperte da `SimRIG.*WidgetPage`).
-  - Mantenute intatte le proprietà delegate richieste dal volante fisico: `PersoSteeringWheelMode`, `PersoSteeringWheelMessage`, `PersoSteeringWheelLiveBitePoint`.
-- `User.PluginSdkDemoEdit/DataPluginDemo.cs:655-665`:
-  - Rimosse 35 proprietà morte non aggiornate create nel loop `for (int i = 1; i <= 7; i++)`: `SimRIG.Relative.R{i}_Pos`, `_Name`, `_Gap`, `_LastLap`, `_Class` (residui storici mai usati dopo lo split nei widget Left/Right).
-- `User.PluginSdkDemoEdit/DataPluginDemo.cs:319, 424, 495, 500, 507, 509, 512, 1690, 1702, 1850-1865`:
-  - Eliminate duplicazioni matematiche al 100%:
-    * `SimRIG.Target.ProjectedStationaryTime` (duplicato esatto di `SimRIG.Target.EstimatedStationaryTime`)
-    * `SimRIG.Target.EstimatedFuelTank` (duplicato esatto di `SimRIG.Target.CurrentTank`)
-    * `SimRIG.Fuel.EstimatedPitWindow` (duplicato esatto di `SimRIG.Fuel.TankLapsRemaining`)
-    * `SimRIG.Target.EstimatedPitWindow` (duplicato esatto di `SimRIG.Target.TankLapsRemaining`)
-    * `SimRIG.Pit.SelectedTireTime` (duplicato esatto di `SimRIG.Tyres.SelectedTireTime`)
-    * `SimRIG.Session.PitLayoutMode` (duplicato esatto di `SimRIG.Pit.PitLayoutMode`)
-    * `SimRIG.Target.TargetMode` (duplicato esatto di `SimRIG.Target.Mode`)
-- `User.PluginSdkDemoEdit/DataPluginDemo.cs:502, 505, 381, 388, 1711, 1855, 1860`:
-  - Risolta la sovrapposizione concettuale e ambiguità nei nomi:
-    * `SimRIG.Target.CalculatedStationaryTime` -> `SimRIG.Target.LastPitStationaryTime` (durata stop passata misurata vs stime future)
-    * `SimRIG.Target.EstimatedFuelAdded` -> `SimRIG.Target.LastPitFuelAdded` (carburante imbarcato nello stop appena concluso vs stime future)
-    * `SimRIG.Strategy.RemainingPitsPlayer` -> `SimRIG.Strategy.PlayerPitsRemaining` (uniformità con `Leader.PitsRemaining` e `Target.PitsRemaining`)
-    * `SimRIG.Strategy.IsPredictionValid` -> `SimRIG.Fuel.IsPredictionValid` (spostata sotto Fuel per distinguere la validità stime carburante da `SimRIG.Session.IsLapsPredictionValid`)
-- `User.PluginSdkDemoEdit/DataPluginDemo.cs:338-355, 375-387, 1715-1735`:
-  - Consolidamento namespace Leader: accorpate tutte le metriche del Leader di gara sotto `SimRIG.Leader.*`:
-    * `Pace`, `PaceStr`, `AveragePace` (da `SimRIG.Strategy.Leader*`)
-    * `StintLaps`, `PitsRemaining`, `PitLossTime`, `DataSource` (da `SimRIG.Strategy.Leader*`)
-    * `RaceTotalLaps`, `RaceLapsCompleted`, `RaceLapsRemaining`, `ProjectedPosAtCheckered`, `TrackPct` (da `SimRIG.Session.Leader*`)
-- Build e test:
-  - Soluzione compilata con successo (0 errori, MSBuild VS2022).
-  - Test runner: **360 PASS (100% success)**.
-
-### Come verificare
-```bash
-& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
-& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: build 0 errori, 360 test PASS (100%), exit code 0.
-
-### Stato
-- ✅ Compila senza errori
-- ✅ Test passano (360 PASS, 100%)
-
-### Per chi entra
-**Prossimo passo:** Procedere con la roadmap delle feature successive concordate con Andreas.
-**NON toccare:** `Hardware/` (territorio di Andreas).
-**Attenzione a:** Se si configurano nuove dashboard SimHub, fare riferimento alle proprietà unificate sotto `SimRIG.Leader.*` e ai nuovi nomi non ambigui (`LastPitStationaryTime`, `LastPitFuelAdded`, `PlayerPitsRemaining`, `SimRIG.Fuel.IsPredictionValid`).
 
 ---
 
