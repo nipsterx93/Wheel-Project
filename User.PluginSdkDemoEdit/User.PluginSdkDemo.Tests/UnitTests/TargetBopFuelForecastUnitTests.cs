@@ -47,7 +47,7 @@ namespace User.PluginSdkDemo.Tests
             // (ADR-004) un solo giro mostra quali diventano rossi, invece di fermarsi al primo.
             var failures = new List<string>();
             RunCollecting(Test_Regression_TargetForecastUsesTargetBopBurn_Daytona, failures);
-            RunCollecting(Test_Regression_FuelToAddCappedByTargetTankFreeSpace, failures);
+            RunCollecting(Test_Regression_FuelToAddCappedByTargetTankCapacity, failures);
             RunCollecting(Test_WithoutOpponentFuelModelFallsBackToPlayer, failures);
             RunCollecting(Test_Regression_OnlyBopScaledBurnIsExposedForStrategy, failures);
             if (failures.Count > 0) throw new Exception(string.Join(" || ", failures));
@@ -108,16 +108,42 @@ namespace User.PluginSdkDemo.Tests
         }
 
         /// <summary>
-        /// Il tetto sul carburante da imbarcare e' lo spazio libero nel serbatoio del Target, non la
-        /// capienza del Player. Scenario ipotetico coi parametri veri di Daytona (nel replay il tetto non
-        /// si raggiunge): a 20 giri dalla fine con 4 L a bordo servono 69.1 L, ma nel serbatoio da 60 L
-        /// ne entrano 56. Col tetto del Player sarebbero 50 L, con la capienza intera 60 L.
+        /// Il tetto sul carburante da imbarcare e' la capienza del serbatoio del Target: non quella del
+        /// Player, e nemmeno lo spazio libero di adesso, perche' la sosta prevista arriva giri dopo, a
+        /// serbatoio quasi vuoto.
         ///
-        /// Neutralizzando la correzione (capienza del Player) diventa rosso.
+        /// Regressione vista nel replay Daytona 20260914_070557, primo blocco del MergeGapLog sul Target
+        /// (TL 2652.5, giro 1): FuelLaps 16.3 x 3.57 = 58.19 L a bordo, 26.8 giri alla fine. Col tetto sullo
+        /// spazio libero (60 - 58.19 = 1.81 L) lo stazionario previsto era 2.7 s (loggato 2.67) e l'errore del
+        /// MergeGap arrivava a +15.5 s nei giri 2-7. Con la capienza sono 38.56 L e 17.4 s; all'ingresso box
+        /// il modello avversari prevedera' 37.3 L (DebugLog 070557:6361).
+        ///
+        /// Neutralizzando la correzione (spazio libero, oppure capienza del Player) diventa rosso.
         /// </summary>
-        private static void Test_Regression_FuelToAddCappedByTargetTankFreeSpace()
+        private static void Test_Regression_FuelToAddCappedByTargetTankCapacity()
         {
-            var target = new OpponentTelemetryData
+            // Inizio stint: serbatoio quasi pieno, sosta ancora lontana
+            var fullTank = new OpponentTelemetryData
+            {
+                CarClass = "GT3",
+                EstimatedFuel = 58.19,
+                EstimatedFuelTank = 58.19,
+                BopFuelPerLap = 3.57,
+                FuelTankCapacity = DaytonaTargetTank
+            };
+
+            var early = TargetStrategyManager.ForecastTargetPit(fullTank, 0, DaytonaPlayerBurn, DaytonaPlayerTankBoP, 26.8, DaytonaFillRate);
+
+            // 26.8 x 3.57 + 0.3 x 3.57 - 58.19 = 38.557 L, sotto i 60 L del serbatoio
+            Assert(Math.Abs(early.FuelToAdd - 38.557) < 0.01,
+                $"Early in the stint fuel to add must be the fuel deficit 38.56 L, not the current free tank space 1.81 L, got {early.FuelToAdd:F2}");
+            // 38.557 / 2.50 + 2.0 = 17.423 s
+            Assert(Math.Abs(early.StationaryTime - 17.423) < 0.01,
+                $"Expected early-stint Target stationary 17.42 s, got {early.StationaryTime:F2}");
+
+            // Serbatoio quasi vuoto e tanta gara ancora (ipotetico coi parametri di Daytona): a 20 giri dalla
+            // fine con 4 L a bordo servono 69.1 L, ma ne entrano al massimo 60 (il serbatoio del Player ne ha 50)
+            var nearlyEmpty = new OpponentTelemetryData
             {
                 CarClass = "GT3",
                 EstimatedFuel = 4.0,
@@ -126,16 +152,16 @@ namespace User.PluginSdkDemo.Tests
                 FuelTankCapacity = DaytonaTargetTank
             };
 
-            var forecast = TargetStrategyManager.ForecastTargetPit(target, 0, DaytonaPlayerBurn, DaytonaPlayerTankBoP, 20.0, DaytonaFillRate);
+            var late = TargetStrategyManager.ForecastTargetPit(nearlyEmpty, 0, DaytonaPlayerBurn, DaytonaPlayerTankBoP, 20.0, DaytonaFillRate);
 
-            // richiesti 20 x 3.60 + 0.3 x 3.60 - 4.0 = 69.08 L; spazio libero 60 - 4 = 56 L
-            Assert(Math.Abs(forecast.FuelToAdd - 56.0) < 0.01,
-                $"Fuel to add must be capped at the Target free tank space 56.00 L, got {forecast.FuelToAdd:F2}");
-            // 56 / 2.50 + 2.0 = 24.4 s
-            Assert(Math.Abs(forecast.StationaryTime - 24.4) < 0.01,
-                $"Expected Target stationary 24.40 s, got {forecast.StationaryTime:F2}");
+            // richiesti 20 x 3.60 + 0.3 x 3.60 - 4.0 = 69.08 L -> tetto 60 L del Target
+            Assert(Math.Abs(late.FuelToAdd - 60.0) < 0.01,
+                $"Fuel to add must be capped at the Target tank capacity 60.00 L, got {late.FuelToAdd:F2}");
+            // 60 / 2.50 + 2.0 = 26.0 s
+            Assert(Math.Abs(late.StationaryTime - 26.0) < 0.01,
+                $"Expected Target stationary 26.00 s, got {late.StationaryTime:F2}");
 
-            Pass("Target fuel to add is capped by the Target free tank space, not by the Player tank");
+            Pass("Target fuel to add is capped by the Target tank capacity, not by its current free space or the Player tank");
         }
 
         /// <summary>

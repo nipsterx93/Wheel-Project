@@ -281,13 +281,14 @@ namespace SimRIG
                 ? fuelDeficit > 0.8
                 : (target.NeedsPitStop || fuelDeficit > 0.8);
 
-            // Nel serbatoio del Target entra al massimo lo spazio libero. La capienza del Player resta solo
-            // come ripiego finche' il modello avversari non conosce quella del Target.
+            // Tetto: la capienza del serbatoio del Target (quella del Player solo come ripiego, finche' il modello
+            // avversari non la conosce). Non lo spazio libero di adesso: la sosta prevista arriva giri dopo, a
+            // serbatoio quasi vuoto. Daytona 070557, giro 1: con 58 L a bordo lo spazio libero dava 1.8 L e 2.7 s
+            // di sosta invece di 38.6 L e 17.4 s.
             double tankCapacity = target.FuelTankCapacity > 0.0 ? target.FuelTankCapacity : playerMaxFuelCapacity;
-            double freeTankSpace = Math.Max(0.0, tankCapacity - target.EstimatedFuel);
             double fuelToAdd = (raceLapsRemaining * fuelPerLap) + (0.3 * fuelPerLap) - target.EstimatedFuel;
             if (fuelToAdd < 0.0) fuelToAdd = 0.0;
-            forecast.FuelToAdd = Math.Min(freeTankSpace, fuelToAdd);
+            forecast.FuelToAdd = Math.Min(tankCapacity, fuelToAdd);
 
             forecast.StationaryTime = forecast.NeedsPit
                 ? CarPitData.CalculateStationaryTime(target.CarClass, forecast.FuelToAdd, measuredFuelFillRate, 0.0, jackBufferSec: 2.0)
