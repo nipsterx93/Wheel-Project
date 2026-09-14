@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      null
-task:       null
-scope:      null
-expires:    null
+owner:      claude
+since:      2026-09-14 08:13
+task:       correzione passo 1 piano Daytona — tetto carburante del Target = capienza, non spazio libero (regressione giri 1-10, replay 070557)
+scope:      User.PluginSdkDemoEdit/TargetStrategyManager.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/TargetBopFuelForecastUnitTests.cs
+expires:    2026-09-14 10:15
 ```
 
 **Regole del lock**
