@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      NONE
-since:      null
-task:       null
-scope:      null
-expires:    null
+owner:      claude
+since:      2026-09-14 09:28
+task:       passo 2 piano correzioni Daytona — tempo di corsa nella zona estesa: mediana dei transiti del Player invece del minimo di classe (Y-61)
+scope:      User.PluginSdkDemoEdit/SectorTracker.cs, User.PluginSdkDemoEdit/OpponentTracker.cs, User.PluginSdkDemoEdit/TargetStrategyManager.cs, User.PluginSdkDemoEdit/DataPluginDemo.cs, User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/
+expires:    2026-09-14 11:30
 ```
 
 **Regole del lock**
