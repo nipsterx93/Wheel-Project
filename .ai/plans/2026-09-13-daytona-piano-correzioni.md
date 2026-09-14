@@ -247,6 +247,8 @@ grep -n "Projection Validation\|Reverse-Engineered\|Opponent Pit AccDec Details"
 5. **Y-62** (2026-09-14, undercut che si spegne per "traffico" a metà giro, trovato sul replay `082515`):
    si corregge dopo il passo 2 e prima del passo 3, fuori da questo piano. Il passo 2 sposta la bolla del
    traffico (`timeGap − playerTotalPitLoss`), quindi i riferimenti di Y-62 vanno ripresi dal replay del passo 2.
+   **Aggiornato il 2026-09-14:** i log di `094551` non dicono quale vettura faccia scattare il traffico. Deciso con
+   Andreas: prima una diagnostica (`32a8682`, solo log), poi il fix sui numeri del replay successivo.
 
 ## Come si riparte in una nuova sessione
 

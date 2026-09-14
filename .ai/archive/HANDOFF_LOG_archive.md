@@ -9,6 +9,52 @@
 
 ---
 
+## [2026-09-12 14:00] antigravity → chiunque entri dopo
+
+**Task:** Esposizione proprietà SimRIG.Hardware (WheelMode, WheelMessage, LiveBitePoint), retrocompatibilità e migrazione dash Test.djson
+**Piano:** —
+**Commit:** `afbda6d` (hardware properties & UI), questo (handoff e rilascio lock)
+
+### Fatto
+- `User.PluginSdkDemoEdit/DataPluginDemo.cs:98, 309-312, 719-733, 1675-1680`:
+  - Registrate come proprietà ufficiali SimHub:
+    * `SimRIG.Hardware.WheelMode` (string, default "NORMAL"): modalità attiva ricevuta dal volante via seriale/USB.
+    * `SimRIG.Hardware.WheelMessage` (string, default "READY"): messaggi e notifiche a display.
+    * `SimRIG.Hardware.LiveBitePoint` (double, default 50.0): percentuale live punto di stacco frizione.
+  - Aggiornate in tempo reale all'evento seriale `HardwareManager_OnHardwareInputReceived()` (`MODE`, `MSG`, `VAL`) e nel ciclo `UpdateSimHubProperties()`.
+  - Mantenute le delegazioni `PersoSteeringWheelMode`, `PersoSteeringWheelMessage`, `PersoSteeringWheelLiveBitePoint` e la proprietà `SimRIG.Mode` per retrocompatibilità trasparente al 100%.
+  - Aggiunta proprietà pubblica C# `LiveBitePoint => _liveBitePoint` mantenendo `PersoSteeringWheelLiveBitePoint` come getter alias.
+- `User.PluginSdkDemoEdit/SettingsControlDemo.xaml.cs:1797`:
+  - Aggiornato il binding UI da `Plugin.PersoSteeringWheelLiveBitePoint` a `Plugin.LiveBitePoint`.
+- `E:/SimHub/DashTemplates/Test/Test.djson`:
+  - Creato backup di sicurezza in `Test.djson.bak`.
+  - Aggiornate tutte le formule dei 14 Item/gruppi di cambio schermata (RACE, PIT, PIT2, STRAT, FORECAST, MAP, TESTS, TEST, PRECISE/GROSS BITE, CLUTCH CAL) mappando `DataPluginDemo.PersoSteeringWheelMode` su `DataPluginDemo.SimRIG.Hardware.WheelMode`.
+  - Aggiornate le notifiche popup mappando `PersoSteeringWheelMessage` su `SimRIG.Hardware.WheelMessage`.
+  - Aggiornati i campi bite point su `SimRIG.Hardware.LiveBitePoint`.
+  - Allineati i campi diagnostici nelle pagine `STRAT`, `TEST` e `TESTS` alle proprietà unificate (`CurrentTank`, `TankLapsRemaining`, `LastPitFuelAdded`, `LastPitStationaryTime`, `EstimatedStationaryTime`, `Leader.RaceTotalLaps`, `Leader.ProjectedPosAtCheckered`).
+- Build e test:
+  - MSBuild VS2022: 0 errori, plugin installato in `%SIMHUB_INSTALL_PATH%`.
+  - Test runner: **360 PASS (100% success)**.
+
+### Come verificare
+```bash
+& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build 0 errori, 360 test PASS (100%), exit code 0.
+
+### Stato
+- ✅ Compila senza errori
+- ✅ Test passano (360 PASS, 100%)
+- ✅ `Test.djson` migrato e validato JSON con 0 errori (backup in `Test.djson.bak`)
+
+### Per chi entra
+**Prossimo passo:** Procedere con la roadmap delle feature successive concordate con Andreas.
+**NON toccare:** `Hardware/` (territorio di Andreas).
+**Attenzione a:** Le proprietà hardware sono ora ufficialmente esposte come `SimRIG.Hardware.WheelMode`, `SimRIG.Hardware.WheelMessage`, `SimRIG.Hardware.LiveBitePoint` sia in SimHub che nella dashboard del volante.
+
+---
+
 ## [2026-09-12 12:45] antigravity → chiunque entri dopo
 
 **Task:** Pulizia e rimozione proprietà SimHub obsolete/morte, deduplica e consolidamento namespace Leader

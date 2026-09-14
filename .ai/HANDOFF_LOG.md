@@ -47,6 +47,53 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-14 12:33] claude → chiunque entri dopo
+
+**Task:** Y-62 (traffico a metà giro): capire quale vettura fa scattare il controllo traffico dell'undercut. I log di `094551` non bastano, quindi (deciso con Andreas) prima una diagnostica, solo log e decisione invariata; il fix dopo il replay.
+**Piano:** — (fuori dal piano Daytona: decisione 5 di `.ai/plans/2026-09-13-daytona-piano-correzioni.md`)
+**Commit:** `d7d8f54` (lock), `32a8682` (diagnostica e test), questo (handoff, stato, rilascio lock)
+
+### Fatto
+- Analisi dei log di `094551`, senza codice (script nella cartella temporanea della sessione, non nel repository):
+  - snapshot: `UndercutTrafOK=False` in 27 finestre. Giri 2–15: una per giro (15, due nel giro 13), 3.6–5.8 s, Player fra i macrosettori 8 e 11, perdita 33.6–35.4 s. Dopo la sosta del Player (perdita ~19.9 s): macrosettori 5–8, per lo più 8–19 s. I `reason=Traffic` sono 12 perché nei giri 4, 9 e 15 l'undercut era già non viable. Gli eventi `UNDERCUT_*` si scrivono sul gate grezzo: le durate sono reali, non il dwell di 5 s.
+  - distacchi veri al passaggio da 0.959 (`Opponent Spatial Strict Entry` per gli avversari, `RaceProjectionsDiagnostics` per il Player): nei giri 15–19 ci sono vetture di classe davvero nella bolla (giro 16: Lukaszewski −0.6 s, Proteau −1.6, Calver2 +1.9), che il controllo di oggi vede solo col Player a metà giro. Nei giri 2–14 nessuna vettura entro ±15 s, ma **non è conclusivo**: nessuna vettura osservata fra 7 e 53 s dietro al Player (28–35 visibili su 48), proprio la fascia della bolla.
+  - restano due ipotesi: **H1** vettura vera al bordo della bolla, portata dentro a metà giro dalla stima posizione × passo (`TargetStrategyManager.cs:1211-1212`); **H2** vettura `NotInWorld` con la posizione ferma all'ultimo valore memorizzato (`OpponentTracker.cs:728-732`, riscritto a ogni tick da `:1421`), il cui distacco scorre attraverso la bolla una volta per giro.
+- `User.PluginSdkDemoEdit/OpponentTracker.cs:682-694` — enum `PositionSource` (Native, SimHub, Memory) e overload di `GetOpponentTrackPosition` con la sorgente; quello a due argomenti (`:676`) delega, comportamento invariato.
+- `User.PluginSdkDemoEdit/TargetStrategyManager.cs:529` — `TimestampGapBehindSeconds`: da quanti secondi il Player è passato dalla posizione attuale dell'avversario, dai `PlayerMicrosectorTimestamps` (stessa interpolazione e stesse soglie del gap del Target). `:553` `ShouldLogTrafficCandidate`, `:581` `LogTrafficCandidate`.
+- `TargetStrategyManager.cs:1188-1289` (ciclo traffico) — riga FLOW `Pit Exit Traffic Candidate` per ogni vettura vicina alla bolla stimata o a quella vera (quando entra, quando esce, al cambio del suo conflitto, al massimo 1/s mentre è dentro) con `pos`, `src`, `surf`, `mergeStimato`, `dUscita`, `conflitto`, `gapVero`, `mergeVero`, posizione del Player, perdita e passo; evento `Pit Exit Traffic Conflict` al cambio del conflitto complessivo, con le vetture che lo causano. Minaccia e distanza dall'uscita (controllo spaziale `:1248-1253`) si calcolano ora per ogni vettura, con le stesse formule: la decisione non cambia. Reset in `ResetSession` (`:2151`).
+- `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/UnitTests/PitExitTrafficDiagnosticsUnitTests.cs` (nuovo, registrato in `TestRunner.cs` e nel `.csproj`) — 5 test coi numeri del giro 2 di `094551`: distacco vero 35.0 s, e 40.0 s con la posizione ferma 5 s dopo; NaN senza timestamp e oltre 1.5 giri; sorgente nativa, SimHub o memoria; quando scrivere la riga.
+- Voce del 2026-09-12 14:00 spostata in `.ai/archive/HANDOFF_LOG_archive.md`.
+
+### Come verificare
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
+"User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
+```
+Atteso: build 0 errori (1 warning CS già presente), exit 0, 376 righe `[PASS]`, 5 delle quali sotto `[TEST] Running Pit Exit Traffic Diagnostics Tests (Y-62)...`. Con gli stub (distacco 0, sorgente `None`, nessuna riga) fallivano tutti e 5: exit 1, 370 righe `[PASS]` perché il runner si ferma a quella suite. È la neutralizzazione ADR-004 di questo turno.
+
+Sul replay Daytona di `094551` rigirato con la DLL nuova (la build l'ha già installata):
+```bash
+grep -n "Pit Exit Traffic Conflict" "Logs/Daytona/SimRIG_DebugLog_<run>.csv"
+grep -n "Pit Exit Traffic Candidate" "Logs/Daytona/SimRIG_DebugLog_<run>.csv"
+grep -n "reason=Traffic" "Logs/Daytona/SimRIG_StrategyEvent_<run>.txt"
+```
+Atteso:
+- decisione invariata: 12 `reason=Traffic` ai TL di `094551` (2501.9, 2396.3, 2187.1, 2081.7, 1976.0, 1869.7, 1659.7, 1554.5, 1447.9, 1348.7, 1342.7, 1238.8), a meno di pochi decimi;
+- una riga `conflitto=True` all'inizio di ogni finestra, con le vetture in `vetture=`;
+- nelle righe `Candidate` di quelle vetture: H2 se `src=Memory` (o `surf=NotInWorld`), `pos` ferma e `gapVero` che cresce di ~1 s al secondo; H1 se `src=Native` con `|mergeStimato| ≤ 3` e `|mergeVero| > 3`.
+
+### Stato
+- ✅ Compila (0 errori, 1 warning CS già presente)
+- ✅ Test passano: 376 PASS, exit 0. ⚠️ Il backtest sul replay Misano si salta ancora (Y-54)
+- ⏭️ Replay Daytona con la diagnostica non ancora rigirato
+
+### Per chi entra
+**Prossimo passo:** Andreas rigira il replay Daytona (lo stesso di `094551`) e indica il nome del log; poi il fix di Y-62 coi numeri di quel log (test ADR-004 sul caso reale), poi il passo 3 del piano.
+**NON toccare:** `Hardware/`; `PitInOutAccDecTime` = 11.6 nel DB; la decisione del controllo traffico prima di aver letto la diagnostica; `RaceAnalyzer.cs:1186` senza discuterne.
+**Attenzione a:** la diagnostica vede solo le vetture che il ciclo non scarta (posizione > 0, fuori dalla geofence box): una vettura che entra ai box mentre è nella bolla riceve la riga `esce` solo quando torna valutata. `gapVero` ha senso solo con la posizione viva: con `src=Memory` cresce di un secondo al secondo, ed è il segnale da cercare. Rimandati da Andreas il 2026-09-14, da riprendere: i disallineamenti del report d'ingresso in `PROJECT_STATE.md` (archivio "12 voci", `Logs/Daytona Run/`, tabella "Congelati" coi punti in lavorazione) e il margine undercut ≈ 105 s nel giro 3 di tutti i run Daytona dal 12/09, non ancora registrato come punto.
+
+---
+
 ## [2026-09-14 10:14] claude → chiunque entri dopo
 
 **Task:** Verifica, sul replay Daytona `20260914_094551` rigirato da Andreas con `3e9d4ae`, del passo 2 (tempo di corsa nella zona estesa dalla mediana dei transiti del Player). Nessun file di codice toccato, lock non preso.
@@ -396,52 +443,6 @@ Atteso: build 0 errori, 363 test PASS (100%), exit code 0.
 **Prossimo passo:** Continuare l'analisi con Andreas sulle metriche di gara e backtest Daytona.
 **NON toccare:** `Hardware/` (territorio di Andreas).
 **Attenzione a:** `PitDistanceMeters: 813.35m` a Daytona è strettamente la distanza fisica tra `PitEntryPct` e `PitExitPct` (`PitRadar.cs:1740-1745`). La formula di pit loss è `TotalPitLoss = Stationary + (PitTransitTime + InOutAccDecTime - ExtendedPitZoneRacingTime)`.
-
----
-
-## [2026-09-12 14:00] antigravity → chiunque entri dopo
-
-**Task:** Esposizione proprietà SimRIG.Hardware (WheelMode, WheelMessage, LiveBitePoint), retrocompatibilità e migrazione dash Test.djson
-**Piano:** —
-**Commit:** `afbda6d` (hardware properties & UI), questo (handoff e rilascio lock)
-
-### Fatto
-- `User.PluginSdkDemoEdit/DataPluginDemo.cs:98, 309-312, 719-733, 1675-1680`:
-  - Registrate come proprietà ufficiali SimHub:
-    * `SimRIG.Hardware.WheelMode` (string, default "NORMAL"): modalità attiva ricevuta dal volante via seriale/USB.
-    * `SimRIG.Hardware.WheelMessage` (string, default "READY"): messaggi e notifiche a display.
-    * `SimRIG.Hardware.LiveBitePoint` (double, default 50.0): percentuale live punto di stacco frizione.
-  - Aggiornate in tempo reale all'evento seriale `HardwareManager_OnHardwareInputReceived()` (`MODE`, `MSG`, `VAL`) e nel ciclo `UpdateSimHubProperties()`.
-  - Mantenute le delegazioni `PersoSteeringWheelMode`, `PersoSteeringWheelMessage`, `PersoSteeringWheelLiveBitePoint` e la proprietà `SimRIG.Mode` per retrocompatibilità trasparente al 100%.
-  - Aggiunta proprietà pubblica C# `LiveBitePoint => _liveBitePoint` mantenendo `PersoSteeringWheelLiveBitePoint` come getter alias.
-- `User.PluginSdkDemoEdit/SettingsControlDemo.xaml.cs:1797`:
-  - Aggiornato il binding UI da `Plugin.PersoSteeringWheelLiveBitePoint` a `Plugin.LiveBitePoint`.
-- `E:/SimHub/DashTemplates/Test/Test.djson`:
-  - Creato backup di sicurezza in `Test.djson.bak`.
-  - Aggiornate tutte le formule dei 14 Item/gruppi di cambio schermata (RACE, PIT, PIT2, STRAT, FORECAST, MAP, TESTS, TEST, PRECISE/GROSS BITE, CLUTCH CAL) mappando `DataPluginDemo.PersoSteeringWheelMode` su `DataPluginDemo.SimRIG.Hardware.WheelMode`.
-  - Aggiornate le notifiche popup mappando `PersoSteeringWheelMessage` su `SimRIG.Hardware.WheelMessage`.
-  - Aggiornati i campi bite point su `SimRIG.Hardware.LiveBitePoint`.
-  - Allineati i campi diagnostici nelle pagine `STRAT`, `TEST` e `TESTS` alle proprietà unificate (`CurrentTank`, `TankLapsRemaining`, `LastPitFuelAdded`, `LastPitStationaryTime`, `EstimatedStationaryTime`, `Leader.RaceTotalLaps`, `Leader.ProjectedPosAtCheckered`).
-- Build e test:
-  - MSBuild VS2022: 0 errori, plugin installato in `%SIMHUB_INSTALL_PATH%`.
-  - Test runner: **360 PASS (100% success)**.
-
-### Come verificare
-```bash
-& "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoEdit/User.PluginSdkDemo.sln" -p:Configuration=Debug -v:minimal -nologo
-& "User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/bin/Debug/User.PluginSdkDemo.Tests.exe"
-```
-Atteso: build 0 errori, 360 test PASS (100%), exit code 0.
-
-### Stato
-- ✅ Compila senza errori
-- ✅ Test passano (360 PASS, 100%)
-- ✅ `Test.djson` migrato e validato JSON con 0 errori (backup in `Test.djson.bak`)
-
-### Per chi entra
-**Prossimo passo:** Procedere con la roadmap delle feature successive concordate con Andreas.
-**NON toccare:** `Hardware/` (territorio di Andreas).
-**Attenzione a:** Le proprietà hardware sono ora ufficialmente esposte come `SimRIG.Hardware.WheelMode`, `SimRIG.Hardware.WheelMessage`, `SimRIG.Hardware.LiveBitePoint` sia in SimHub che nella dashboard del volante.
 
 ---
 
