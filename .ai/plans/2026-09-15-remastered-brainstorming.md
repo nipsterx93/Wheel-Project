@@ -35,6 +35,7 @@ dash attive in `E:\SimHub\DashTemplates\Test\`.
 | 7 | 2026-09-15 | Simulatori: **solo iRacing per ora**; in futuro almeno Assetto Corsa. |
 | 8 | 2026-09-15 | Struttura: **nucleo comune (`Core`) + un adattatore con le regole proprie per ogni simulatore (`Sims/IRacing`) + guscio SimHub (`Plugin`)**, non un gruppo di moduli per simulatore. |
 | 9 | 2026-09-15 | Contratti dei moduli (sezione 2) approvati. Vetture riconosciute per **`CarIdx`**, non per nome (gare con cambio pilota). Orologio: il **tempo di sessione crescente di iRacing**, non il conto alla rovescia. |
+| 10 | 2026-09-15 | Ordine di costruzione e validazione (sezione 3) approvati, con il **tetto di tre cicli di validazione per logica** e lo stop per decidere insieme al terzo ciclo fallito. |
 
 Esempio di Andreas: un modulo **Timings** avvia tutti i cronometri (corsia box, zona estesa, transito, drive-through,
 stazionario, tempo sul giro e altri); un modulo **TyreDeg** prende i tempi sul giro da Timings e applica la sua
@@ -57,12 +58,12 @@ usa, undercut e overcut finché la Fase B non li valida.
 
 ## Il plugin vecchio durante i lavori
 
-- **Congelato:** niente più correzioni, salvo guasti bloccanti. Il piano `2026-09-13-daytona-piano-correzioni.md`
-  (passi 3–5) e il fix di Y-62 sono sospesi: i loro numeri servono come riferimento per le logiche nuove.
+- **Congelato:** niente più correzioni, salvo guasti bloccanti e l'eccezione della sezione 4 per spegnere undercut e
+  overcut. Il piano `2026-09-13-daytona-piano-correzioni.md` (passi 3–5) e il fix di Y-62 sono sospesi: i loro numeri
+  servono come riferimento per le logiche nuove.
 - La diagnostica di `32a8682` resta: serve al confronto.
 - La dash legge le proprietà come `DataPluginDemo.SimRIG.*` (255 riferimenti nel solo `Test.djson`): SimHub usa come
-  prefisso il nome della classe del plugin, non `[PluginName("SimRIG")]`. Al passaggio si sostituisce il prefisso
-  negli 8 file dash, oppure la classe del plugin nuovo prende lo stesso nome quando il vecchio viene tolto.
+  prefisso il nome della classe del plugin, non `[PluginName("SimRIG")]`.
 
 ## Sezioni del design
 
@@ -70,9 +71,9 @@ usa, undercut e overcut finché la Fase B non li valida.
 |---|---|---|
 | 1 | Architettura: principi, livelli e moduli, anelli da spezzare, struttura per simulatore | ✅ approvata da Andreas il 2026-09-15 |
 | 2 | Contratti: com'è fatto un modulo (ingressi, uscite, qualità dei valori, storico e statistiche), come si testa | ✅ approvata da Andreas il 2026-09-15, con le note su orologio e `CarIdx` |
-| 3 | Ordine di costruzione e validazione: passi di ogni logica, ordine, verità di confronto, soglie, tetto per logica, cosa si porta dal vecchio | 🟡 proposta, in discussione (sotto) |
-| 4 | Convivenza e passaggio: due plugin in SimHub, log di confronto, prova di fattibilità iniziale, passaggio della dash | da presentare |
-| 5 | Progetto e processo: struttura della cartella, soluzione e test, lock e hook estesi alla cartella nuova, ADR-007, documenti da aggiornare | da presentare |
+| 3 | Ordine di costruzione e validazione: passi di ogni logica, ordine, verità di confronto, soglie, tetto per logica, cosa si porta dal vecchio | ✅ approvata da Andreas il 2026-09-15 |
+| 4 | Convivenza e passaggio: due plugin in SimHub, plugin vecchio durante la convivenza, log di confronto, prova di fattibilità, passaggio della dash, qualità in dash | 🟡 proposta, in discussione (sotto) |
+| 5 | Progetto e processo: struttura della cartella, nomi, soluzione e test, lock e hook estesi alla cartella nuova, ADR-007, documenti da aggiornare | da presentare |
 
 Dopo l'approvazione delle cinque sezioni: spec scritto, revisione di Andreas, poi il piano di implementazione.
 
@@ -255,13 +256,7 @@ solo l'ingresso e li comunica come reset.
   cronometro, il risultato.
 - Un file oltre qualche centinaio di righe segnala che il modulo fa due cose.
 
-### Domande aperte della sezione 2
-
-- In dash, un valore `Held` o `Estimated` deve vedersi diverso da uno `Measured` (colore, simbolo)? (Sezione 4.)
-- Log per la validazione sui replay: formato comune a tutti i moduli (istante, vettura, grandezza, valore, qualità)?
-  (Sezioni 3 e 4.)
-
-## Sezione 3 — Ordine di costruzione e validazione (proposta, in discussione)
+## Sezione 3 — Ordine di costruzione e validazione (approvata il 2026-09-15)
 
 ### I passi di ogni logica
 
@@ -281,7 +276,7 @@ Una logica non è chiusa senza il passo 5 su entrambi i circuiti.
 |---|---|---|
 | 0 | prova di fattibilità (sezione 4) | scheletro del plugin caricato in SimHub accanto al vecchio; l'adattatore legge iRacing e scrive un log |
 | 1 | `Input` + `Cars` | identità per `CarIdx`, posizione con la sua qualità, dove si trova ogni vettura |
-| 2 | `Track` + `Events` | geofence dal database esistente; eventi di corsia, zona estesa, traguardo, piazzola, ricomparsa |
+| 2 | `Track` + `Events` | geofence dal database; eventi di corsia, zona estesa, traguardo, piazzola, ricomparsa |
 | 3 | `Timings` | giri, tempi di passaggio, cronometri dei box |
 | 4 | `Gaps` + `Target` (scelta e distacco) | primo numero confrontabile col plugin vecchio in dash |
 | 5 | `Fuel` | consumo del Player, stima BoP degli avversari |
@@ -297,7 +292,7 @@ Dopo, fuori da questo piano: undercut e overcut (Fase B), meteo, gomme e pressio
 le funzioni della strada A (carburante, giri totali, distacco) sono tutte pronte al passo 8, **prima** del MergeGap:
 se il MergeGap si blocca, il plugin nuovo è già la versione ridotta, senza lavoro in più.
 
-### Verità di confronto e soglie (proposta)
+### Verità di confronto e soglie
 
 | Logica | Verità di confronto | Soglia proposta |
 |---|---|---|
@@ -312,7 +307,7 @@ se il MergeGap si blocca, il plugin nuovo è già la versione ridotta, senza lav
 | `MergeGap` | gap reale dopo le soste (Daytona: −2.7 s) | ±1 s prima delle soste (il plugin vecchio arriva a +0.33 s), ±1.5 s durante, ±1 s dopo |
 
 I riferimenti di Road Atlanta (`20260911_231106`) si estraggono al passo 1 di ogni logica: oggi il piano ha i numeri di
-Daytona.
+Daytona. Le soglie si fissano in modo definitivo al passo 2 di ogni logica.
 
 ### Tetto per logica
 
@@ -335,10 +330,91 @@ Daytona.
 | `PitLoss` | formule di `CarPitData` (`CalculateTotalPitLoss`), `PlayerPitSpeedObserver` | da verificare, poi portati |
 | `MergeGap` | previsione della sosta del Target (`ForecastTargetPit`, passo 1 del piano Daytona) | riscritta; i casi del passo 3 (latch, `ApproachingPits`) diventano test |
 
-### Domande aperte della sezione 3
+## Sezione 4 — Convivenza e passaggio (proposta, in discussione)
 
-- Il tetto di tre cicli per logica va bene?
-- Le soglie proposte vanno bene come ordine di grandezza? Si fissano in modo definitivo al passo 2 di ogni logica.
+### Due plugin in SimHub
+
+| | Plugin vecchio | Plugin nuovo |
+|---|---|---|
+| DLL | `User.PluginSdkDemo.dll` | nome proprio, altrimenti la copia dopo la build sovrascrive la vecchia |
+| Classe principale (dà il prefisso alle proprietà) | `DataPluginDemo` | nome proprio durante la convivenza |
+| Nome in SimHub | `SimRIG` | nome proprio, riconoscibile nell'elenco dei plugin |
+| Impostazioni | `GeneralSettings` (`DataPluginDemo.cs:185`), nome generico | nome proprio: non legge e non sovrascrive quelle del vecchio |
+| Database delle calibrazioni | `SimRIG_Data.json` nella cartella di SimHub, letto e riscritto (`PitRadar.cs:297`, `:1100`, `:1286`) | file proprio, creato una volta copiando quello vecchio; il plugin nuovo non scrive mai il file vecchio |
+| Log | `Logs\SimRig Logs\SimRIG_*_{data}` (`LogManager.cs:132-143`) | cartella propria, stesso formato di data per accoppiare i file |
+| Dash | serve la dash di oggi | proprietà col suo prefisso, visibili in una pagina di prova |
+| Voce, volante, pagina impostazioni | restano al vecchio | niente fino al passaggio: nessun annuncio doppio |
+
+I nomi concreti si decidono nella sezione 5.
+
+### Il plugin vecchio durante la convivenza
+
+Congelato, con un'eccezione già decisa: spegnere undercut e overcut (decisione 3). Oggi non c'è un'impostazione
+dedicata: `EnableVoiceEngineer` zittirebbe tutto l'ingegnere. Gli annunci legati alla strategia sono tre, e partono
+tutti da `UndercutViable` o `OvercutViable`:
+
+- `REPORT_UNDERCUT` (`DataPluginDemo.cs:1098-1100`);
+- `AUTO_UNDERCUT_ALERT` (`DataPluginDemo.cs:1599-1601`);
+- `TARGET_ENTERING_PITS_OVERCUT` (`DataPluginDemo.cs:1650-1652`).
+
+Due modi:
+
+- **(a) Interruttore alla fonte:** una modifica piccola che tiene a falso `UndercutViable`, `OvercutViable` e
+  `TrafficAlert`. Si spengono insieme le spie in dash e i tre annunci, senza toccare altra logica. Serve il lock e un
+  test, come per ogni modifica.
+- **(b) Nessuna modifica al codice:** Andreas toglie le tre spie dalla dash; gli annunci vocali restano.
+
+### Log di confronto
+
+Risponde alla domanda aperta della sezione 2.
+
+- Un file CSV per modulo e per sessione, nella cartella di log del plugin nuovo.
+- Colonne comuni: tempo crescente, tempo rimanente (per accoppiare coi log vecchi), giro, `CarIdx`, grandezza, valore,
+  qualità, età (per `Held`), etichette.
+- Righe a ogni evento e a campionamento regolare (per esempio una al secondo per vettura), regolabile per modulo.
+- **Script di validazione nel repository:** per ogni logica uno script che legge i log dei due circuiti e stampa il
+  confronto con la soglia, coi numeri. Oggi gli script di analisi restano nella cartella temporanea della sessione e si
+  perdono (è già successo: handoff del 2026-09-13 21:50). Con un formato comune diventano riusabili da qualunque agente.
+
+### Prova di fattibilità (passo 0)
+
+Su un pezzo di replay Daytona deve dimostrare:
+
+1. i due plugin caricati e attivi insieme, senza errori;
+2. il plugin nuovo riceve i dati a ogni tick, col tempo di calcolo per tick scritto nel log;
+3. l'adattatore legge tempo crescente e rimanente; per ogni `CarIdx` posizione, superficie e corsia box; tempi sul
+   giro; carburante del Player; dati di sessione (classi, BoP, nome per `CarIdx`);
+4. nel log si vedono le vetture `NotInWorld` e i salti del replay;
+5. la colonna del tempo rimanente coincide con quella dei log vecchi.
+
+**Se i due plugin non convivono** (per esempio per l'accesso ai dati di iRacing): il nucleo resta un progetto separato,
+ma lo carica il plugin vecchio al posto di un secondo plugin. Il confine resta, perché la libreria nuova non vede il
+codice vecchio.
+
+### Passaggio della dash (passo 10)
+
+- **Quando:** logiche validate fino al passo 9, oppure fino all'8 se si decide la strada A.
+- **Prima:** una pagina di prova con i numeri chiave affiancati, vecchio e nuovo (carburante da imbarcare, giri
+  totali, distacco, MergeGap), guardata da Andreas in una sessione vera.
+- **Come:** il plugin nuovo pubblica gli stessi nomi delle 116 proprietà usate dalla dash, con una tabella nel guscio
+  "proprietà → modulo che la produce". Al passaggio la sua classe principale prende il nome `DataPluginDemo` e la DLL
+  vecchia si toglie: la dash non si tocca. Le proprietà che il nuovo non produce (undercut e overcut fino alla Fase B)
+  restano vuote o si tolgono dalla dash.
+- **Ritorno indietro:** la DLL vecchia resta disponibile, in Git e in una copia, per rimetterla se serve.
+
+### Valori tenuti o stimati in dash
+
+Risponde all'altra domanda aperta della sezione 2.
+
+- Per i numeri chiave, non per tutte le 116 proprietà, il guscio pubblica anche la qualità: per esempio accanto a
+  `SimRIG.Target.GapSeconds` una proprietà con misurato / tenuto / stimato / non disponibile. La dash decide come
+  mostrarla (grigio, trattino).
+- Precedente nel plugin vecchio: `SimRIG.Session.IsLapsPredictionValid` (Y-52).
+
+### Domande aperte della sezione 4
+
+- Come si spengono undercut e overcut nel plugin vecchio: (a) interruttore alla fonte o (b) solo dash?
+- Quali numeri chiave pubblicano anche la qualità.
 
 ## Come si riprende in una nuova sessione
 
