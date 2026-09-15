@@ -34,6 +34,7 @@ dash attive in `E:\SimHub\DashTemplates\Test\`.
 | 6 | 2026-09-15 | Modo di lavorare: **una logica alla volta**. Si analizza nel vecchio codice, si definisce, si testa coi numeri dei log, si implementa, si valida; la successiva usa i risultati della precedente. Logiche semplici, testate e disponibili alle altre. |
 | 7 | 2026-09-15 | Simulatori: **solo iRacing per ora**; in futuro almeno Assetto Corsa. |
 | 8 | 2026-09-15 | Struttura: **nucleo comune (`Core`) + un adattatore con le regole proprie per ogni simulatore (`Sims/IRacing`) + guscio SimHub (`Plugin`)**, non un gruppo di moduli per simulatore. |
+| 9 | 2026-09-15 | Contratti dei moduli (sezione 2) approvati. Vetture riconosciute per **`CarIdx`**, non per nome (gare con cambio pilota). Orologio: il **tempo di sessione crescente di iRacing**, non il conto alla rovescia. |
 
 Esempio di Andreas: un modulo **Timings** avvia tutti i cronometri (corsia box, zona estesa, transito, drive-through,
 stazionario, tempo sul giro e altri); un modulo **TyreDeg** prende i tempi sul giro da Timings e applica la sua
@@ -68,8 +69,8 @@ usa, undercut e overcut finché la Fase B non li valida.
 | # | Sezione | Stato |
 |---|---|---|
 | 1 | Architettura: principi, livelli e moduli, anelli da spezzare, struttura per simulatore | ✅ approvata da Andreas il 2026-09-15 |
-| 2 | Contratti: com'è fatto un modulo (ingressi, uscite, qualità dei valori, storico e statistiche), come si testa | 🟡 proposta, in discussione (sotto) |
-| 3 | Ordine di costruzione e validazione: catena delle logiche, verità di confronto, soglie, tetto per logica, cosa si porta dal vecchio | da presentare |
+| 2 | Contratti: com'è fatto un modulo (ingressi, uscite, qualità dei valori, storico e statistiche), come si testa | ✅ approvata da Andreas il 2026-09-15, con le note su orologio e `CarIdx` |
+| 3 | Ordine di costruzione e validazione: passi di ogni logica, ordine, verità di confronto, soglie, tetto per logica, cosa si porta dal vecchio | 🟡 proposta, in discussione (sotto) |
 | 4 | Convivenza e passaggio: due plugin in SimHub, log di confronto, prova di fattibilità iniziale, passaggio della dash | da presentare |
 | 5 | Progetto e processo: struttura della cartella, soluzione e test, lock e hook estesi alla cartella nuova, ADR-007, documenti da aggiornare | da presentare |
 
@@ -160,7 +161,7 @@ User.PluginSdkDemoRemastered/
   flag di SimHub e la geofence, non quello nativo.
 - Assetto Corsa o Assetto Corsa Competizione? Non serve saperlo adesso.
 
-## Sezione 2 — Contratti: com'è fatto un modulo (proposta, in discussione)
+## Sezione 2 — Contratti: com'è fatto un modulo (approvata il 2026-09-15)
 
 ### Anatomia di un modulo
 
@@ -195,13 +196,24 @@ decide in modo esplicito cosa farne, invece di scoprirlo da un difetto (Y-58…Y
 
 Le vetture si riconoscono dallo slot del simulatore (in iRacing `CarIdx`), non dal nome del pilota: nelle gare a
 squadre il pilota cambia sulla stessa vettura. Il nome è un attributo. Il plugin vecchio indicizza gli avversari per
-nome (`OpponentTracker.cs:1101-1103`).
+nome (`OpponentTracker.cs:1101-1103`). **Confermato da Andreas.**
 
 ### Un solo orologio
 
-Tutti i moduli usano il tempo di sessione crescente fornito dall'adattatore. I salti del replay (riavvolto o spostato)
-li rileva solo l'ingresso e li comunica come reset. Il plugin vecchio mette i timestamp sul conto alla rovescia
-(`DataPluginDemo.cs:1273` passa `SessionTimeLeft`) e compensa con `Math.Abs` nei calcoli dei distacchi.
+Tutti i moduli usano il **tempo di sessione crescente di iRacing**. I salti del replay (riavvolto o spostato) li rileva
+solo l'ingresso e li comunica come reset.
+
+- **Nota di Andreas:** nei log la colonna `SessionTime` è un conto alla rovescia. **Verificato:** è vero per i log del
+  plugin vecchio, perché quella colonna contiene il tempo rimanente pur chiamandosi `SessionTime` (`LogManager.cs:48`,
+  `:280`) e i cronometri usano il conto alla rovescia (`DataPluginDemo.cs:1273` passa `SessionTimeLeft`, compensato
+  con `Math.Abs` nei distacchi).
+- Il tempo crescente il plugin vecchio **lo legge già**
+  (`DataCorePlugin.GameRawData.CurrentSessionInfo._SessionTime`, `TelemetryReader.cs:70-73`), ma lo usa solo per lo
+  storico delle pressioni (`TelemetryReader.cs:368-372`). Il plugin nuovo usa quello, invece di ribaltare il conto
+  alla rovescia: il ribaltamento non regge a fine gara a tempo, quando il timer arriva a zero mentre si corre ancora
+  l'ultimo giro (il plugin vecchio ha dovuto gestire valori a zero e negativi), né nelle sessioni a giri.
+- Durante la convivenza i log del plugin nuovo portano **entrambe le colonne**, tempo crescente e tempo rimanente, per
+  confrontarli coi log vecchi.
 
 ### Storico e statistiche
 
@@ -248,6 +260,85 @@ li rileva solo l'ingresso e li comunica come reset. Il plugin vecchio mette i ti
 - In dash, un valore `Held` o `Estimated` deve vedersi diverso da uno `Measured` (colore, simbolo)? (Sezione 4.)
 - Log per la validazione sui replay: formato comune a tutti i moduli (istante, vettura, grandezza, valore, qualità)?
   (Sezioni 3 e 4.)
+
+## Sezione 3 — Ordine di costruzione e validazione (proposta, in discussione)
+
+### I passi di ogni logica
+
+1. **Analisi:** cosa fa il plugin vecchio, quali punti chiusi la riguardano, quali casi limite sono già noti coi numeri.
+2. **Contratto:** definizione, ingressi, uscite, qualità (sezione 2), e **soglia di validazione fissata adesso**, sui
+   numeri di entrambi i circuiti, prima di scrivere codice. Mai dopo aver visto il risultato.
+3. **Test rossi:** casi coi numeri dei log.
+4. **Implementazione** fino ai test verdi, con la neutralizzazione di ADR-004.
+5. **Validazione:** il plugin nuovo gira su Daytona e Road Atlanta; i suoi log si confrontano con la verità e la soglia.
+6. **Chiusura:** handoff; da qui la logica è disponibile alle successive.
+
+Una logica non è chiusa senza il passo 5 su entrambi i circuiti.
+
+### L'ordine
+
+| Passo | Logica | Cosa si ottiene |
+|---|---|---|
+| 0 | prova di fattibilità (sezione 4) | scheletro del plugin caricato in SimHub accanto al vecchio; l'adattatore legge iRacing e scrive un log |
+| 1 | `Input` + `Cars` | identità per `CarIdx`, posizione con la sua qualità, dove si trova ogni vettura |
+| 2 | `Track` + `Events` | geofence dal database esistente; eventi di corsia, zona estesa, traguardo, piazzola, ricomparsa |
+| 3 | `Timings` | giri, tempi di passaggio, cronometri dei box |
+| 4 | `Gaps` + `Target` (scelta e distacco) | primo numero confrontabile col plugin vecchio in dash |
+| 5 | `Fuel` | consumo del Player, stima BoP degli avversari |
+| 6 | `Pace` / `TyreDeg` | passo normalizzato e degrado |
+| 7 | `Calibration` + `PitLoss` | calibrazioni col consenso, perdita ai box di qualunque vettura |
+| 8 | `Race` | leader, bandiera, giri totali, carburante da imbarcare |
+| 9 | `MergeGap` | dove si rientra rispetto al Target |
+| 10 | passaggio della dash (sezione 4) | la dash legge il plugin nuovo |
+
+Dopo, fuori da questo piano: undercut e overcut (Fase B), meteo, gomme e pressioni, voce, volante, profili.
+
+**Perché questo ordine.** Al passo 4 l'architettura è provata da cima a fondo, dall'ingresso a un numero in dash. E
+le funzioni della strada A (carburante, giri totali, distacco) sono tutte pronte al passo 8, **prima** del MergeGap:
+se il MergeGap si blocca, il plugin nuovo è già la versione ridotta, senza lavoro in più.
+
+### Verità di confronto e soglie (proposta)
+
+| Logica | Verità di confronto | Soglia proposta |
+|---|---|---|
+| `Cars` | superficie nativa e posizione nei log | nessuna posizione ferma segnata `Measured`; a Daytona `124637` van Elewout fermo a 0.1883 risulta `Held` |
+| `Events` | flag nativo di corsia e soste note | ogni sosta del Player rilevata una volta, nessun ingresso fantasma (Y-33) |
+| `Timings` | tempo del giro del gioco; sosta del Player misurata dal plugin vecchio (`094551`: 58.62 / 46.98 / 11.63 / 14.47 s) | giro entro ±0.05 s; componenti della sosta entro ±0.2 s |
+| `Gaps` | differenza dei passaggi sul traguardo, esatta sulla linea | entro ±0.1 s sulla linea; nessun distacco `Measured` da posizione ferma |
+| `Fuel` | livello carburante del Player | consumo per giro entro ±0.05 L; per gli avversari soglia da fissare nell'analisi, confrontando col rifornimento osservato |
+| `Pace` / `TyreDeg` | giri puliti misurati | passo entro ±0.3 s dalla mediana dei giri puliti dello stint; per il degrado oggi non c'è una verità misurata, da definire nell'analisi |
+| `PitLoss` | perdita reale della sosta osservata (Player a Daytona: 34.7 s) | previsione prima della sosta entro ±1 s |
+| `Race` | giri reali a fine gara (Daytona: `Projection Validation`, vero = 27.742) | da fissare nell'analisi, sui numeri dei due circuiti |
+| `MergeGap` | gap reale dopo le soste (Daytona: −2.7 s) | ±1 s prima delle soste (il plugin vecchio arriva a +0.33 s), ±1.5 s durante, ±1 s dopo |
+
+I riferimenti di Road Atlanta (`20260911_231106`) si estraggono al passo 1 di ogni logica: oggi il piano ha i numeri di
+Daytona.
+
+### Tetto per logica
+
+- **Tre cicli di validazione per logica.** Un ciclo è: implementazione o correzione → replay sui due circuiti →
+  confronto con la soglia.
+- Se al terzo ciclo la soglia non è raggiunta, **ci si ferma e si decide con Andreas**: definizione sbagliata, dato
+  non disponibile, soglia irrealistica. Mai una quarta correzione in automatico.
+- Il passaggio alla strada A non è automatico: è una decisione, e grazie all'ordine le sue funzioni sono già pronte.
+
+### Cosa si porta dal vecchio (candidati, da confermare nell'analisi di ciascuna logica)
+
+| Logica | Candidati dal plugin vecchio | Probabile |
+|---|---|---|
+| `Cars` | `TrackPositionValidator` (teletrasporti) | portato |
+| `Events` | `PitLaneDetector` (cascata di rilevamento) | da rivedere sul flag nativo |
+| `Timings` | tempi di passaggio a 400 punti (`OpponentTracker`), `SectorTracker` (mediana dei transiti) | riscritti in un modulo unico per tutte le vetture |
+| `Calibration` | `CalibrationConsensus`, `GeofenceCalibrationGate` | portati |
+| `Fuel` | consumo robusto di `FuelManager`, regola BoP di `OpponentTracker` | riscritti in un modulo unico |
+| `Race` | `RaceTimeProjection.ProjectFlagMoment` (criterio del massimo, Y-38), `LeaderPaceFilter` | portati |
+| `PitLoss` | formule di `CarPitData` (`CalculateTotalPitLoss`), `PlayerPitSpeedObserver` | da verificare, poi portati |
+| `MergeGap` | previsione della sosta del Target (`ForecastTargetPit`, passo 1 del piano Daytona) | riscritta; i casi del passo 3 (latch, `ApproachingPits`) diventano test |
+
+### Domande aperte della sezione 3
+
+- Il tetto di tre cicli per logica va bene?
+- Le soglie proposte vanno bene come ordine di grandezza? Si fissano in modo definitivo al passo 2 di ogni logica.
 
 ## Come si riprende in una nuova sessione
 
