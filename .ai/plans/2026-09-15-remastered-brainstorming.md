@@ -36,6 +36,7 @@ dash attive in `E:\SimHub\DashTemplates\Test\`.
 | 8 | 2026-09-15 | Struttura: **nucleo comune (`Core`) + un adattatore con le regole proprie per ogni simulatore (`Sims/IRacing`) + guscio SimHub (`Plugin`)**, non un gruppo di moduli per simulatore. |
 | 9 | 2026-09-15 | Contratti dei moduli (sezione 2) approvati. Vetture riconosciute per **`CarIdx`**, non per nome (gare con cambio pilota). Orologio: il **tempo di sessione crescente di iRacing**, non il conto alla rovescia. |
 | 10 | 2026-09-15 | Ordine di costruzione e validazione (sezione 3) approvati, con il **tetto di tre cicli di validazione per logica** e lo stop per decidere insieme al terzo ciclo fallito. |
+| 11 | 2026-09-15 | Convivenza e passaggio (sezione 4) approvati. Undercut e overcut si spengono nel plugin vecchio con un **interruttore alla fonte** (opzione a): spie in dash e annunci vocali insieme. |
 
 Esempio di Andreas: un modulo **Timings** avvia tutti i cronometri (corsia box, zona estesa, transito, drive-through,
 stazionario, tempo sul giro e altri); un modulo **TyreDeg** prende i tempi sul giro da Timings e applica la sua
@@ -58,9 +59,9 @@ usa, undercut e overcut finché la Fase B non li valida.
 
 ## Il plugin vecchio durante i lavori
 
-- **Congelato:** niente più correzioni, salvo guasti bloccanti e l'eccezione della sezione 4 per spegnere undercut e
-  overcut. Il piano `2026-09-13-daytona-piano-correzioni.md` (passi 3–5) e il fix di Y-62 sono sospesi: i loro numeri
-  servono come riferimento per le logiche nuove.
+- **Congelato:** niente più correzioni, salvo guasti bloccanti e l'interruttore che spegne undercut e overcut
+  (decisione 11). Il piano `2026-09-13-daytona-piano-correzioni.md` (passi 3–5) e il fix di Y-62 sono sospesi: i loro
+  numeri servono come riferimento per le logiche nuove.
 - La diagnostica di `32a8682` resta: serve al confronto.
 - La dash legge le proprietà come `DataPluginDemo.SimRIG.*` (255 riferimenti nel solo `Test.djson`): SimHub usa come
   prefisso il nome della classe del plugin, non `[PluginName("SimRIG")]`.
@@ -72,8 +73,8 @@ usa, undercut e overcut finché la Fase B non li valida.
 | 1 | Architettura: principi, livelli e moduli, anelli da spezzare, struttura per simulatore | ✅ approvata da Andreas il 2026-09-15 |
 | 2 | Contratti: com'è fatto un modulo (ingressi, uscite, qualità dei valori, storico e statistiche), come si testa | ✅ approvata da Andreas il 2026-09-15, con le note su orologio e `CarIdx` |
 | 3 | Ordine di costruzione e validazione: passi di ogni logica, ordine, verità di confronto, soglie, tetto per logica, cosa si porta dal vecchio | ✅ approvata da Andreas il 2026-09-15 |
-| 4 | Convivenza e passaggio: due plugin in SimHub, plugin vecchio durante la convivenza, log di confronto, prova di fattibilità, passaggio della dash, qualità in dash | 🟡 proposta, in discussione (sotto) |
-| 5 | Progetto e processo: struttura della cartella, nomi, soluzione e test, lock e hook estesi alla cartella nuova, ADR-007, documenti da aggiornare | da presentare |
+| 4 | Convivenza e passaggio: due plugin in SimHub, plugin vecchio durante la convivenza, log di confronto, prova di fattibilità, passaggio della dash, qualità in dash | ✅ approvata da Andreas il 2026-09-15, con l'opzione (a) |
+| 5 | Progetto e processo: struttura e progetti, nomi, build e test, lock e hook, documenti e ADR-007, dallo spec al codice | 🟡 proposta, in discussione (sotto) |
 
 Dopo l'approvazione delle cinque sezioni: spec scritto, revisione di Andreas, poi il piano di implementazione.
 
@@ -132,15 +133,6 @@ Un gruppo iRacing con dentro tutti i moduli, all'arrivo di Assetto Corsa, costri
 `PitLoss` e gli altri nel gruppo nuovo: ogni logica esisterebbe due volte. Fra un simulatore e l'altro cambiano **i
 dati** e **alcune regole**, non la matematica.
 
-```
-User.PluginSdkDemoRemastered/
-  Core/          logiche comuni: Track, Cars, Events, Timings, Calibration, Fuel, Pace, Gaps, PitLoss, Race, Target, MergeGap
-  Sims/
-    IRacing/     adattatore (SimHub + SDK iRacing → istantanea neutra) e regole proprie di iRacing
-    (AssettoCorsa/ in futuro)
-  Plugin/        guscio SimHub: ciclo, proprietà, log, voce, volante, impostazioni
-```
-
 - **`Core`** non conosce nessun simulatore: lavora su un'istantanea neutra, in cui ogni dato che un simulatore può
   non fornire è opzionale e ha la sua qualità.
 - **`Sims/IRacing`** contiene due cose sole: l'adattatore che riempie l'istantanea, e le regole di iRacing che il
@@ -153,6 +145,8 @@ User.PluginSdkDemoRemastered/
 - **Limite:** un'istantanea pensata su un solo simulatore andrà ritoccata quando arriva il secondo, ma in un posto solo.
 - **Il plugin vecchio fa il contrario:** `PitRadar.cs:463-475` sceglie il layout dei box in base al nome del gioco,
   dentro un modulo di calcolo.
+
+La struttura delle cartelle è nella sezione 5.
 
 ### Domande aperte della sezione 1
 
@@ -274,6 +268,7 @@ Una logica non è chiusa senza il passo 5 su entrambi i circuiti.
 
 | Passo | Logica | Cosa si ottiene |
 |---|---|---|
+| — | interruttore nel plugin vecchio (decisione 11) | undercut e overcut spenti in dash e in voce |
 | 0 | prova di fattibilità (sezione 4) | scheletro del plugin caricato in SimHub accanto al vecchio; l'adattatore legge iRacing e scrive un log |
 | 1 | `Input` + `Cars` | identità per `CarIdx`, posizione con la sua qualità, dove si trova ogni vettura |
 | 2 | `Track` + `Events` | geofence dal database; eventi di corsia, zona estesa, traguardo, piazzola, ricomparsa |
@@ -330,7 +325,7 @@ Daytona. Le soglie si fissano in modo definitivo al passo 2 di ogni logica.
 | `PitLoss` | formule di `CarPitData` (`CalculateTotalPitLoss`), `PlayerPitSpeedObserver` | da verificare, poi portati |
 | `MergeGap` | previsione della sosta del Target (`ForecastTargetPit`, passo 1 del piano Daytona) | riscritta; i casi del passo 3 (latch, `ApproachingPits`) diventano test |
 
-## Sezione 4 — Convivenza e passaggio (proposta, in discussione)
+## Sezione 4 — Convivenza e passaggio (approvata il 2026-09-15)
 
 ### Due plugin in SimHub
 
@@ -345,28 +340,22 @@ Daytona. Le soglie si fissano in modo definitivo al passo 2 di ogni logica.
 | Dash | serve la dash di oggi | proprietà col suo prefisso, visibili in una pagina di prova |
 | Voce, volante, pagina impostazioni | restano al vecchio | niente fino al passaggio: nessun annuncio doppio |
 
-I nomi concreti si decidono nella sezione 5.
+I nomi concreti sono nella sezione 5.
 
 ### Il plugin vecchio durante la convivenza
 
-Congelato, con un'eccezione già decisa: spegnere undercut e overcut (decisione 3). Oggi non c'è un'impostazione
-dedicata: `EnableVoiceEngineer` zittirebbe tutto l'ingegnere. Gli annunci legati alla strategia sono tre, e partono
-tutti da `UndercutViable` o `OvercutViable`:
+Congelato, con un'eccezione decisa: l'**interruttore alla fonte** che spegne undercut e overcut (decisione 11). Tiene a
+falso `UndercutViable`, `OvercutViable` e `TrafficAlert`, e con essi si spengono le spie in dash e i tre annunci che
+ne dipendono:
 
 - `REPORT_UNDERCUT` (`DataPluginDemo.cs:1098-1100`);
 - `AUTO_UNDERCUT_ALERT` (`DataPluginDemo.cs:1599-1601`);
 - `TARGET_ENTERING_PITS_OVERCUT` (`DataPluginDemo.cs:1650-1652`).
 
-Due modi:
-
-- **(a) Interruttore alla fonte:** una modifica piccola che tiene a falso `UndercutViable`, `OvercutViable` e
-  `TrafficAlert`. Si spengono insieme le spie in dash e i tre annunci, senza toccare altra logica. Serve il lock e un
-  test, come per ogni modifica.
-- **(b) Nessuna modifica al codice:** Andreas toglie le tre spie dalla dash; gli annunci vocali restano.
+Non esisteva un'impostazione dedicata: `EnableVoiceEngineer` avrebbe zittito tutto l'ingegnere. La modifica si fa col
+lock e con un test, come ogni modifica.
 
 ### Log di confronto
-
-Risponde alla domanda aperta della sezione 2.
 
 - Un file CSV per modulo e per sessione, nella cartella di log del plugin nuovo.
 - Colonne comuni: tempo crescente, tempo rimanente (per accoppiare coi log vecchi), giro, `CarIdx`, grandezza, valore,
@@ -404,17 +393,102 @@ codice vecchio.
 
 ### Valori tenuti o stimati in dash
 
-Risponde all'altra domanda aperta della sezione 2.
-
 - Per i numeri chiave, non per tutte le 116 proprietà, il guscio pubblica anche la qualità: per esempio accanto a
   `SimRIG.Target.GapSeconds` una proprietà con misurato / tenuto / stimato / non disponibile. La dash decide come
   mostrarla (grigio, trattino).
 - Precedente nel plugin vecchio: `SimRIG.Session.IsLapsPredictionValid` (Y-52).
+- Quali sono i numeri chiave si decide nell'analisi delle logiche che li producono.
 
-### Domande aperte della sezione 4
+## Sezione 5 — Progetto e processo (proposta, in discussione)
 
-- Come si spengono undercut e overcut nel plugin vecchio: (a) interruttore alla fonte o (b) solo dash?
-- Quali numeri chiave pubblicano anche la qualità.
+### Struttura e progetti
+
+```
+User.PluginSdkDemoRemastered/
+  SimRIG.Remastered.sln
+  Core/            progetto SimRIG.Remastered.Core          nessun riferimento a SimHub né a iRacing
+    Cars/  Events/  Timings/  …                            un modulo per cartella
+  Sims/IRacing/    progetto SimRIG.Remastered.Sims.IRacing  riferisce Core, SimHub e l'SDK di iRacing
+  Plugin/          progetto SimRIG.Remastered.Plugin        riferisce Core e Sims: classe del plugin, proprietà, log
+  Tests/           progetto SimRIG.Remastered.Tests         runner console (sezione 2)
+  Validation/      script di validazione, uno per logica
+```
+
+- **Progetti separati, confini garantiti dal compilatore.** `Core` non ha riferimenti a SimHub né a iRacing: se un
+  modulo prova a usarli, non compila. Le regole della sezione 1 (nucleo neutro, niente tipi iRacing fuori da
+  `Sims/IRacing`) non dipendono dalla disciplina.
+- **Progetti in formato SDK** per .NET Framework 4.8: i file `.cs` si includono da soli, e la trappola "nessun glob nei
+  `.csproj`" sparisce per il plugin nuovo. Sulla macchina ci sono l'SDK .NET (8.0 e 9.0) e il targeting pack 4.8; la
+  build vera la conferma il passo 0.
+- **Riferimenti a SimHub** solo tramite `$(SIMHUB_INSTALL_PATH)`, come oggi.
+- **Copia in SimHub dopo la build** solo per il plugin e le sue DLL, con nomi che non si scontrano con quelli di SimHub
+  né con il plugin vecchio.
+
+### Nomi
+
+| Cosa | Nome proposto |
+|---|---|
+| soluzione | `SimRIG.Remastered.sln` |
+| progetti e DLL | `SimRIG.Remastered.Core`, `.Sims.IRacing`, `.Plugin`, `.Tests` |
+| namespace | `SimRIG.Remastered.*` |
+| classe del plugin (prefisso delle proprietà) | `SimRigRemastered` durante la convivenza, `DataPluginDemo` al passaggio |
+| nome in SimHub | `SimRIG Remastered` |
+| impostazioni | `SimRigRemasteredSettings` |
+| database delle calibrazioni | `SimRIG_Remastered_Data.json`, copiato una volta da `SimRIG_Data.json` |
+| log | cartella `Logs\SimRig Remastered`, file `SimRIGR_<Modulo>_<data>.csv` |
+
+### Build e test
+
+```bash
+"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoRemastered/SimRIG.Remastered.sln" -restore -p:Configuration=Debug -v:minimal -nologo
+```
+
+- `-restore` serve ai progetti in formato SDK.
+- L'eseguibile dei test e il suo percorso esatto si fissano al passo 0 e vanno in `AGENTS.md`.
+- Come oggi, la build installa il plugin in SimHub: SimHub va chiuso prima.
+
+### Lock, hook e protocollo
+
+- **Hook:** `.claude/hooks/check-lock.js` protegge solo `User.PluginSdkDemoEdit/` (`CODE_PREFIX`, riga 15). Va esteso
+  a `User.PluginSdkDemoRemastered/` con la stessa regola, prima di scriverci il primo file.
+- **Plugin vecchio congelato:** l'hook continua a chiedere il lock; il congelamento (solo guasti bloccanti e
+  interruttore della decisione 11) è scritto in `AGENTS.md` e in `PROJECT_STATE.md`.
+- **Un passo per volta col lock:** scope del lock = cartella del modulo, i suoi test, il suo script di validazione.
+  Un passo può richiedere più turni; un commit per turno, come oggi.
+- **Antigravity non ha l'hook:** per lui vale il protocollo scritto, come oggi.
+- **Y-56 resta aperto:** un lock non pushato non serializza niente. Con due agenti sul plugin nuovo il rischio cresce;
+  la decisione resta fra Andreas e Michael.
+
+### Documenti e ADR-007
+
+Da scrivere quando lo spec è approvato:
+
+- **ADR-007** in `ARCHITECTURE.md`: riscrittura del nucleo, un produttore per grandezza, nucleo comune con adattatori per
+  simulatore. Contesto coi doppioni misurati; alternative scartate: pulizia sul posto, sostituzione progressiva, gruppo
+  di moduli per simulatore; la strada A come ripiego.
+- **`ARCHITECTURE.md`:** mappa dei moduli del plugin nuovo, con chi possiede cosa; la mappa di oggi etichettata "plugin
+  vecchio, congelato".
+- **`AGENTS.md`:** comandi di build e test del plugin nuovo; trappole nuove (due plugin in SimHub; database,
+  impostazioni e log separati; cartella vecchia congelata); hook esteso.
+- **`PROJECT_STATE.md`:** stato corrente col passo in corso; una tabella corta di avanzamento (passo, logica, stato,
+  commit). I punti aperti del plugin vecchio restano, e ognuno diventa materiale per l'analisi della logica che
+  riguarda: Y-58 per `Cars` e `Race`, Y-59 per `MergeGap`, Y-60 per `Timings`, Y-62 per `Gaps`.
+- **Roadmap:** le fasi diventano i passi della sezione 3.
+- **`STRATEGY_ENGINE_GUIDE.md`:** descrive il plugin vecchio; si riscrive al passaggio della dash.
+
+### Dallo spec al codice
+
+1. Approvate le cinque sezioni, **questo file diventa lo spec**: si toglie la parte di discussione e resta il design.
+   Nessuna copia separata, così non ci sono due documenti da tenere allineati. La storia del brainstorming resta in Git.
+2. Andreas rivede lo spec.
+3. **Un piano di implementazione per passo**, scritto all'inizio del passo, perché i dettagli dipendono dall'analisi.
+   Il primo piano copre l'interruttore nel plugin vecchio e il passo 0.
+4. Ogni passo: lock → lavoro → test → validazione sui replay rigirati da Andreas → handoff.
+
+### Domande aperte della sezione 5
+
+- Chi esegue i passi e chi li rivede.
+- I nomi proposti vanno bene?
 
 ## Come si riprende in una nuova sessione
 
