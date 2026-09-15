@@ -32,6 +32,7 @@ dash attive in `E:\SimHub\DashTemplates\Test\`.
 | 4 | 2026-09-14 | Ogni logica si verifica su **due circuiti**, Daytona e Road Atlanta, con replay rigirati da Andreas. |
 | 5 | 2026-09-15 | Approccio: **riscrittura del nucleo come plugin nuovo**, progetto separato nello stesso repository, accanto al plugin vecchio. |
 | 6 | 2026-09-15 | Modo di lavorare: **una logica alla volta**. Si analizza nel vecchio codice, si definisce, si testa coi numeri dei log, si implementa, si valida; la successiva usa i risultati della precedente. Logiche semplici, testate e disponibili alle altre. |
+| 7 | 2026-09-15 | Simulatori: **solo iRacing per ora**; in futuro almeno Assetto Corsa. |
 
 Esempio di Andreas: un modulo **Timings** avvia tutti i cronometri (corsia box, zona estesa, transito, drive-through,
 stazionario, tempo sul giro e altri); un modulo **TyreDeg** prende i tempi sul giro da Timings e applica la sua
@@ -65,7 +66,7 @@ usa, undercut e overcut finché la Fase B non li valida.
 
 | # | Sezione | Stato |
 |---|---|---|
-| 1 | Architettura: principi, livelli e moduli, anelli da spezzare | 🟡 proposta, in discussione (sotto) |
+| 1 | Architettura: principi, livelli e moduli, anelli da spezzare, struttura per simulatore | 🟡 impianto approvato da Andreas il 2026-09-15; struttura per simulatore da confermare |
 | 2 | Contratti: com'è fatto un modulo (ingressi, uscite, validità, storico e statistiche), come si testa | da presentare |
 | 3 | Ordine di costruzione e validazione: catena delle logiche, verità di confronto, soglie, tetto per logica, cosa si porta dal vecchio | da presentare |
 | 4 | Convivenza e passaggio: due plugin in SimHub, log di confronto, prova di fattibilità iniziale, passaggio della dash | da presentare |
@@ -73,7 +74,7 @@ usa, undercut e overcut finché la Fase B non li valida.
 
 Dopo l'approvazione delle cinque sezioni: spec scritto, revisione di Andreas, poi il piano di implementazione.
 
-## Sezione 1 — Architettura (proposta, in discussione)
+## Sezione 1 — Architettura (impianto approvato il 2026-09-15)
 
 ### Principi
 
@@ -86,8 +87,8 @@ Dopo l'approvazione delle cinque sezioni: spec scritto, revisione di Andreas, po
    spezzano con una regola scritta.
 4. **Ogni valore dice quanto vale.** Misurato, stimato o non disponibile, e da quando. Nessun valore fermo passa per
    vivo: è la radice comune di Y-58…Y-62.
-5. **Solo `Input` tocca SimHub e iRacing; il guscio non calcola.** Tutto il resto è codice puro, testabile coi numeri
-   dei log (ADR-004).
+5. **Solo l'adattatore del simulatore tocca SimHub e iRacing; il guscio non calcola.** Tutto il resto è codice puro,
+   testabile coi numeri dei log (ADR-004).
 6. **Moduli piccoli.** Una responsabilità per modulo; un file che supera qualche centinaio di righe probabilmente fa
    due cose.
 
@@ -95,10 +96,10 @@ Dopo l'approvazione delle cinque sezioni: spec scritto, revisione di Andreas, po
 
 | Livello | Modulo | Possiede | Legge da |
 |---|---|---|---|
-| 0 | `Input` | istantanea per tick: sessione e, per ogni vettura, posizione, giro, superficie, corsia box nativa, velocità, tempi sul giro del gioco; per il Player carburante e input | SimHub, iRacing |
+| 0 | `Input` (adattatore del simulatore, oggi `Sims/IRacing`) | istantanea neutra per tick: sessione e, per ogni vettura, posizione, giro, dove si trova, corsia box, velocità, tempi sul giro; per il Player carburante e input | SimHub, iRacing |
 | 1 | `Track` | geofence della corsia e della zona estesa, lunghezza, dati calibrati per circuito e classe | database |
 | 1 | `Cars` | per ogni vettura: identità e classe, posizione valida o ferma, giro, in pista / corsia / piazzola | `Input` |
-| 2 | `Events` | ingresso e uscita da corsia e zona estesa, fermo in piazzola, passaggio sul traguardo, drive-through, ricomparsa dopo `NotInWorld` | `Cars`, `Track` |
+| 2 | `Events` | ingresso e uscita da corsia e zona estesa, fermo in piazzola, passaggio sul traguardo, drive-through, ricomparsa dopo un buco di dati | `Cars`, `Track` |
 | 3 | `Timings` | cronometri per vettura: giro, tempi di passaggio (400 punti), corsia, zona estesa, transito, stazionario, drive-through, AccDec; ognuno completo o "non osservato" | `Events`, `Cars` |
 | 3 | `Calibration` | impara geofence e tempi del Player dagli eventi e li scrive nel database col consenso (ADR-005) | `Events`, `Timings` |
 | 4 | `Fuel` | consumo misurato del Player; stima BoP e carburante a bordo degli avversari | `Input`, `Timings` |
@@ -119,19 +120,50 @@ profili.
    da quanto dura la sosta; la sosta dipende dal carburante da imbarcare. Proposta: `Race` usa la durata della sosta
    calcolata al tick precedente.
 2. **Geofence ↔ eventi.** Gli eventi usano le geofence, e le geofence si imparano dagli eventi. Proposta: gli eventi
-   di corsia box vengono dal flag nativo di iRacing; `Calibration` impara le geofence da quegli eventi e le scrive nel
-   database; `Track` le rilegge dalla sessione successiva o dopo il consenso, mai nello stesso tick.
+   di corsia box vengono dal flag nativo del simulatore; `Calibration` impara le geofence da quegli eventi e le scrive
+   nel database; `Track` le rilegge dalla sessione successiva o dopo il consenso, mai nello stesso tick.
+
+### Un simulatore oggi, altri domani (proposta, in discussione)
+
+Andreas ha proposto un gruppo iRacing con dentro tutti i moduli, e un gruppo per ogni simulatore futuro. Il rischio:
+quando arriva Assetto Corsa si copiano `Timings`, `Fuel`, `PitLoss` e gli altri nel gruppo nuovo, e ogni logica torna
+a esistere due volte, con ogni correzione da fare due volte. Fra un simulatore e l'altro cambiano **i dati** e
+**alcune regole**, non la matematica: un cronometro è un cronometro, il consumo si calcola allo stesso modo.
+
+Proposta:
+
+```
+User.PluginSdkDemoRemastered/
+  Core/          logiche comuni: Track, Cars, Events, Timings, Calibration, Fuel, Pace, Gaps, PitLoss, Race, Target, MergeGap
+  Sims/
+    IRacing/     adattatore (SimHub + SDK iRacing → istantanea neutra) e regole proprie di iRacing
+    (AssettoCorsa/ in futuro)
+  Plugin/        guscio SimHub: ciclo, proprietà, log, voce, volante, impostazioni
+```
+
+- **`Core`** non conosce nessun simulatore: lavora su un'istantanea neutra, in cui ogni dato che un simulatore può
+  non fornire è opzionale e ha la sua validità.
+- **`Sims/IRacing`** contiene due cose sole: l'adattatore che riempie l'istantanea, e le regole di iRacing che il
+  nucleo riceve come parametri. Esempi già nel codice vecchio: il consumo BoP da `CarClassMaxFuelPct` nei dati di
+  sessione (`SessionYamlParser.cs`, `SessionDataReader.cs`), i servizi ai box in simultanea, le vetture lontane
+  `NotInWorld` nei replay.
+- **Regola:** nessun tipo o concetto di iRacing fuori da `Sims/IRacing/`. Per esempio `IracingTrackSurface` diventa
+  una posizione neutra: in pista, fuori pista, corsia, piazzola, non visibile.
+- **Costo oggi:** quasi nullo, perché l'ingresso doveva comunque essere l'unico a toccare SimHub e iRacing (principio
+  5). Per Assetto Corsa non si scrive nulla adesso.
+- **Limite:** un'istantanea pensata su un solo simulatore andrà ritoccata quando arriva il secondo, ma in un posto solo.
+- **Il plugin vecchio fa il contrario:** `PitRadar.cs:463-475` sceglie il layout dei box in base al nome del gioco,
+  dentro un modulo di calcolo.
 
 ### Domande aperte della sezione 1
 
-- Il plugin nuovo è **solo per iRacing** o deve funzionare anche con altri simulatori? Cambia `Input` ed `Events`:
-  il plugin vecchio ha ripieghi per altri giochi.
 - La regola "una vettura è una vettura" regge anche dove oggi il Player ha logiche proprie (calibrazioni guidate,
   rilevamento delle soste)?
 - Le statistiche (mediana degli ultimi transiti, migliore valido) stanno in `Timings` o nel modulo che le usa?
   (Sezione 2.)
 - Il flag nativo di corsia box è abbastanza affidabile da fare da fonte degli eventi? Y-23 e Y-33 riguardavano il
   flag di SimHub e la geofence, non quello nativo.
+- Assetto Corsa o Assetto Corsa Competizione? Non serve saperlo adesso.
 
 ## Come si riprende in una nuova sessione
 
