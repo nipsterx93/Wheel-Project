@@ -33,6 +33,7 @@ dash attive in `E:\SimHub\DashTemplates\Test\`.
 | 5 | 2026-09-15 | Approccio: **riscrittura del nucleo come plugin nuovo**, progetto separato nello stesso repository, accanto al plugin vecchio. |
 | 6 | 2026-09-15 | Modo di lavorare: **una logica alla volta**. Si analizza nel vecchio codice, si definisce, si testa coi numeri dei log, si implementa, si valida; la successiva usa i risultati della precedente. Logiche semplici, testate e disponibili alle altre. |
 | 7 | 2026-09-15 | Simulatori: **solo iRacing per ora**; in futuro almeno Assetto Corsa. |
+| 8 | 2026-09-15 | Struttura: **nucleo comune (`Core`) + un adattatore con le regole proprie per ogni simulatore (`Sims/IRacing`) + guscio SimHub (`Plugin`)**, non un gruppo di moduli per simulatore. |
 
 Esempio di Andreas: un modulo **Timings** avvia tutti i cronometri (corsia box, zona estesa, transito, drive-through,
 stazionario, tempo sul giro e altri); un modulo **TyreDeg** prende i tempi sul giro da Timings e applica la sua
@@ -66,15 +67,15 @@ usa, undercut e overcut finché la Fase B non li valida.
 
 | # | Sezione | Stato |
 |---|---|---|
-| 1 | Architettura: principi, livelli e moduli, anelli da spezzare, struttura per simulatore | 🟡 impianto approvato da Andreas il 2026-09-15; struttura per simulatore da confermare |
-| 2 | Contratti: com'è fatto un modulo (ingressi, uscite, validità, storico e statistiche), come si testa | da presentare |
+| 1 | Architettura: principi, livelli e moduli, anelli da spezzare, struttura per simulatore | ✅ approvata da Andreas il 2026-09-15 |
+| 2 | Contratti: com'è fatto un modulo (ingressi, uscite, qualità dei valori, storico e statistiche), come si testa | 🟡 proposta, in discussione (sotto) |
 | 3 | Ordine di costruzione e validazione: catena delle logiche, verità di confronto, soglie, tetto per logica, cosa si porta dal vecchio | da presentare |
 | 4 | Convivenza e passaggio: due plugin in SimHub, log di confronto, prova di fattibilità iniziale, passaggio della dash | da presentare |
 | 5 | Progetto e processo: struttura della cartella, soluzione e test, lock e hook estesi alla cartella nuova, ADR-007, documenti da aggiornare | da presentare |
 
 Dopo l'approvazione delle cinque sezioni: spec scritto, revisione di Andreas, poi il piano di implementazione.
 
-## Sezione 1 — Architettura (impianto approvato il 2026-09-15)
+## Sezione 1 — Architettura (approvata il 2026-09-15)
 
 ### Principi
 
@@ -123,14 +124,11 @@ profili.
    di corsia box vengono dal flag nativo del simulatore; `Calibration` impara le geofence da quegli eventi e le scrive
    nel database; `Track` le rilegge dalla sessione successiva o dopo il consenso, mai nello stesso tick.
 
-### Un simulatore oggi, altri domani (proposta, in discussione)
+### Un simulatore oggi, altri domani (approvata il 2026-09-15)
 
-Andreas ha proposto un gruppo iRacing con dentro tutti i moduli, e un gruppo per ogni simulatore futuro. Il rischio:
-quando arriva Assetto Corsa si copiano `Timings`, `Fuel`, `PitLoss` e gli altri nel gruppo nuovo, e ogni logica torna
-a esistere due volte, con ogni correzione da fare due volte. Fra un simulatore e l'altro cambiano **i dati** e
-**alcune regole**, non la matematica: un cronometro è un cronometro, il consumo si calcola allo stesso modo.
-
-Proposta:
+Un gruppo iRacing con dentro tutti i moduli, all'arrivo di Assetto Corsa, costringerebbe a copiare `Timings`, `Fuel`,
+`PitLoss` e gli altri nel gruppo nuovo: ogni logica esisterebbe due volte. Fra un simulatore e l'altro cambiano **i
+dati** e **alcune regole**, non la matematica.
 
 ```
 User.PluginSdkDemoRemastered/
@@ -142,15 +140,14 @@ User.PluginSdkDemoRemastered/
 ```
 
 - **`Core`** non conosce nessun simulatore: lavora su un'istantanea neutra, in cui ogni dato che un simulatore può
-  non fornire è opzionale e ha la sua validità.
+  non fornire è opzionale e ha la sua qualità.
 - **`Sims/IRacing`** contiene due cose sole: l'adattatore che riempie l'istantanea, e le regole di iRacing che il
   nucleo riceve come parametri. Esempi già nel codice vecchio: il consumo BoP da `CarClassMaxFuelPct` nei dati di
   sessione (`SessionYamlParser.cs`, `SessionDataReader.cs`), i servizi ai box in simultanea, le vetture lontane
   `NotInWorld` nei replay.
 - **Regola:** nessun tipo o concetto di iRacing fuori da `Sims/IRacing/`. Per esempio `IracingTrackSurface` diventa
   una posizione neutra: in pista, fuori pista, corsia, piazzola, non visibile.
-- **Costo oggi:** quasi nullo, perché l'ingresso doveva comunque essere l'unico a toccare SimHub e iRacing (principio
-  5). Per Assetto Corsa non si scrive nulla adesso.
+- **Costo oggi:** quasi nullo; per Assetto Corsa non si scrive nulla adesso.
 - **Limite:** un'istantanea pensata su un solo simulatore andrà ritoccata quando arriva il secondo, ma in un posto solo.
 - **Il plugin vecchio fa il contrario:** `PitRadar.cs:463-475` sceglie il layout dei box in base al nome del gioco,
   dentro un modulo di calcolo.
@@ -159,11 +156,98 @@ User.PluginSdkDemoRemastered/
 
 - La regola "una vettura è una vettura" regge anche dove oggi il Player ha logiche proprie (calibrazioni guidate,
   rilevamento delle soste)?
-- Le statistiche (mediana degli ultimi transiti, migliore valido) stanno in `Timings` o nel modulo che le usa?
-  (Sezione 2.)
 - Il flag nativo di corsia box è abbastanza affidabile da fare da fonte degli eventi? Y-23 e Y-33 riguardavano il
   flag di SimHub e la geofence, non quello nativo.
 - Assetto Corsa o Assetto Corsa Competizione? Non serve saperlo adesso.
+
+## Sezione 2 — Contratti: com'è fatto un modulo (proposta, in discussione)
+
+### Anatomia di un modulo
+
+Ogni modulo del `Core` ha le stesse cinque parti:
+
+1. **Ingressi:** solo i risultati dei moduli dei livelli sotto, ricevuti nel costruttore come viste in sola lettura.
+   Le dipendenze si leggono nella firma del costruttore; nessun modulo va a cercarsi dati altrove.
+2. **Aggiornamento:** un solo `Update` per tick, chiamato dal guscio in ordine di livello.
+3. **Uscite:** un risultato in sola lettura, per vettura dove serve. Nessuno scrive nel risultato di un altro.
+4. **Stato interno:** privato, per esempio l'istante di partenza di un cronometro.
+5. **Reset:** a cambio di sessione e a salto del replay, segnalati dall'ingresso.
+
+Un modulo non scrive file e non conosce SimHub: la diagnostica la manda a un logger ricevuto nel costruttore, e il
+guscio la scrive.
+
+### Ogni valore porta la sua qualità
+
+Le grandezze escono come valore + qualità + istante a cui si riferiscono:
+
+| Qualità | Significa | Esempio |
+|---|---|---|
+| `Measured` | misurato adesso o in questo evento | giro appena chiuso da una vettura visibile |
+| `Held` | ultimo valore misurato, tenuto; porta la sua età | posizione di una vettura sparita dai dati |
+| `Estimated` | calcolato da un modello, non misurato | carburante a bordo di un avversario |
+| `Unavailable` | non disponibile | tempo di sosta di una vettura mai vista fermarsi |
+
+**Propagazione:** un risultato vale quanto il suo ingresso più debole. Un distacco calcolato da una posizione `Held`
+non è `Measured`; un MergeGap con lo stazionario del Target stimato è `Estimated`. Chi usa un valore non misurato
+decide in modo esplicito cosa farne, invece di scoprirlo da un difetto (Y-58…Y-62).
+
+### Identità della vettura
+
+Le vetture si riconoscono dallo slot del simulatore (in iRacing `CarIdx`), non dal nome del pilota: nelle gare a
+squadre il pilota cambia sulla stessa vettura. Il nome è un attributo. Il plugin vecchio indicizza gli avversari per
+nome (`OpponentTracker.cs:1101-1103`).
+
+### Un solo orologio
+
+Tutti i moduli usano il tempo di sessione crescente fornito dall'adattatore. I salti del replay (riavvolto o spostato)
+li rileva solo l'ingresso e li comunica come reset. Il plugin vecchio mette i timestamp sul conto alla rovescia
+(`DataPluginDemo.cs:1273` passa `SessionTimeLeft`) e compensa con `Math.Abs` nei calcoli dei distacchi.
+
+### Storico e statistiche
+
+- Il **produttore possiede i campioni** della sua grandezza e le **statistiche standard**: ultimo, mediana degli
+  ultimi N validi, migliore valido. Se due moduli possono volere la stessa statistica, la calcola il produttore, una
+  volta sola.
+- Il **produttore etichetta** ogni campione: giro con sosta, giro di uscita, fuori pista, bandiera gialla, non
+  osservato. Il **consumatore sceglie** per etichetta e non ri-etichetta mai: `TyreDeg` chiede a `Timings` i giri
+  senza sosta e senza fuori pista.
+- I campioni fisicamente impossibili si scartano alla fonte (ADR-005), con l'etichetta del motivo.
+- Le statistiche proprie di una logica, come la pendenza del degrado, restano nel modulo che le usa.
+
+### Esempio completo: `Timings`
+
+- **Ingressi:** eventi del tick da `Events`, validità della vettura da `Cars`.
+- **Uscite per vettura:** tempi sul giro e tempi di passaggio; cronometri completati di corsia, zona estesa,
+  transito, stazionario, drive-through, AccDec; storico etichettato e statistiche standard.
+- **Stato interno:** i cronometri in corso.
+- **Non fa:** decidere quando una vettura entra in corsia (`Events`), normalizzare i giri col carburante (`Pace`),
+  calcolare la perdita ai box (`PitLoss`).
+- **Casi di test dai log:**
+  - sosta del Player, Daytona `094551` (`Player Pit AccDec Details`): zona estesa 58.62 s, corsia 46.98 s, AccDec
+    11.63 s, stazionario 14.47 s;
+  - avversario che ricompare dopo `NotInWorld` già oltre l'uscita (Matt Loveridge, `163743`, AccDec 4.93 s): corsia e
+    AccDec "non osservati", non salvati come misura.
+
+### Test
+
+- I moduli del `Core` sono puri: nei test si costruiscono con ingressi finti, senza tipi SimHub.
+- I casi usano numeri veri dei log, col riferimento all'evento (ADR-004); prima del commit si neutralizza la logica e
+  si controlla che il test diventi rosso.
+- Runner console come oggi (ADR-003), con due correzioni: raccoglie tutti i fallimenti invece di fermarsi al primo, e
+  conta a parte i test saltati (lezione di Y-54).
+- Un file di test per modulo.
+
+### Dimensioni e nomi
+
+- Identificatori in inglese. Un modulo è una cartella con pochi file, per esempio `Core/Timings/`: il modulo, il
+  cronometro, il risultato.
+- Un file oltre qualche centinaio di righe segnala che il modulo fa due cose.
+
+### Domande aperte della sezione 2
+
+- In dash, un valore `Held` o `Estimated` deve vedersi diverso da uno `Measured` (colore, simbolo)? (Sezione 4.)
+- Log per la validazione sui replay: formato comune a tutti i moduli (istante, vettura, grandezza, valore, qualità)?
+  (Sezioni 3 e 4.)
 
 ## Come si riprende in una nuova sessione
 
