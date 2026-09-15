@@ -8,11 +8,11 @@
 ## 🔒 LOCK
 
 ```yaml
-owner:      claude
-since:      2026-09-15 16:36
-task:       Riorganizzazione dei file di progetto (spec §8.5), ADR-007, hook esteso alla cartella nuova
-scope:      AGENTS.md; .ai/ (PROJECT_STATE, ARCHITECTURE, HANDOFF_LOG, archive, plans, STRATEGY_ENGINE_GUIDE, NEW_SESSION_PROMPT); .claude/hooks/check-lock.js; .claude/commands/new-session.md; .agent/workflows/new-session.md; .agent/skills/new-session/SKILL.md
-expires:    2026-09-15 19:36
+owner:      NONE
+since:      null
+task:       null
+scope:      null
+expires:    null
 ```
 
 **Regole del lock**
