@@ -9,6 +9,37 @@
 
 ---
 
+## [2026-09-13 17:45] claude → chiunque entri dopo
+
+**Task:** Review dei replay Daytona `20260913_140133` e `20260913_163743` (il secondo dopo `PitInOutAccDecTime` 17.90 → 11.6 nel DB, modificato a mano da Andreas): leader, MergeGap, stazionario avversari. Nessun file di codice toccato, lock non preso.
+**Piano:** — (review: `.ai/reviews/2026-09-13-daytona-leader-mergegap-pitloss.md`)
+**Commit:** `0e256bf` (review + Y-58…Y-61), questo (handoff)
+
+### Fatto
+- `.ai/reviews/2026-09-13-daytona-leader-mergegap-pitloss.md` — review completa: cosa funziona e cosa no, numeri misurati su tre run dello stesso replay, righe di log, `file:riga`, fix e test proposti con i dati veri.
+- `.ai/PROJECT_STATE.md:115-118` — registrati Y-58 (leader: regressione Y-25 da `863c65c` + dead reckoning mai attivato), Y-59 (latch MergeGap su Target `NotInWorld`), Y-60 (stazionario avversari dalla finestra `NotInWorld`), Y-61 (perdita ai box: `ExtZone` "best" + stazionario Target col consumo del Player).
+- Verificato che `PitInOutAccDecTime` = 11.6 è corretto: Player 11.63 s (`SimRIG_DebugLog_20260913_163743.csv:7279`), mediana avversari 11.39 s su 32 soste. Effetto: sparito l'errore di +8.3 s del MergeGap nel blocco subito dopo la sosta del Target (ora +1.25 s). Il MergeGap pre-sosta non cambia (+0.43 s in entrambi i run): l'AccDec era un errore di modo comune.
+
+### Come verificare
+Nessuna build: turno di sola analisi. Numeri chiave:
+```bash
+grep -n "FROZEN IN PIT" "Logs/Daytona/SimRIG_MergeGapLog_20260913_163743.txt"
+grep -n "Leader Position At Expiry\|Projection Validation" "Logs/Daytona/SimRIG_DebugLog_20260913_163743.csv"
+grep -n "Reverse-Engineered\|Opponent Pit Stop Deduction" "Logs/Daytona/SimRIG_DebugLog_20260913_163743.csv"
+```
+Atteso: congelati −0.92 (righe 1094, 1107) e −9.77 (righe 1159, 1172); `giriCompletati=27` e `vecchioP1=3.536 (err -24.207)`; per Daniel Wieland2 `DeducedStationary: 12.52s` contro `TotalTime: 48.1s`.
+
+### Stato
+- ⏭️ Build e test non eseguiti (nessun file di codice modificato; la build installerebbe la DLL in SimHub)
+- ✅ Codice invariato rispetto a `863c65c`
+
+### Per chi entra
+**Prossimo passo:** Andreas decide ordine e assegnazione di Y-58…Y-61 rispetto a Y-52 Passo 3. Più visibili in dashboard: Y-59 e Y-58. Più piccolo: Y-60 (una riga a `OpponentTracker.cs:1722` + test, ricontrollando le soglie gomme sì/no). Per Y-58, prima di scrivere il fix, loggare `CarIdxLapCompleted` del leader durante un buco.
+**NON toccare:** `Hardware/`; il valore 11.6 di `PitInOutAccDecTime` nel DB (verificato); le soglie di classificazione gomme (`OpponentTracker.cs:1790-1850`) senza ricontrollarle coi nuovi stazionari, se si fa Y-60.
+**Attenzione a:** i replay Daytona mandano `NotInWorld` le vetture lontane dal Player: ogni fix su leader, gap e soste va validato anche lì, non solo su Road Atlanta. Non "tenere" valori al posto di stimarli: una posizione tenuta è una posizione ferma (Y-35). A replay 2x i log periodici hanno metà righe ma gli stessi valori.
+
+---
+
 ## [2026-09-12 22:45] antigravity → chiunque entri dopo
 
 **Task:** Fix Leader.TrackPct (telemetria nativa e hold), Leader.RaceLapsCompleted (sync CurrentLap senza offset _leaderRaceStartLap), e rimozione freeze proiezioni all'ultimo giro

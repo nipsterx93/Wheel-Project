@@ -47,6 +47,38 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-15 11:38] claude → chiunque entri dopo
+
+**Task:** Decidere con Andreas il futuro del progetto dopo l'analisi del 2026-09-14 (stesse grandezze calcolate in più moduli in modi diversi). Nessun file di codice toccato, lock non preso.
+**Piano:** `.ai/plans/2026-09-15-remastered-brainstorming.md`
+**Commit:** questo (decisioni e stato del brainstorming)
+
+### Fatto
+- Decisioni di Andreas, con motivazioni nel piano: riscrittura del nucleo come **plugin nuovo** in `User.PluginSdkDemoRemastered/`, accanto al vecchio; una logica alla volta (analisi del vecchio codice → definizione → test coi numeri dei log → implementazione → validazione su Daytona e Road Atlanta); tetto per logica; undercut e overcut spenti durante i lavori; se la strada non funziona, versione ridotta (A).
+- Plugin vecchio **congelato**: sospesi il piano correzioni Daytona (passi 3-5) e il fix di Y-62. Annotati `PROJECT_STATE.md` (stato corrente), roadmap e piano Daytona.
+- Misure a supporto: 299 proprietà `SimRIG.*` con nome fisso, 116 usate dalle 8 dash attive (`E:\SimHub\DashTemplates\Test\`); la dash legge `DataPluginDemo.SimRIG.*` (255 riferimenti in `Test.djson`).
+- Sezione 1 del design (architettura) proposta nel piano, in discussione con Andreas.
+- Voce del 2026-09-13 17:45 spostata in `.ai/archive/HANDOFF_LOG_archive.md`.
+
+### Come verificare
+Nessuna build: turno di sola documentazione.
+```bash
+grep -n "Decisioni prese\|Sezione 1" .ai/plans/2026-09-15-remastered-brainstorming.md
+grep -n "riscrittura del plugin" .ai/PROJECT_STATE.md .ai/plans/2026-08-24-roadmap.md
+```
+Atteso: il piano con la tabella delle decisioni e la sezione 1; stato e roadmap che rimandano al piano.
+
+### Stato
+- ⏭️ Build e test non eseguiti (nessun file di codice modificato)
+- ✅ Codice invariato rispetto a `32a8682`
+
+### Per chi entra
+**Prossimo passo:** continuare il brainstorming con Andreas dalla sezione 1 del piano, poi le sezioni 2–5; niente codice nella cartella nuova finché lo spec non è approvato.
+**NON toccare:** `User.PluginSdkDemoEdit/` (congelato, salvo guasti bloccanti); `Hardware/`; `User.PluginSdkDemoRemastered/` prima dell'approvazione dello spec.
+**Attenzione a:** `AGENTS.md` descrive lock e hook di Claude Code solo per `User.PluginSdkDemoEdit/`: vanno estesi alla cartella nuova prima di scriverci codice (sezione 5 del design).
+
+---
+
 ## [2026-09-14 13:19] claude → chiunque entri dopo
 
 **Task:** Analisi del replay Daytona `20260914_124637`, rigirato da Andreas con la diagnostica di Y-62 (`32a8682`). Nessun file di codice toccato, lock non preso.
@@ -401,37 +433,6 @@ Atteso: 5 righe `## Passo 1…5` nel piano; una riga `## 9. Correzioni dopo il c
 **Prossimo passo:** Andreas risponde alle tre domande in fondo al piano (ordine, `Leader.TrackPct` stimata o reale con flag, esecutori); poi passo 1 col lock.
 **NON toccare:** `Hardware/`; `PitInOutAccDecTime` = 11.6 nel DB; le soglie gomme sì/no senza il ricontrollo previsto al passo 5.
 **Attenzione a:** i criteri numerici del piano valgono per l'ordine proposto (i passi 1 e 2 cambiano i valori attesi dei passi 3 e 5). Se Gemini ha conclusioni diverse da quanto scritto nel piano, vanno aggiunte al piano prima di iniziare.
-
----
-
-## [2026-09-13 17:45] claude → chiunque entri dopo
-
-**Task:** Review dei replay Daytona `20260913_140133` e `20260913_163743` (il secondo dopo `PitInOutAccDecTime` 17.90 → 11.6 nel DB, modificato a mano da Andreas): leader, MergeGap, stazionario avversari. Nessun file di codice toccato, lock non preso.
-**Piano:** — (review: `.ai/reviews/2026-09-13-daytona-leader-mergegap-pitloss.md`)
-**Commit:** `0e256bf` (review + Y-58…Y-61), questo (handoff)
-
-### Fatto
-- `.ai/reviews/2026-09-13-daytona-leader-mergegap-pitloss.md` — review completa: cosa funziona e cosa no, numeri misurati su tre run dello stesso replay, righe di log, `file:riga`, fix e test proposti con i dati veri.
-- `.ai/PROJECT_STATE.md:115-118` — registrati Y-58 (leader: regressione Y-25 da `863c65c` + dead reckoning mai attivato), Y-59 (latch MergeGap su Target `NotInWorld`), Y-60 (stazionario avversari dalla finestra `NotInWorld`), Y-61 (perdita ai box: `ExtZone` "best" + stazionario Target col consumo del Player).
-- Verificato che `PitInOutAccDecTime` = 11.6 è corretto: Player 11.63 s (`SimRIG_DebugLog_20260913_163743.csv:7279`), mediana avversari 11.39 s su 32 soste. Effetto: sparito l'errore di +8.3 s del MergeGap nel blocco subito dopo la sosta del Target (ora +1.25 s). Il MergeGap pre-sosta non cambia (+0.43 s in entrambi i run): l'AccDec era un errore di modo comune.
-
-### Come verificare
-Nessuna build: turno di sola analisi. Numeri chiave:
-```bash
-grep -n "FROZEN IN PIT" "Logs/Daytona/SimRIG_MergeGapLog_20260913_163743.txt"
-grep -n "Leader Position At Expiry\|Projection Validation" "Logs/Daytona/SimRIG_DebugLog_20260913_163743.csv"
-grep -n "Reverse-Engineered\|Opponent Pit Stop Deduction" "Logs/Daytona/SimRIG_DebugLog_20260913_163743.csv"
-```
-Atteso: congelati −0.92 (righe 1094, 1107) e −9.77 (righe 1159, 1172); `giriCompletati=27` e `vecchioP1=3.536 (err -24.207)`; per Daniel Wieland2 `DeducedStationary: 12.52s` contro `TotalTime: 48.1s`.
-
-### Stato
-- ⏭️ Build e test non eseguiti (nessun file di codice modificato; la build installerebbe la DLL in SimHub)
-- ✅ Codice invariato rispetto a `863c65c`
-
-### Per chi entra
-**Prossimo passo:** Andreas decide ordine e assegnazione di Y-58…Y-61 rispetto a Y-52 Passo 3. Più visibili in dashboard: Y-59 e Y-58. Più piccolo: Y-60 (una riga a `OpponentTracker.cs:1722` + test, ricontrollando le soglie gomme sì/no). Per Y-58, prima di scrivere il fix, loggare `CarIdxLapCompleted` del leader durante un buco.
-**NON toccare:** `Hardware/`; il valore 11.6 di `PitInOutAccDecTime` nel DB (verificato); le soglie di classificazione gomme (`OpponentTracker.cs:1790-1850`) senza ricontrollarle coi nuovi stazionari, se si fa Y-60.
-**Attenzione a:** i replay Daytona mandano `NotInWorld` le vetture lontane dal Player: ogni fix su leader, gap e soste va validato anche lì, non solo su Road Atlanta. Non "tenere" valori al posto di stimarli: una posizione tenuta è una posizione ferma (Y-35). A replay 2x i log periodici hanno metà righe ma gli stessi valori.
 
 ---
 

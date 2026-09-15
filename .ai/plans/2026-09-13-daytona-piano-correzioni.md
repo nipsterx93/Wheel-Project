@@ -3,6 +3,7 @@
 - **Data:** 2026-09-13
 - **Autore:** claude
 - **Esecutore:** claude (deciso da Andreas il 2026-09-13), un passo per turno col lock
+- **⏸️ Sospeso il 2026-09-15:** superato dalla riscrittura del plugin (`.ai/plans/2026-09-15-remastered-brainstorming.md`). Passi 1 e 2 fatti e verificati; i passi 3-5 e Y-62 non si eseguono sul plugin vecchio, i loro numeri servono da riferimento per le logiche nuove.
 - **Stato:** ✅ Approvato da Andreas il 2026-09-13 — ordine 1 → 5 (vedi "Decisioni prese" in fondo).
   Passo 1 fatto il 2026-09-13 (`05f0002`), corretto (`c18a1b0`) e verificato sul replay `082515` il
   2026-09-14. Passo 2 fatto e verificato (`3e9d4ae`, replay `094551`); prossimo Y-62 (fuori piano, vedi
