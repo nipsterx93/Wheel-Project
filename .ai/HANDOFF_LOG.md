@@ -47,6 +47,37 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-15 14:54] claude → chiunque entri dopo
+
+**Task:** Chiudere con Andreas il brainstorming del plugin nuovo e scrivere lo spec. Nessun file di codice toccato, lock non preso.
+**Piano:** `.ai/plans/2026-09-15-remastered-spec.md`
+**Commit:** `f4fa901`, `deac428`, `5274424`, `4e95b76`, `8efd8df` (sezioni del brainstorming), questo (spec)
+
+### Fatto
+- Sezioni 1–5 del design approvate da Andreas una alla volta (decisioni 7–14 nello spec): nucleo comune con un adattatore per simulatore; contratti dei moduli (qualità dei valori, `CarIdx`, tempo di sessione crescente); ordine di costruzione con tetto di tre cicli per modulo; convivenza dei due plugin con interruttore alla fonte per spegnere undercut e overcut nel vecchio; progetti separati in formato SDK e nomi `SimRIG.Remastered.*`.
+- Decisioni di Andreas di oggi: tutti fanno tutto, senza ruoli fissi; ogni modulo parte da un brainstorming con lui (cosa fa, cosa legge, cosa calcola, cosa mette a disposizione) prima dell'implementazione.
+- Il brainstorming è diventato lo spec: `2026-09-15-remastered-brainstorming.md` rimosso, `2026-09-15-remastered-spec.md` al suo posto; rimandi aggiornati in `PROJECT_STATE.md`, roadmap e piano Daytona.
+- Proposta sui file di progetto nel §8.5 dello spec: stessi file riorganizzati attorno al plugin nuovo, materiale del plugin vecchio in archivio; da confermare con la revisione.
+- Voce del 2026-09-13 21:21 spostata in `.ai/archive/HANDOFF_LOG_archive.md`.
+
+### Come verificare
+Nessuna build: turno di sola documentazione.
+```bash
+grep -n "^## " .ai/plans/2026-09-15-remastered-spec.md
+```
+Atteso: i paragrafi da 1 a 10 dello spec.
+
+### Stato
+- ⏭️ Build e test non eseguiti (nessun file di codice modificato)
+- ✅ Codice invariato rispetto a `32a8682`
+
+### Per chi entra
+**Prossimo passo:** Andreas rivede lo spec e conferma il §8.5; poi riorganizzazione dei file di progetto, ADR-007 e hook esteso; poi l'interruttore nel plugin vecchio e il passo 0.
+**NON toccare:** `User.PluginSdkDemoEdit/` (congelato); `User.PluginSdkDemoRemastered/` prima della revisione dello spec; `Hardware/`.
+**Attenzione a:** la voce del 2026-09-15 11:38 rimanda ancora a `2026-09-15-remastered-brainstorming.md`, oggi sostituito dallo spec.
+
+---
+
 ## [2026-09-15 11:38] claude → chiunque entri dopo
 
 **Task:** Decidere con Andreas il futuro del progetto dopo l'analisi del 2026-09-14 (stesse grandezze calcolate in più moduli in modi diversi). Nessun file di codice toccato, lock non preso.
@@ -401,38 +432,6 @@ Atteso: il piano risulta approvato con le decisioni; roadmap e "Stato corrente" 
 **Prossimo passo:** passo 1 del piano (consumo BoP del Target nel calcolo MergeGap/undercut), eseguito da claude. Lock con scope `User.PluginSdkDemoEdit/OpponentTracker.cs`, `User.PluginSdkDemoEdit/TargetStrategyManager.cs`, il nuovo file di test e `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/User.PluginSdkDemo.Tests.csproj`. Test prima del fix coi numeri del piano: consumo Target 3.60 L/giro, carburante da imbarcare ≈ 34.1 L, stazionario ≈ 15.7 s (oggi 12.79).
 **NON toccare:** `Hardware/`; `PitInOutAccDecTime` = 11.6 nel DB; i passi 2–5 nello stesso turno (un passo per turno).
 **Attenzione a:** chiudere SimHub prima della build (la build installa la DLL). Il criterio "sul replay" richiede che Andreas rigiri il replay Daytona con la DLL nuova e indichi il nome del log. Gli script di analisi della review erano nella cartella temporanea della sessione del 13/09: i numeri di riferimento sono nel piano e nella review.
-
----
-
-## [2026-09-13 21:21] claude → chiunque entri dopo
-
-**Task:** Piano delle correzioni per Y-58…Y-61 dopo il confronto con Andreas (regola BoP del consumo avversari, loop chiuso della pit road con `NotInWorld`, transito di corsa del Player) e dopo la revisione di Gemini. Nessun file di codice toccato, lock non preso.
-**Piano:** `.ai/plans/2026-09-13-daytona-piano-correzioni.md`
-**Commit:** `c64bab4` (piano + correzioni a review e stato), questo (handoff)
-
-### Fatto
-- `.ai/plans/2026-09-13-daytona-piano-correzioni.md` — 5 passi in ordine proposto (consumo BoP del Target nel calcolo MergeGap, `ExtZone` dalla mediana del Player, latch MergeGap senza campioni `NotInWorld`, leader nei buchi di dati, stazionario avversari senza loop chiuso), ognuno con `file:riga`, modifica, test coi numeri dei log e criterio sul replay.
-- `.ai/reviews/2026-09-13-daytona-leader-mergegap-pitloss.md` — avviso in testa e nuovo §9: corretti Y-60 (il tempo in corsia è nostro quando l'auto ricompare fuori dalla corsia; AccDec avversario ~5 s = uscita non osservata) e Y-61 (la regola BoP esiste già in `OpponentTracker.cs:1093-1110`, è il calcolo MergeGap a non usarla; lo storico dei transiti del Player è già in `SectorTracker.RawNormalHistory`).
-- `.ai/PROJECT_STATE.md` — righe Y-60 e Y-61 aggiornate con le correzioni e il rimando al piano.
-- Misurato: parti d'ingresso e d'uscita dell'AccDec del Player sul giro della sosta, 5.1 s (0.9086→0.9586) e 6.5 s (0.1016→0.1516), su entrambi i run Daytona.
-- Letti gli output di verifica di Gemini (19:23–19:25): coerenti con la review; test 363 PASS, exit 0. Le sue conclusioni scritte non sono nel repository.
-
-### Come verificare
-Nessuna build: turno di sola documentazione.
-```bash
-grep -n "^## Passo" .ai/plans/2026-09-13-daytona-piano-correzioni.md
-grep -n "^## 9\." .ai/reviews/2026-09-13-daytona-leader-mergegap-pitloss.md
-```
-Atteso: 5 righe `## Passo 1…5` nel piano; una riga `## 9. Correzioni dopo il confronto con Andreas` nella review.
-
-### Stato
-- ⏭️ Build e test non eseguiti da claude (nessun file di codice modificato); Gemini li ha eseguiti alle 19:24: 363 PASS, exit 0
-- ✅ Codice invariato rispetto a `863c65c`
-
-### Per chi entra
-**Prossimo passo:** Andreas risponde alle tre domande in fondo al piano (ordine, `Leader.TrackPct` stimata o reale con flag, esecutori); poi passo 1 col lock.
-**NON toccare:** `Hardware/`; `PitInOutAccDecTime` = 11.6 nel DB; le soglie gomme sì/no senza il ricontrollo previsto al passo 5.
-**Attenzione a:** i criteri numerici del piano valgono per l'ordine proposto (i passi 1 e 2 cambiano i valori attesi dei passi 3 e 5). Se Gemini ha conclusioni diverse da quanto scritto nel piano, vanno aggiunte al piano prima di iniziare.
 
 ---
 

@@ -9,6 +9,38 @@
 
 ---
 
+## [2026-09-13 21:21] claude → chiunque entri dopo
+
+**Task:** Piano delle correzioni per Y-58…Y-61 dopo il confronto con Andreas (regola BoP del consumo avversari, loop chiuso della pit road con `NotInWorld`, transito di corsa del Player) e dopo la revisione di Gemini. Nessun file di codice toccato, lock non preso.
+**Piano:** `.ai/plans/2026-09-13-daytona-piano-correzioni.md`
+**Commit:** `c64bab4` (piano + correzioni a review e stato), questo (handoff)
+
+### Fatto
+- `.ai/plans/2026-09-13-daytona-piano-correzioni.md` — 5 passi in ordine proposto (consumo BoP del Target nel calcolo MergeGap, `ExtZone` dalla mediana del Player, latch MergeGap senza campioni `NotInWorld`, leader nei buchi di dati, stazionario avversari senza loop chiuso), ognuno con `file:riga`, modifica, test coi numeri dei log e criterio sul replay.
+- `.ai/reviews/2026-09-13-daytona-leader-mergegap-pitloss.md` — avviso in testa e nuovo §9: corretti Y-60 (il tempo in corsia è nostro quando l'auto ricompare fuori dalla corsia; AccDec avversario ~5 s = uscita non osservata) e Y-61 (la regola BoP esiste già in `OpponentTracker.cs:1093-1110`, è il calcolo MergeGap a non usarla; lo storico dei transiti del Player è già in `SectorTracker.RawNormalHistory`).
+- `.ai/PROJECT_STATE.md` — righe Y-60 e Y-61 aggiornate con le correzioni e il rimando al piano.
+- Misurato: parti d'ingresso e d'uscita dell'AccDec del Player sul giro della sosta, 5.1 s (0.9086→0.9586) e 6.5 s (0.1016→0.1516), su entrambi i run Daytona.
+- Letti gli output di verifica di Gemini (19:23–19:25): coerenti con la review; test 363 PASS, exit 0. Le sue conclusioni scritte non sono nel repository.
+
+### Come verificare
+Nessuna build: turno di sola documentazione.
+```bash
+grep -n "^## Passo" .ai/plans/2026-09-13-daytona-piano-correzioni.md
+grep -n "^## 9\." .ai/reviews/2026-09-13-daytona-leader-mergegap-pitloss.md
+```
+Atteso: 5 righe `## Passo 1…5` nel piano; una riga `## 9. Correzioni dopo il confronto con Andreas` nella review.
+
+### Stato
+- ⏭️ Build e test non eseguiti da claude (nessun file di codice modificato); Gemini li ha eseguiti alle 19:24: 363 PASS, exit 0
+- ✅ Codice invariato rispetto a `863c65c`
+
+### Per chi entra
+**Prossimo passo:** Andreas risponde alle tre domande in fondo al piano (ordine, `Leader.TrackPct` stimata o reale con flag, esecutori); poi passo 1 col lock.
+**NON toccare:** `Hardware/`; `PitInOutAccDecTime` = 11.6 nel DB; le soglie gomme sì/no senza il ricontrollo previsto al passo 5.
+**Attenzione a:** i criteri numerici del piano valgono per l'ordine proposto (i passi 1 e 2 cambiano i valori attesi dei passi 3 e 5). Se Gemini ha conclusioni diverse da quanto scritto nel piano, vanno aggiunte al piano prima di iniziare.
+
+---
+
 ## [2026-09-13 17:45] claude → chiunque entri dopo
 
 **Task:** Review dei replay Daytona `20260913_140133` e `20260913_163743` (il secondo dopo `PitInOutAccDecTime` 17.90 → 11.6 nel DB, modificato a mano da Andreas): leader, MergeGap, stazionario avversari. Nessun file di codice toccato, lock non preso.

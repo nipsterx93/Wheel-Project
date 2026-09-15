@@ -173,7 +173,7 @@ sapere che un punto esiste ed è chiuso, senza caricarne 47 KB a ogni sessione.
 
 ## 📍 Stato corrente
 
-**Dal 2026-09-15: riscrittura del plugin** (deciso da Andreas). Il plugin nuovo nasce in `User.PluginSdkDemoRemastered/`, una logica alla volta; il design è in brainstorming in `.ai/plans/2026-09-15-remastered-brainstorming.md`. Il plugin vecchio (`User.PluginSdkDemoEdit/`) è **congelato**: niente correzioni salvo guasti bloccanti; il piano correzioni Daytona e il fix di Y-62 sono sospesi. Le righe qui sotto descrivono lo stato fino al 2026-09-14.
+**Dal 2026-09-15: riscrittura del plugin** (deciso da Andreas). Il plugin nuovo nasce in `User.PluginSdkDemoRemastered/`, una logica alla volta; lo spec è in `.ai/plans/2026-09-15-remastered-spec.md` (design approvato da Andreas, spec in revisione). Il plugin vecchio (`User.PluginSdkDemoEdit/`) è **congelato**: niente correzioni salvo guasti bloccanti; il piano correzioni Daytona e il fix di Y-62 sono sospesi. Le righe qui sotto descrivono lo stato fino al 2026-09-14.
 
 **Fase attiva della Roadmap:** **piano correzioni Daytona** (Y-58…Y-61, `.ai/plans/2026-09-13-daytona-piano-correzioni.md`), prima di riprendere Y-52 (Metadati di Sessione da iRacing / irdashies), in pausa — vedi [roadmap.md](.ai/plans/2026-08-24-roadmap.md). Le due righe qui sotto sono lo stato di Y-52.
 - **Passi 1 e 2:** Completati e testati (contenitore agnostico `SessionMetadata`, seeding passo stimato e validità `IsLapsPredictionValid`).
