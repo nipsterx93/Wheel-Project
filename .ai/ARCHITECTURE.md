@@ -1,36 +1,76 @@
 # ARCHITECTURE — The Wheel Project / Antigravity 2.0
 
-Decisioni architetturali (ADR), convenzioni e mappa dei moduli.
+Decisioni architetturali (ADR), convenzioni e mappa dei moduli: in testa il plugin nuovo, in fondo quello vecchio (congelato).
 
 ---
 
-## Mappa dei moduli
+## Plugin nuovo — SimRIG Remastered (in costruzione)
 
-Progetto principale: `User.PluginSdkDemoEdit/` → `User.PluginSdkDemo.dll` (.NET Framework 4.8, WPF)
+Decisione: **ADR-007**, più sotto. Design approvato: `.ai/plans/2026-09-15-remastered-spec.md`. Cartelle, nomi e livelli
+sono stati spostati qui dallo spec (§8.1, §8.2, §4.2) il 2026-09-15, e il brainstorming di ogni modulo li corregge qui.
+Lo stato di ogni passo è in `.ai/PROJECT_STATE.md`.
 
-| File | Tipo principale | Ruolo |
-|------|-----------------|-------|
-| `DataPluginDemo.cs` | `DataPluginDemo : IPlugin, IDataPlugin, IWPFSettingsV2` | **Entry point del plugin.** Ciclo `DataUpdate`, registrazione proprietà/azioni SimHub, orchestrazione dei manager. ~155 KB — leggere a fette. |
-| `DataPluginDemoSettings.cs` | `DataPluginDemoSettings` | Modello di persistenza delle impostazioni |
-| `SettingsControlDemo.xaml(.cs)` | `UserControl` | UI di configurazione dentro SimHub (~99 KB XAML + ~74 KB code-behind) |
-| `SessionState.cs` | `SessionState` | Stato della sessione di gara corrente |
-| `TelemetryReader.cs` | `TelemetryReader` | Lettura/normalizzazione telemetria dal game |
-| `TargetStrategyManager.cs` | `TargetStrategyManager`, `TargetState` | Strategia di gara: target pace, finestre pit |
-| `FuelManager.cs` | `FuelManager`, `FuelCalculations` | Consumo carburante, stint, calcoli di rifornimento |
-| `TyreManager.cs` | `TyreManager` | Gestione gomme, usura, scelta mescola |
-| `OpponentTracker.cs` | `OpponentTracker`, `OpponentTelemetryData` | Tracking avversari, gap, undercut/overcut (~105 KB) |
-| `RaceAnalyzer.cs` | `RaceAnalyzer`, `RaceAnalysisResult` | Analisi post/in-gara |
-| `SectorTracker.cs` / `LapSectorTimeContainer.cs` | `SectorTracker` | Tempi per settore |
-| `PitRadar.cs` | `ClassRecord`, `SimRigDatabase` | Dati pit / database record per classe e tracciato |
-| `CarPitData.cs` | `CarPitData` | Parametri pit per vettura |
-| `PiperEngine.cs` | `PiperEngine`, `PiperVoice` | Sintesi vocale (Piper TTS) per gli annunci |
-| `PitWallLanguage.cs` | `PitWallLanguage` (static) | Testi/localizzazione degli annunci "muretto box" |
-| `MacroManager.cs` | `MacroManager` (static) | Macro / invio input |
-| `SimRigHardwareManager.cs` | `SimRigHardwareManager` | Input hardware del rig (SharpDX.DirectInput) |
-| `ProfileManager.cs` / `SimRigProfile.cs` | `ProfileManager` (static) | Profili di configurazione |
-| `LogManager.cs` | `LogManager` | Logging applicativo |
+### Cartelle e progetti
 
-### `Hardware/` — il volante vero ⛔ fuori scope per gli agenti
+```
+User.PluginSdkDemoRemastered/
+  SimRIG.Remastered.sln
+  Core/            SimRIG.Remastered.Core          nessun riferimento a SimHub né a iRacing
+    Cars/  Events/  Timings/  …                    un modulo per cartella
+  Sims/IRacing/    SimRIG.Remastered.Sims.IRacing  Core + SimHub + SDK iRacing
+  Plugin/          SimRIG.Remastered.Plugin        classe del plugin, proprietà, log
+  Tests/           SimRIG.Remastered.Tests         runner console
+  Validation/      script di validazione, uno per modulo
+```
+
+- **Confini garantiti dal compilatore:** `Core` non ha riferimenti a SimHub né a iRacing; se un modulo prova a usarli,
+  non compila.
+- **Progetti in formato SDK** per .NET Framework 4.8: i file `.cs` si includono da soli, niente elenchi a mano nel
+  `.csproj`. Sulla macchina ci sono l'SDK .NET (8.0 e 9.0) e il targeting pack 4.8; la build vera la conferma il passo 0.
+- **Riferimenti a SimHub** solo tramite `$(SIMHUB_INSTALL_PATH)`. Dopo la build si copiano in SimHub solo il plugin e le
+  sue DLL.
+
+### Nomi
+
+| Cosa | Nome |
+|---|---|
+| soluzione | `SimRIG.Remastered.sln` |
+| progetti e DLL | `SimRIG.Remastered.Core`, `SimRIG.Remastered.Sims.IRacing`, `SimRIG.Remastered.Plugin`, `SimRIG.Remastered.Tests` |
+| namespace | `SimRIG.Remastered.*` |
+| classe del plugin | `SimRigRemastered` durante la convivenza, `DataPluginDemo` al passaggio |
+| nome in SimHub | `SimRIG Remastered` |
+| impostazioni | `SimRigRemasteredSettings` |
+| database delle calibrazioni | `SimRIG_Remastered_Data.json` |
+| log | cartella `Logs\SimRig Remastered`, file `SimRIGR_<Modulo>_<data>.csv` |
+
+### Livelli e moduli
+
+| Livello | Modulo | Possiede | Legge da |
+|---|---|---|---|
+| 0 | `Input` (adattatore, oggi `Sims/IRacing`) | istantanea neutra per tick: sessione e, per ogni vettura, posizione, giro, dove si trova, corsia box, velocità, tempi sul giro; per il Player carburante e input | SimHub, iRacing |
+| 1 | `Track` | geofence della corsia e della zona estesa, lunghezza, dati calibrati per circuito e classe | database |
+| 1 | `Cars` | per ogni vettura: identità e classe, posizione valida o ferma, giro, in pista / corsia / piazzola | `Input` |
+| 2 | `Events` | ingresso e uscita da corsia e zona estesa, fermo in piazzola, passaggio sul traguardo, drive-through, ricomparsa dopo un buco di dati | `Cars`, `Track` |
+| 3 | `Timings` | cronometri per vettura: giro, tempi di passaggio (400 punti), corsia, zona estesa, transito, stazionario, drive-through, AccDec; ognuno completo o "non osservato" | `Events`, `Cars` |
+| 3 | `Calibration` | impara geofence e tempi del Player dagli eventi e li scrive nel database col consenso (ADR-005) | `Events`, `Timings` |
+| 4 | `Fuel` | consumo misurato del Player; stima BoP e carburante a bordo degli avversari | `Input`, `Timings` |
+| 4 | `Pace` / `TyreDeg` | giri puliti, passo normalizzato, degrado gomme, per ogni vettura | `Timings`, `Fuel` |
+| 4 | `Gaps` | distacco in secondi fra due vetture qualunque | `Timings`, `Cars` |
+| 5 | `PitLoss` | perdita ai box di qualunque vettura: tempi misurati più stazionario previsto | `Timings`, `Fuel`, `Pace`, `Track` |
+| 5 | `Race` | leader, bandiera, giri totali e rimanenti, carburante da imbarcare | `Cars`, `Pace`, `PitLoss`, `Fuel` |
+| 5 | `Target` | quale vettura è il Target e i suoi dati | `Cars`, `Gaps`, `PitLoss`, `Fuel` |
+| 6 | `MergeGap` | dove si rientra rispetto al Target | `Gaps`, `PitLoss`, `Pace`, `Race`, `Target` |
+| — | guscio (`Plugin`) | ciclo SimHub, proprietà per la dash, log, voce, volante, impostazioni | tutti, in sola lettura |
+
+Meteo, gomme e pressioni, voce e cascata di calibrazione guidata, volante e profili vengono dopo il passo 10 (spec §6.1).
+La tabella è il punto di partenza: il brainstorming di ogni modulo può correggerla, con Andreas.
+
+Restano nello spec i principi (§4.1), gli anelli da spezzare (§4.3), il nucleo con un adattatore per simulatore (§4.4) e
+i contratti dei moduli (§5).
+
+---
+
+## `Hardware/` — il volante vero ⛔ fuori scope per gli agenti
 
 Il nome del progetto viene da qui, ma è la parte che gli agenti AI **non toccano**: è territorio di
 **Andreas**, che la versiona sulla sua macchina. Il protocollo del lock in `.ai/` è nato per il
@@ -47,38 +87,6 @@ periferica DirectInput come un'altra, e il plugin ne legge i pulsanti. ⚠️ **
 pulsante → azione non è documentata da nessuna parte.** Si vede solo leggendo insieme lo sketch e
 il manager — e conta: Y-14 dipende da `TyreManager.CurrentScope`, che è *"pilotato solo dai tasti
 volante"* (`TyreManager.cs:89`) e non è derivabile dalla telemetria.
-
-### Moduli di decisione, senza dipendenze SimHub
-
-Nati tutti dallo stesso vincolo: le classi principali ricevono `SessionState`, `PitRadar`,
-`OpponentTracker` e `LogManager`, quindi la loro logica **non è raggiungibile dai test**. Ogni volta
-che una decisione andava verificata, è stata estratta qui. Sono file piccoli, puri, e sono il posto
-naturale dove aggiungere nuove regole invece di annidarle nei file grandi.
-
-| File | Ruolo | Nato da |
-|------|-------|---------|
-| `StrategyGateHysteresis.cs` | Bande di isteresi e permanenza minima sulle decisioni strategiche, per fermare lo sfarfallio undercut/overcut | Y-12 |
-| `PitLaneDetector.cs` | Cascata unica di rilevamento pit (telemetria → geofence → fermo → velocità persistente), condivisa fra Player e avversari | Y-9 |
-| `TrackPositionValidator.cs` | Distingue un avanzamento guidato da un teletrasporto, per plausibilità del movimento. `WrappedDelta` è il calcolo di delta con wrap del traguardo usato anche altrove | Fase 1 calibrazioni |
-| `GeofenceCalibrationGate.cs` | Autorizza la calibrazione delle geofence solo dopo un tragitto genuino in pista | Fase 3 calibrazioni |
-| `RaceTimeProjection.cs` | Tempo alla bandiera ancorato al countdown di sessione, e giri proiettati. Il leader pesa solo sulla frazione di giro che gli manca | Y-16 |
-| `LeaderPaceFilter.cs` | Filtra il passo del leader: scarta i giri fisicamente impossibili e i campioni raccolti mentre l'identità del P1 sfarfalla | Y-17 |
-| `CalibrationConsensus.cs` | Mediana su finestra scorrevole per i dati calibrati, al posto di "il primo/l'ultimo che scrive vince" | Y-20, Y-21 |
-| `PlayerPitSpeedObserver.cs` | Legge il limite della corsia box dal limitatore del Player invece di dedurlo dagli avversari | Y-28 |
-| `CalibrationCascade.cs` | Decide **quale** calibrazione manca e in che ordine chiederla | Y-28 |
-| `CalibrationCascadeRunner.cs` | Decide **quando** l'ingegnere parla: insistenza legata al progresso, non al tempo | Y-28 |
-
-Ci sono anche predicati statici puri estratti **dentro** i file grandi, per lo stesso motivo:
-`OpponentTracker.CanMeasureLap` / `AnchorIsGenuine` (Y-17b), `PitRadar.HasTraversedPitLane` /
-`IsPlayerStationaryInPit` (Y-18, Y-23), `RaceAnalyzer.IsLeaderSampleUsable` /
-`HoldLeaderLapsCompleted` (Y-24, Y-25). Vedi ADR-004 sul perché.
-
-**File `*_LEGACY.cs`** (`DataPluginDemo_LEGACY.cs`, `FuelCalculator_LEGACY.cs`, `PitStrategyManager_LEGACY.cs`):
-presenti sul disco ma **non inclusi** nel `<Compile>` del `.csproj` → **non vengono compilati**.
-Vanno trattati come archivio di sola lettura. Non modificarli aspettandosi un effetto sul plugin.
-
-Progetto di test: `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/` → eseguibile console con
-runner custom (`TestRunner.cs`), **non** un framework tipo NUnit/xUnit. Vedi ADR-002.
 
 ---
 
@@ -297,6 +305,45 @@ Una regola si cambia in `AGENTS.md` e basta.
 
 ---
 
+### ADR-007 — Riscrittura del nucleo: un produttore per grandezza, nucleo comune con adattatori per simulatore
+
+- **Data:** 2026-09-15
+- **Stato:** Accettato
+- **Deciso da:** Andreas, in brainstorming con claude
+
+**Contesto**
+Durante il piano correzioni Daytona ogni replay portava difetti nuovi. L'analisi del 2026-09-14 ha misurato la causa: le
+stesse grandezze erano calcolate in più moduli con approssimazioni diverse — perdita ai box del Player in tre posti,
+distacco fra due vetture in tre modi, vettura `NotInWorld` gestita in quattro modi, passo degli avversari con un'unità
+sbagliata. Ogni replay metteva alla prova un calcolo diverso della stessa cosa. Dettagli e riferimenti: spec
+`.ai/plans/2026-09-15-remastered-spec.md`, §1.
+
+**Decisione**
+Un plugin nuovo, in `User.PluginSdkDemoRemastered/`, costruito un modulo alla volta. Ogni grandezza ha un solo
+produttore; il nucleo (`Core`) non conosce il simulatore e riceve i dati da un adattatore (`Sims/IRacing`); il guscio
+(`Plugin`) non calcola. Il plugin vecchio resta congelato accanto al nuovo fino al passaggio della dash.
+
+**Conseguenze**
+- I confini li garantisce il compilatore: `Core` non riferisce SimHub né iRacing.
+- Per un periodo convivono due plugin in SimHub, con DLL, prefisso delle proprietà, impostazioni, database delle
+  calibrazioni e log separati.
+- Ogni modulo parte da un brainstorming con Andreas e si valida su Daytona e Road Atlanta, con un tetto di tre cicli.
+- Le funzioni della versione ridotta (carburante, giri totali, distacco) sono pronte prima del MergeGap: se il MergeGap
+  si blocca, la strada A non costa lavoro in più.
+- I test seguono ADR-003 e ADR-004; il runner del plugin nuovo raccoglie tutti i fallimenti e conta a parte i saltati.
+- Undercut e overcut restano spenti fino alla Fase B.
+- La mappa del plugin vecchio in questo file non si aggiorna più.
+
+**Alternative scartate**
+- *Pulizia sul posto nei moduli di oggi:* toglie i doppioni ma lascia la struttura che li ha prodotti.
+- *Sostituzione progressiva dentro il plugin vecchio:* pulita solo se si arriva in fondo; il rischio di fermarsi a metà
+  era già visibile nelle ultime correzioni (`RaceAnalyzer.cs:1186` rimasto sul minimo di classe dopo il passo 2).
+- *Un gruppo di moduli per simulatore:* all'arrivo del secondo simulatore ogni logica esisterebbe due volte.
+- *Versione ridotta subito (strada A):* resta come ripiego; toglieva lo strato più difficile da validare, non la causa
+  dei doppioni.
+
+---
+
 ## Convenzioni di progetto
 
 - **Lingua:** commenti e messaggi di commit in italiano o inglese, purché coerenti nel file.
@@ -305,5 +352,68 @@ Una regola si cambia in `AGENTS.md` e basta.
   `camelCase` per locali e parametri, `_camelCase` per campi privati. Seguire lo stile del file
   circostante quando diverge.
 - **Dipendenze:** le reference esterne si risolvono via `$(SIMHUB_INSTALL_PATH)`.
-  Nessun nuovo path assoluto hardcoded (quelli esistenti a `E:\SimHub\` sono debito, vedi `PROJECT_STATE.md`).
+  Nessun nuovo path assoluto hardcoded (quelli esistenti a `E:\SimHub\` sono debito, vedi Y-54 in `.ai/archive/PLUGIN_VECCHIO.md`).
 - **Nessun nuovo file `*_LEGACY.cs`:** per archiviare codice, la history di Git basta.
+
+---
+
+## Mappa dei moduli — plugin vecchio (congelato)
+
+> Congelata il 2026-09-15 (ADR-007): descrive `User.PluginSdkDemoEdit/` com'era al congelamento e non si aggiorna più.
+> Stava in testa a questo file; `Hardware/` è diventata una sezione a sé, più in alto, perché non riguarda un plugin solo.
+
+Progetto principale: `User.PluginSdkDemoEdit/` → `User.PluginSdkDemo.dll` (.NET Framework 4.8, WPF)
+
+| File | Tipo principale | Ruolo |
+|------|-----------------|-------|
+| `DataPluginDemo.cs` | `DataPluginDemo : IPlugin, IDataPlugin, IWPFSettingsV2` | **Entry point del plugin.** Ciclo `DataUpdate`, registrazione proprietà/azioni SimHub, orchestrazione dei manager. ~155 KB — leggere a fette. |
+| `DataPluginDemoSettings.cs` | `DataPluginDemoSettings` | Modello di persistenza delle impostazioni |
+| `SettingsControlDemo.xaml(.cs)` | `UserControl` | UI di configurazione dentro SimHub (~99 KB XAML + ~74 KB code-behind) |
+| `SessionState.cs` | `SessionState` | Stato della sessione di gara corrente |
+| `TelemetryReader.cs` | `TelemetryReader` | Lettura/normalizzazione telemetria dal game |
+| `TargetStrategyManager.cs` | `TargetStrategyManager`, `TargetState` | Strategia di gara: target pace, finestre pit |
+| `FuelManager.cs` | `FuelManager`, `FuelCalculations` | Consumo carburante, stint, calcoli di rifornimento |
+| `TyreManager.cs` | `TyreManager` | Gestione gomme, usura, scelta mescola |
+| `OpponentTracker.cs` | `OpponentTracker`, `OpponentTelemetryData` | Tracking avversari, gap, undercut/overcut (~105 KB) |
+| `RaceAnalyzer.cs` | `RaceAnalyzer`, `RaceAnalysisResult` | Analisi post/in-gara |
+| `SectorTracker.cs` / `LapSectorTimeContainer.cs` | `SectorTracker` | Tempi per settore |
+| `PitRadar.cs` | `ClassRecord`, `SimRigDatabase` | Dati pit / database record per classe e tracciato |
+| `CarPitData.cs` | `CarPitData` | Parametri pit per vettura |
+| `PiperEngine.cs` | `PiperEngine`, `PiperVoice` | Sintesi vocale (Piper TTS) per gli annunci |
+| `PitWallLanguage.cs` | `PitWallLanguage` (static) | Testi/localizzazione degli annunci "muretto box" |
+| `MacroManager.cs` | `MacroManager` (static) | Macro / invio input |
+| `SimRigHardwareManager.cs` | `SimRigHardwareManager` | Input hardware del rig (SharpDX.DirectInput) |
+| `ProfileManager.cs` / `SimRigProfile.cs` | `ProfileManager` (static) | Profili di configurazione |
+| `LogManager.cs` | `LogManager` | Logging applicativo |
+
+### Moduli di decisione, senza dipendenze SimHub
+
+Nati tutti dallo stesso vincolo: le classi principali ricevono `SessionState`, `PitRadar`,
+`OpponentTracker` e `LogManager`, quindi la loro logica **non è raggiungibile dai test**. Ogni volta
+che una decisione andava verificata, è stata estratta qui. Sono file piccoli, puri, e sono il posto
+naturale dove aggiungere nuove regole invece di annidarle nei file grandi.
+
+| File | Ruolo | Nato da |
+|------|-------|---------|
+| `StrategyGateHysteresis.cs` | Bande di isteresi e permanenza minima sulle decisioni strategiche, per fermare lo sfarfallio undercut/overcut | Y-12 |
+| `PitLaneDetector.cs` | Cascata unica di rilevamento pit (telemetria → geofence → fermo → velocità persistente), condivisa fra Player e avversari | Y-9 |
+| `TrackPositionValidator.cs` | Distingue un avanzamento guidato da un teletrasporto, per plausibilità del movimento. `WrappedDelta` è il calcolo di delta con wrap del traguardo usato anche altrove | Fase 1 calibrazioni |
+| `GeofenceCalibrationGate.cs` | Autorizza la calibrazione delle geofence solo dopo un tragitto genuino in pista | Fase 3 calibrazioni |
+| `RaceTimeProjection.cs` | Tempo alla bandiera ancorato al countdown di sessione, e giri proiettati. Il leader pesa solo sulla frazione di giro che gli manca | Y-16 |
+| `LeaderPaceFilter.cs` | Filtra il passo del leader: scarta i giri fisicamente impossibili e i campioni raccolti mentre l'identità del P1 sfarfalla | Y-17 |
+| `CalibrationConsensus.cs` | Mediana su finestra scorrevole per i dati calibrati, al posto di "il primo/l'ultimo che scrive vince" | Y-20, Y-21 |
+| `PlayerPitSpeedObserver.cs` | Legge il limite della corsia box dal limitatore del Player invece di dedurlo dagli avversari | Y-28 |
+| `CalibrationCascade.cs` | Decide **quale** calibrazione manca e in che ordine chiederla | Y-28 |
+| `CalibrationCascadeRunner.cs` | Decide **quando** l'ingegnere parla: insistenza legata al progresso, non al tempo | Y-28 |
+
+Ci sono anche predicati statici puri estratti **dentro** i file grandi, per lo stesso motivo:
+`OpponentTracker.CanMeasureLap` / `AnchorIsGenuine` (Y-17b), `PitRadar.HasTraversedPitLane` /
+`IsPlayerStationaryInPit` (Y-18, Y-23), `RaceAnalyzer.IsLeaderSampleUsable` /
+`HoldLeaderLapsCompleted` (Y-24, Y-25). Vedi ADR-004 sul perché.
+
+**File `*_LEGACY.cs`** (`DataPluginDemo_LEGACY.cs`, `FuelCalculator_LEGACY.cs`, `PitStrategyManager_LEGACY.cs`):
+presenti sul disco ma **non inclusi** nel `<Compile>` del `.csproj` → **non vengono compilati**.
+Vanno trattati come archivio di sola lettura. Non modificarli aspettandosi un effetto sul plugin.
+
+Progetto di test: `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/` → eseguibile console con
+runner custom (`TestRunner.cs`), **non** un framework tipo NUnit/xUnit. Vedi ADR-002.

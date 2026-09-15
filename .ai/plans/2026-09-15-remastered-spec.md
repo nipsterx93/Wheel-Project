@@ -2,10 +2,13 @@
 
 - **Data:** 2026-09-15
 - **Autori:** Andreas e claude, dal brainstorming del 2026-09-14 e del 2026-09-15
-- **Stato:** 🟡 design approvato da Andreas il 2026-09-15, una sezione alla volta; **spec in revisione** da parte di Andreas
+- **Stato:** ✅ approvato da Andreas il 2026-09-15: il design una sezione alla volta, poi lo spec con la conferma del §8.5
 - **Cartella del plugin nuovo:** `User.PluginSdkDemoRemastered/`
 - **Sostituisce** come lavoro attivo il piano `2026-09-13-daytona-piano-correzioni.md`, sospeso. La discussione che ha
   portato qui è nella storia Git di `.ai/plans/2026-09-15-remastered-brainstorming.md` (commit da `179199e` a `8efd8df`).
+- **Parti spostate il 2026-09-15** con la riorganizzazione del §8.5, perché ogni informazione stia in un posto solo: il
+  modo di lavorare (§3) e build, lock e hook (§8.3, §8.4) in `AGENTS.md`; livelli e moduli (§4.2), struttura e nomi
+  (§8.1, §8.2) in `.ai/ARCHITECTURE.md`. I titoli restano qui, per i rimandi.
 
 ## 1. Perché
 
@@ -45,31 +48,19 @@ dash attive in `E:\SimHub\DashTemplates\Test\`.
 
 ## 3. Come si lavora
 
+Spostato il 2026-09-15 in `AGENTS.md`, sezione "Come si lavora sul plugin nuovo".
+
 ### 3.1 Il ciclo di un modulo
 
-1. **Scelta del modulo**, con Andreas, nell'ordine del §6.1.
-2. **Brainstorming del modulo con Andreas.** Si decide cosa deve fare, cosa legge, cosa calcola, cosa mette a
-   disposizione degli altri moduli, e la soglia con cui si valida (§6.2), fissata prima di scrivere codice. L'agente
-   porta l'analisi: cosa fa il plugin vecchio, quali punti aperti e chiusi riguardano il modulo, quali casi limite sono
-   già noti coi numeri. L'esito è la **scheda del modulo** approvata da Andreas.
-3. **Implementazione:** test coi numeri dei log che partono rossi, codice fino ai test verdi, neutralizzazione come da
-   ADR-004.
-4. **Validazione** su Daytona e Road Atlanta, coi replay rigirati da Andreas e lo script di validazione del modulo.
-5. **Chiusura:** handoff; il modulo è disponibile ai successivi.
-
-Un modulo non è chiuso senza il passo 4 su entrambi i circuiti. Scheda e passi di implementazione stanno in un solo
-file per modulo: `.ai/plans/<data>-remastered-<modulo>.md`.
+→ `AGENTS.md`, "Il ciclo di un modulo".
 
 ### 3.2 Regole di semplicità
 
-- Un modulo fa **solo** quello che dice la sua scheda approvata. Ogni aggiunta passa da Andreas.
-- Niente logica "per il futuro": se oggi nessun modulo la usa, non si scrive. Vale anche per Assetto Corsa.
-- Se un modulo non si spiega in poche righe, fa troppo: si torna al brainstorming.
+→ `AGENTS.md`, "Regole di semplicità".
 
 ### 3.3 Chi fa cosa
 
-Tutti fanno tutto (decisione 12): Andreas, claude e Antigravity possono proporre, implementare e rivedere. Il controllo
-viene dal fatto che il lavoro di un agente è verificabile dall'altro. La scrittura resta seriale col lock (§8.4).
+→ `AGENTS.md`, "Chi fa cosa".
 
 ## 4. Architettura
 
@@ -92,25 +83,8 @@ viene dal fatto che il lavoro di un agente è verificabile dall'altro. La scritt
 
 ### 4.2 Livelli e moduli
 
-| Livello | Modulo | Possiede | Legge da |
-|---|---|---|---|
-| 0 | `Input` (adattatore, oggi `Sims/IRacing`) | istantanea neutra per tick: sessione e, per ogni vettura, posizione, giro, dove si trova, corsia box, velocità, tempi sul giro; per il Player carburante e input | SimHub, iRacing |
-| 1 | `Track` | geofence della corsia e della zona estesa, lunghezza, dati calibrati per circuito e classe | database |
-| 1 | `Cars` | per ogni vettura: identità e classe, posizione valida o ferma, giro, in pista / corsia / piazzola | `Input` |
-| 2 | `Events` | ingresso e uscita da corsia e zona estesa, fermo in piazzola, passaggio sul traguardo, drive-through, ricomparsa dopo un buco di dati | `Cars`, `Track` |
-| 3 | `Timings` | cronometri per vettura: giro, tempi di passaggio (400 punti), corsia, zona estesa, transito, stazionario, drive-through, AccDec; ognuno completo o "non osservato" | `Events`, `Cars` |
-| 3 | `Calibration` | impara geofence e tempi del Player dagli eventi e li scrive nel database col consenso (ADR-005) | `Events`, `Timings` |
-| 4 | `Fuel` | consumo misurato del Player; stima BoP e carburante a bordo degli avversari | `Input`, `Timings` |
-| 4 | `Pace` / `TyreDeg` | giri puliti, passo normalizzato, degrado gomme, per ogni vettura | `Timings`, `Fuel` |
-| 4 | `Gaps` | distacco in secondi fra due vetture qualunque | `Timings`, `Cars` |
-| 5 | `PitLoss` | perdita ai box di qualunque vettura: tempi misurati più stazionario previsto | `Timings`, `Fuel`, `Pace`, `Track` |
-| 5 | `Race` | leader, bandiera, giri totali e rimanenti, carburante da imbarcare | `Cars`, `Pace`, `PitLoss`, `Fuel` |
-| 5 | `Target` | quale vettura è il Target e i suoi dati | `Cars`, `Gaps`, `PitLoss`, `Fuel` |
-| 6 | `MergeGap` | dove si rientra rispetto al Target | `Gaps`, `PitLoss`, `Pace`, `Race`, `Target` |
-| — | guscio (`Plugin`) | ciclo SimHub, proprietà per la dash, log, voce, volante, impostazioni | tutti, in sola lettura |
-
-Meteo, gomme e pressioni, voce e cascata di calibrazione guidata, volante e profili vengono dopo il passo 10 (§6.1). La
-tabella è il punto di partenza: il brainstorming di ogni modulo può correggerla, con Andreas.
+Spostato il 2026-09-15 in `.ai/ARCHITECTURE.md`, sezione "Plugin nuovo — SimRIG Remastered", tabella "Livelli e
+moduli". Il brainstorming di ogni modulo la corregge lì.
 
 ### 4.3 Anelli da spezzare
 
@@ -354,59 +328,23 @@ disponibile); la dash decide come mostrarla. Precedente nel plugin vecchio: `Sim
 
 ### 8.1 Struttura e progetti
 
-```
-User.PluginSdkDemoRemastered/
-  SimRIG.Remastered.sln
-  Core/            SimRIG.Remastered.Core          nessun riferimento a SimHub né a iRacing
-    Cars/  Events/  Timings/  …                    un modulo per cartella
-  Sims/IRacing/    SimRIG.Remastered.Sims.IRacing  Core + SimHub + SDK iRacing
-  Plugin/          SimRIG.Remastered.Plugin        classe del plugin, proprietà, log
-  Tests/           SimRIG.Remastered.Tests         runner console
-  Validation/      script di validazione, uno per modulo
-```
-
-- **Confini garantiti dal compilatore:** `Core` non ha riferimenti a SimHub né a iRacing; se un modulo prova a usarli,
-  non compila.
-- **Progetti in formato SDK** per .NET Framework 4.8: i file `.cs` si includono da soli, niente elenchi a mano nel
-  `.csproj`. Sulla macchina ci sono l'SDK .NET (8.0 e 9.0) e il targeting pack 4.8; la build vera la conferma il passo 0.
-- **Riferimenti a SimHub** solo tramite `$(SIMHUB_INSTALL_PATH)`. Dopo la build si copiano in SimHub solo il plugin e le
-  sue DLL.
+Spostato il 2026-09-15 in `.ai/ARCHITECTURE.md`, sezione "Plugin nuovo — SimRIG Remastered", "Cartelle e progetti".
 
 ### 8.2 Nomi (approvati)
 
-| Cosa | Nome |
-|---|---|
-| soluzione | `SimRIG.Remastered.sln` |
-| progetti e DLL | `SimRIG.Remastered.Core`, `SimRIG.Remastered.Sims.IRacing`, `SimRIG.Remastered.Plugin`, `SimRIG.Remastered.Tests` |
-| namespace | `SimRIG.Remastered.*` |
-| classe del plugin | `SimRigRemastered` durante la convivenza, `DataPluginDemo` al passaggio |
-| nome in SimHub | `SimRIG Remastered` |
-| impostazioni | `SimRigRemasteredSettings` |
-| database delle calibrazioni | `SimRIG_Remastered_Data.json` |
-| log | cartella `Logs\SimRig Remastered`, file `SimRIGR_<Modulo>_<data>.csv` |
+Spostato il 2026-09-15 in `.ai/ARCHITECTURE.md`, sezione "Plugin nuovo — SimRIG Remastered", "Nomi".
 
 ### 8.3 Build e test
 
-```bash
-"C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" "User.PluginSdkDemoRemastered/SimRIG.Remastered.sln" -restore -p:Configuration=Debug -v:minimal -nologo
-```
-
-- `-restore` serve ai progetti in formato SDK.
-- Il percorso esatto dell'eseguibile dei test si fissa al passo 0 e va in `AGENTS.md`.
-- Come nel plugin vecchio, la build installa il plugin in SimHub: SimHub va chiuso prima.
+Spostato il 2026-09-15 in `AGENTS.md`, sezione "Build e test — plugin nuovo".
 
 ### 8.4 Lock e hook
 
-- **Un solo lock per tutto il repository**, in `.ai/PROJECT_STATE.md`: serializza chi scrive, anche nei file condivisi
-  di `.ai/`.
-- **Hook:** `.claude/hooks/check-lock.js` protegge solo `User.PluginSdkDemoEdit/` (`CODE_PREFIX`, riga 15). Va esteso a
-  `User.PluginSdkDemoRemastered/` con la stessa regola, prima di scriverci il primo file.
-- **Scope del lock:** la cartella del modulo, i suoi test, il suo script di validazione. Un modulo può richiedere più
-  turni; un commit per turno.
-- **Antigravity non ha l'hook:** per lui vale il protocollo scritto.
-- **Y-56 resta aperto:** un lock non pushato non serializza niente; la decisione resta fra Andreas e Michael.
+Spostato il 2026-09-15 in `AGENTS.md`: il lock copre le due cartelle di codice e le riorganizzazioni di `.ai/` ("Prima di
+toccare qualsiasi file di codice"), lo scope del lock di un modulo sta nel ciclo di un modulo, l'hook nel protocollo di
+coworking, punto 5. Y-56 è fra le decisioni in sospeso di `.ai/PROJECT_STATE.md`.
 
-### 8.5 File di progetto (proposta, da confermare nella revisione)
+### 8.5 File di progetto (confermato da Andreas il 2026-09-15, eseguito)
 
 **Un solo insieme di file per tutto il repository, riorganizzato attorno al plugin nuovo.** Né copie parallele per il
 Remastered, né sovrascritture che cancellano: il materiale del plugin vecchio si sposta in `.ai/archive/` parola per
@@ -427,6 +365,18 @@ parola, come nella potatura del 2026-09-05.
 già la prova (ADR-006, i conteggi ricopiati a mano). Con due lock, due agenti potrebbero scrivere insieme gli stessi file
 di `.ai/`. È la stessa regola che vale per il codice: un'informazione, un posto.
 
+**Eseguito il 2026-09-15**, con queste differenze dalla tabella:
+
+- in archivio c'è un file solo per il plugin vecchio, `.ai/archive/PLUGIN_VECCHIO.md`: da `PROJECT_STATE.md` tutte le
+  sezioni sotto le regole del lock, compresi l'indice dei punti chiusi, i debiti e i ruoli; da `NEW_SESSION_PROMPT.md` il
+  blocco del 2026-08-31 sulle proiezioni di fine gara;
+- "Stato corrente" è diventato la tabella "Avanzamento". In `PROJECT_STATE.md` c'è anche una tabella, oggi vuota, per i
+  punti aperti del plugin nuovo: le regole di revisione di `AGENTS.md` registrano lì i difetti nuovi;
+- la sezione "Ruoli" è sostituita da "Chi fa cosa" in `AGENTS.md`;
+- in `ARCHITECTURE.md` la mappa del plugin nuovo è in testa e ADR-007 segue ADR-006; `Hardware/` è una sezione a sé,
+  perché non riguarda un plugin solo;
+- i comandi `new-session` sono tre: c'è anche la skill di Antigravity, `.agent/skills/new-session/SKILL.md`.
+
 ## 9. Domande aperte
 
 | Domanda | Dove si decide |
@@ -440,13 +390,16 @@ di `.ai/`. È la stessa regola che vale per il codice: un'informazione, un posto
 
 ## 10. Prossimi passi
 
-1. Andreas rivede questo spec e conferma il §8.5.
-2. Riorganizzazione dei file di progetto (§8.5), ADR-007, hook esteso alla cartella nuova.
+L'avanzamento sta solo nella tabella "Avanzamento" di `.ai/PROJECT_STATE.md` (§8.5). L'elenco scritto con lo spec,
+aggiornato un'ultima volta il 2026-09-15:
+
+1. ✅ Andreas rivede questo spec e conferma il §8.5 — fatto il 2026-09-15.
+2. ✅ Riorganizzazione dei file di progetto (§8.5), ADR-007, hook esteso alla cartella nuova — fatto il 2026-09-15.
 3. Interruttore nel plugin vecchio, poi il passo 0.
 4. Brainstorming del primo modulo con Andreas: `Input` + `Cars`.
 
-In una nuova sessione:
+In una nuova sessione basta il comando di avvio, che legge la tabella e riporta il prossimo passo:
 
 ```
-/new-session riprendi da .ai/plans/2026-09-15-remastered-spec.md, paragrafo 10
+/new-session
 ```

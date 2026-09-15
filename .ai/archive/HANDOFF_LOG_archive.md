@@ -9,6 +9,36 @@
 
 ---
 
+## [2026-09-13 21:50] claude → chiunque entri dopo
+
+**Task:** Registrate le decisioni di Andreas sul piano correzioni Daytona (ordine 1 → 5, `SimRIG.Leader.TrackPct` = posizione stimata, esegue claude) e preparata la ripartenza in una nuova sessione. Nessun file di codice toccato, lock non preso.
+**Piano:** `.ai/plans/2026-09-13-daytona-piano-correzioni.md`
+**Commit:** `2f69778` (decisioni in piano, stato e roadmap), questo (handoff)
+
+### Fatto
+- `.ai/plans/2026-09-13-daytona-piano-correzioni.md` — stato "Approvato", esecutore claude, nuove sezioni "Decisioni prese" e "Come si riparte in una nuova sessione".
+- `.ai/PROJECT_STATE.md` — Y-58: decisione presa (posizione stimata); "Stato corrente": prossimo lavoro tecnico = piano correzioni Daytona, poi Y-52 Passo 3.
+- `.ai/plans/2026-08-24-roadmap.md` — lavoro attivo = piano correzioni Daytona; Y-52 in pausa, non chiusa.
+
+### Come verificare
+Nessuna build: turno di sola documentazione.
+```bash
+grep -n "Approvato\|Decisioni prese" .ai/plans/2026-09-13-daytona-piano-correzioni.md
+grep -n "correzioni Daytona" .ai/plans/2026-08-24-roadmap.md .ai/PROJECT_STATE.md
+```
+Atteso: il piano risulta approvato con le decisioni; roadmap e "Stato corrente" rimandano al piano come lavoro attivo.
+
+### Stato
+- ⏭️ Build e test non eseguiti (nessun file di codice modificato)
+- ✅ Codice invariato rispetto a `863c65c`
+
+### Per chi entra
+**Prossimo passo:** passo 1 del piano (consumo BoP del Target nel calcolo MergeGap/undercut), eseguito da claude. Lock con scope `User.PluginSdkDemoEdit/OpponentTracker.cs`, `User.PluginSdkDemoEdit/TargetStrategyManager.cs`, il nuovo file di test e `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/User.PluginSdkDemo.Tests.csproj`. Test prima del fix coi numeri del piano: consumo Target 3.60 L/giro, carburante da imbarcare ≈ 34.1 L, stazionario ≈ 15.7 s (oggi 12.79).
+**NON toccare:** `Hardware/`; `PitInOutAccDecTime` = 11.6 nel DB; i passi 2–5 nello stesso turno (un passo per turno).
+**Attenzione a:** chiudere SimHub prima della build (la build installa la DLL). Il criterio "sul replay" richiede che Andreas rigiri il replay Daytona con la DLL nuova e indichi il nome del log. Gli script di analisi della review erano nella cartella temporanea della sessione del 13/09: i numeri di riferimento sono nel piano e nella review.
+
+---
+
 ## [2026-09-13 21:21] claude → chiunque entri dopo
 
 **Task:** Piano delle correzioni per Y-58…Y-61 dopo il confronto con Andreas (regola BoP del consumo avversari, loop chiuso della pit road con `NotInWorld`, transito di corsa del Player) e dopo la revisione di Gemini. Nessun file di codice toccato, lock non preso.

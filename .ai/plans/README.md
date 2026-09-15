@@ -3,6 +3,10 @@
 Un file per task complesso, nominato `YYYY-MM-DD-<slug>.md`.
 I task semplici non hanno bisogno di un piano: si descrivono direttamente in `HANDOFF_LOG.md`.
 
+**Plugin nuovo (SimRIG Remastered):** un file per modulo, `YYYY-MM-DD-remastered-<modulo>.md`, con la scheda approvata
+nel brainstorming e i passi di implementazione (vedi `AGENTS.md`, "Il ciclo di un modulo"). Lo spec è
+`2026-09-15-remastered-spec.md`.
+
 Un piano serve quando il task tocca più moduli, cambia un contratto/interfaccia, o richiede
 che un altro agente lo riveda **prima** che il codice venga scritto.
 

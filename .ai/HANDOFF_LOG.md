@@ -47,6 +47,44 @@ Atteso: <cosa deve succedere se è andato tutto bene>
 
 ---
 
+## [2026-09-15 17:01] claude → chiunque entri dopo
+
+**Task:** Riorganizzare i file di progetto attorno al plugin nuovo (spec §8.5, confermato da Andreas), scrivere ADR-007, estendere l'hook alla cartella nuova. Nessun file di codice toccato.
+**Piano:** `.ai/plans/2026-09-15-remastered-spec.md`, §8.5
+**Commit:** `7c56b3b` (lock), `58595ff` (lock allargato alla skill `new-session` di Antigravity), questo (riorganizzazione), poi il rilascio del lock
+
+### Fatto
+- `AGENTS.md` — i due plugin in testa; nuova sezione "Come si lavora sul plugin nuovo" (ciclo di un modulo con lo scope del lock, regole di semplicità, chi fa cosa: spostati dallo spec §3 e §8.4); build, test e trappole divisi fra plugin nuovo e vecchio; il lock copre le due cartelle di codice e le riorganizzazioni di `.ai/`; riferimenti aggiornati.
+- `.ai/PROJECT_STATE.md` — stesso lock e stesse regole; "Da dove partire" riscritto, con la tabella di dove sta la storia; tabella "Avanzamento" coi passi dello spec §6.1; tabella, vuota, dei punti aperti del plugin nuovo; ogni punto aperto del plugin vecchio legato al modulo nuovo che lo riguarda; decisioni in sospeso.
+- `.ai/archive/PLUGIN_VECCHIO.md` (nuovo) — parola per parola: tutte le sezioni del vecchio `PROJECT_STATE.md` sotto le regole del lock (da dove partire, punti aperti, indice dei chiusi, stato corrente, debiti, ruoli) e il blocco del 2026-08-31 di `NEW_SESSION_PROMPT.md`.
+- `.ai/ARCHITECTURE.md` — in testa la mappa del plugin nuovo (cartelle, nomi, livelli e moduli: spostati dallo spec §8.1, §8.2, §4.2); `Hardware/` sezione a sé; ADR-007 dopo ADR-006; la mappa del plugin vecchio in fondo, marcata come congelata; nelle convenzioni il rimando al debito dei path assoluti punta a Y-54 in archivio.
+- `.claude/hooks/check-lock.js:17` — `CODE_PREFIXES` con `User.PluginSdkDemoEdit/` e `User.PluginSdkDemoRemastered/`; il messaggio di rifiuto nomina le due cartelle.
+- `.ai/plans/2026-08-24-roadmap.md` → `.ai/archive/2026-08-24-roadmap.md` (`git mv`), con una riga di archiviazione in testa.
+- I tre `new-session` (`.claude/commands/new-session.md`, `.agent/workflows/new-session.md`, `.agent/skills/new-session/SKILL.md`) e `.ai/NEW_SESSION_PROMPT.md` — puntano allo spec e alla tabella "Avanzamento", non più alla roadmap e ai punti congelati; i tre comandi si citano a vicenda.
+- `.ai/STRATEGY_ENGINE_GUIDE.md` — avviso in testa: descrive il plugin vecchio. `.ai/plans/README.md` — il file per modulo del plugin nuovo.
+- Spec — stato approvato; §3, §4.2 e §8.1–8.4 ridotti a rimandi, coi titoli invariati; §8.5 eseguito, con le differenze dalla proposta; §10 passi 1 e 2 fatti.
+- Voce del 2026-09-13 21:50 spostata in `.ai/archive/HANDOFF_LOG_archive.md`; tolti in fondo a questo file i separatori `---` rimasti dagli spostamenti precedenti.
+
+### Come verificare
+Nessuna build: turno di sola documentazione e dell'hook.
+```bash
+grep -rn "2026-08-24-roadmap" AGENTS.md CLAUDE.md GEMINI.md .claude .agent .ai/NEW_SESSION_PROMPT.md .ai/PROJECT_STATE.md .ai/ARCHITECTURE.md
+grep -c "^## \[" .ai/HANDOFF_LOG.md
+```
+Atteso: solo rimandi al file in `.ai/archive/` (in `AGENTS.md` e nella tabella "Dove sta la storia" di `PROJECT_STATE.md`); 11 nel secondo comando (10 voci più il modello).
+Hook: con un `PROJECT_STATE.md` finto di `owner: antigravity` in una cartella di prova, `User.PluginSdkDemoRemastered/Core/Probe.cs` (anche col percorso assoluto) → `deny`, `User.PluginSdkDemoEdit/Probe.cs` → `deny`, `.ai/plans/probe.md` → `allow`, `Hardware/probe.ino` → `deny`.
+
+### Stato
+- ⏭️ Build e test non eseguiti (nessun file di codice modificato)
+- ✅ Codice invariato rispetto a `32a8682`
+
+### Per chi entra
+**Prossimo passo:** l'interruttore che spegne undercut e overcut nel plugin vecchio (spec §7.2), poi la prova di fattibilità (passo 0, spec §7.4). Da proporre ad Andreas prima dell'interruttore: un tag Git sul commit che lo precede, per ritrovare il plugin vecchio com'era.
+**NON toccare:** `User.PluginSdkDemoEdit/` oltre l'interruttore; `User.PluginSdkDemoRemastered/` prima del passo 0; `Hardware/`.
+**Attenzione a:** l'hook protegge le due cartelle solo in Claude Code: Antigravity segue il protocollo scritto. Le voci più vecchie di questo file, i piani e le review del plugin vecchio citano ancora `.ai/plans/2026-08-24-roadmap.md` e la tabella dei congelati: sono storia, i file stanno in `.ai/archive/`. Niente pushato: `main` è avanti di quattro commit su `origin`.
+
+---
+
 ## [2026-09-15 14:54] claude → chiunque entri dopo
 
 **Task:** Chiudere con Andreas il brainstorming del plugin nuovo e scrivere lo spec. Nessun file di codice toccato, lock non preso.
@@ -404,82 +442,3 @@ Atteso al giro 15: `Target (+≈37.3s) : Staz: ≈15.7s`, `ProjectedMergeGap` �
 **Attenzione a:** i test chiamano le funzioni pure, non i due `Update` (servirebbe il `GameData` di SimHub): l'assegnazione di `BopFuelPerLap`/`FuelTankCapacity` in `OpponentTracker.Update` e le due chiamate a `ForecastTargetPit` le verifica solo il replay. Nei primi 3 giri, senza consumo nel database, il Target usa ancora il consumo del Player (la costante 2.5 non viene esposta). I criteri numerici dei passi 3 e 5 presuppongono questo passo.
 
 ---
-
-## [2026-09-13 21:50] claude → chiunque entri dopo
-
-**Task:** Registrate le decisioni di Andreas sul piano correzioni Daytona (ordine 1 → 5, `SimRIG.Leader.TrackPct` = posizione stimata, esegue claude) e preparata la ripartenza in una nuova sessione. Nessun file di codice toccato, lock non preso.
-**Piano:** `.ai/plans/2026-09-13-daytona-piano-correzioni.md`
-**Commit:** `2f69778` (decisioni in piano, stato e roadmap), questo (handoff)
-
-### Fatto
-- `.ai/plans/2026-09-13-daytona-piano-correzioni.md` — stato "Approvato", esecutore claude, nuove sezioni "Decisioni prese" e "Come si riparte in una nuova sessione".
-- `.ai/PROJECT_STATE.md` — Y-58: decisione presa (posizione stimata); "Stato corrente": prossimo lavoro tecnico = piano correzioni Daytona, poi Y-52 Passo 3.
-- `.ai/plans/2026-08-24-roadmap.md` — lavoro attivo = piano correzioni Daytona; Y-52 in pausa, non chiusa.
-
-### Come verificare
-Nessuna build: turno di sola documentazione.
-```bash
-grep -n "Approvato\|Decisioni prese" .ai/plans/2026-09-13-daytona-piano-correzioni.md
-grep -n "correzioni Daytona" .ai/plans/2026-08-24-roadmap.md .ai/PROJECT_STATE.md
-```
-Atteso: il piano risulta approvato con le decisioni; roadmap e "Stato corrente" rimandano al piano come lavoro attivo.
-
-### Stato
-- ⏭️ Build e test non eseguiti (nessun file di codice modificato)
-- ✅ Codice invariato rispetto a `863c65c`
-
-### Per chi entra
-**Prossimo passo:** passo 1 del piano (consumo BoP del Target nel calcolo MergeGap/undercut), eseguito da claude. Lock con scope `User.PluginSdkDemoEdit/OpponentTracker.cs`, `User.PluginSdkDemoEdit/TargetStrategyManager.cs`, il nuovo file di test e `User.PluginSdkDemoEdit/User.PluginSdkDemo.Tests/User.PluginSdkDemo.Tests.csproj`. Test prima del fix coi numeri del piano: consumo Target 3.60 L/giro, carburante da imbarcare ≈ 34.1 L, stazionario ≈ 15.7 s (oggi 12.79).
-**NON toccare:** `Hardware/`; `PitInOutAccDecTime` = 11.6 nel DB; i passi 2–5 nello stesso turno (un passo per turno).
-**Attenzione a:** chiudere SimHub prima della build (la build installa la DLL). Il criterio "sul replay" richiede che Andreas rigiri il replay Daytona con la DLL nuova e indichi il nome del log. Gli script di analisi della review erano nella cartella temporanea della sessione del 13/09: i numeri di riferimento sono nel piano e nella review.
-
----
-
-
----
-
----
-
-
----
-
----
-
----
-
-
----
-
-
----
-
----
-
----
-
-
----
-
----
-
-
----
-
----
-
----
-
-
----
-
----
-
----
-
-
----
-
----
-
----
-

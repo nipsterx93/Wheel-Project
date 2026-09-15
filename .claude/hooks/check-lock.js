@@ -2,8 +2,9 @@
 // PreToolUse hook — fa rispettare tecnicamente il protocollo del lock di AGENTS.md.
 //
 // Regole (vedi AGENTS.md, sezione "Prima di toccare qualsiasi file di codice"):
-//   1. Scritture dentro User.PluginSdkDemoEdit/ (il codice C#) sono permesse solo se il blocco
-//      LOCK in .ai/PROJECT_STATE.md ha owner: NONE oppure owner: claude.
+//   1. Scritture dentro User.PluginSdkDemoEdit/ (plugin vecchio, congelato) o dentro
+//      User.PluginSdkDemoRemastered/ (plugin nuovo) sono permesse solo se il blocco LOCK in
+//      .ai/PROJECT_STATE.md ha owner: NONE oppure owner: claude.
 //   2. Scritture dentro Hardware/ sono SEMPRE negate, indipendentemente dal lock (vedi Y-53:
 //      territorio di Andreas, fuori scope per qualunque agente).
 // Tutto il resto (.ai/, root docs, ecc.) non è soggetto a questo hook: proporre piani e
@@ -12,7 +13,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const CODE_PREFIX = 'User.PluginSdkDemoEdit' + path.sep;
+// Cartelle di codice soggette al lock: il plugin vecchio e il plugin nuovo (ADR-007).
+const CODE_PREFIXES = ['User.PluginSdkDemoEdit' + path.sep, 'User.PluginSdkDemoRemastered' + path.sep];
 const HARDWARE_PREFIX = 'Hardware' + path.sep;
 const LOCK_FILE = path.join(process.cwd(), '.ai', 'PROJECT_STATE.md');
 
@@ -89,12 +91,12 @@ if (touchesHardware) {
   );
 }
 
-const touchesCode = filePaths.some(p => p.startsWith(CODE_PREFIX));
+const touchesCode = filePaths.some(p => CODE_PREFIXES.some(prefix => p.startsWith(prefix)));
 if (touchesCode) {
   const owner = getLockOwner();
   if (owner !== 'NONE' && owner !== 'claude' && owner !== 'UNKNOWN') {
     deny(
-      `Il lock in .ai/PROJECT_STATE.md e\' di "${owner}", non tuo: per AGENTS.md non puoi scrivere codice in User.PluginSdkDemoEdit/. Puoi leggere, analizzare, o proporre un piano in .ai/plans/.`
+      `Il lock in .ai/PROJECT_STATE.md e\' di "${owner}", non tuo: per AGENTS.md non puoi scrivere codice in User.PluginSdkDemoEdit/ ne' in User.PluginSdkDemoRemastered/. Puoi leggere, analizzare, o proporre un piano in .ai/plans/.`
     );
   }
 }

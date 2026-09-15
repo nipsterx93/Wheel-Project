@@ -1,5 +1,9 @@
 # Motore strategico — guida in parole povere
 
+> ⚠️ **Descrive il plugin vecchio** (`User.PluginSdkDemoEdit/`), congelato dal 2026-09-15. Il plugin nuovo è in
+> `User.PluginSdkDemoRemastered/` (spec: `.ai/plans/2026-09-15-remastered-spec.md`); questa guida si riscrive al
+> passaggio della dash.
+
 > A cosa serve questo file: rispondere a "cosa stiamo combinando con tutte queste formule".
 > Nessuna algebra. Per la verifica formale c'è `.ai/reviews/2026-08-18-strategy-engine-verification.md`.
 
